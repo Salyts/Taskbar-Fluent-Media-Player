@@ -2,7 +2,7 @@
 // @id              taskbar-fluent-media-player
 // @name            Taskbar Fluent Media Player
 // @description     Embeds a Fluent Design media player inside the Windows 11 taskbar.
-// @version         0.3.0-beta
+// @version         0.4.0-beta
 // @author          Salyts
 // @github          https://github.com/Salyts
 // @include         explorer.exe
@@ -13,6 +13,10 @@
 // ==WindhawkModReadme==
 /*
 # Taskbar Fluent Media Player
+
+### When updating a mod, REINSTALL IT COMPLETELY
+
+---
 
 Embeds a Fluent Design media player inside the Windows 11 taskbar.
 
@@ -26,317 +30,353 @@ By installing and using this mod, you do so at your own risk. The author is not 
 // ==WindhawkModSettings==
 /*
 - MainSettings:
-  - position: "tray_left"
-    $name: Player position •
-    $options:
-    - "tray_left": "Tray - Far edge - Left"
-    - "tray_right": "Tray - Far edge - Right"
-    - "tray_before_clock": "Tray - Clock - Left"
-    - "tray_after_clock": "Tray - Clock - Right"
-    - "tray_before_omni_left": "Tray - Network/volume - Left"
-    - "tray_before_omni_right": "Tray - Network/volume - Right"
-    - "tray_after_showdesktop_left": "Tray - Show Desktop - Left"
-    - "tray_after_showdesktop_right": "Tray - Show Desktop - Right"
-    - "taskbar_left_start": "Taskbar - Start button - Left"
-    - "taskbar_right_start": "Taskbar - Start button - Right"
-    - "taskbar_after_search_left": "Taskbar - Search button - Left"
-    - "taskbar_after_search_right": "Taskbar - Search button - Right"
-    - "taskbar_after_taskview_left": "Taskbar - Task View button - Left"
-    - "taskbar_after_taskview_right": "Taskbar - Task View button - Right"
-    - "taskbar_after_widgets_left": "Taskbar - Widgets button - Left"
-    - "taskbar_after_widgets_right": "Taskbar - Widgets button - Right"
-    - "taskbar_left_edge": "Taskbar - far edge (Overlay) - Left"
-    - "taskbar_right_edge": "Taskbar - far edge (Overlay) - Right"
-  - playerWidth: "0 280"
-    $name: Player width ↔ (min max, px, 0 = no limit)
-  - playerHeight: "40 40"
-    $name: Player height ↕ (min max, px, 0 = no limit)
-  - playerMargin: "2 2"
-    $name: Player margin ↔ (left right, px)
+  - PlayerSetting:
+    - position: "tray_left"
+      $name: Media player position •
+      $options:
+      - "tray_left": "Tray - Far edge - Left"
+      - "tray_right": "Tray - Far edge - Right"
+      - "tray_before_clock": "Tray - Clock - Left"
+      - "tray_after_clock": "Tray - Clock - Right"
+      - "tray_before_omni_left": "Tray - Network/volume - Left"
+      - "tray_before_omni_right": "Tray - Network/volume - Right"
+      - "tray_language_left": "Tray - Language button - Left"
+      - "tray_language_right": "Tray - Language button - Right"
+      - "tray_hidden_icons_left": "Tray - Hidden icons button - Left"
+      - "tray_hidden_icons_right": "Tray - Hidden icons button - Right"
+      - "tray_icons_left": "Tray - Icons - Left"
+      - "tray_icons_right": "Tray - Icons - Right"
+      - "tray_after_showdesktop_left": "Tray - Show Desktop - Left"
+      - "tray_after_showdesktop_right": "Tray - Show Desktop - Right"
+      - "taskbar_left_start": "Taskbar - Start button - Left"
+      - "taskbar_right_start": "Taskbar - Start button - Right"
+      - "taskbar_after_search_left": "Taskbar - Search button - Left"
+      - "taskbar_after_search_right": "Taskbar - Search button - Right"
+      - "taskbar_after_taskview_left": "Taskbar - Task View button - Left"
+      - "taskbar_after_taskview_right": "Taskbar - Task View button - Right"
+      - "taskbar_after_widgets_left": "Taskbar - Widgets button - Left"
+      - "taskbar_after_widgets_right": "Taskbar - Widgets button - Right"
+      - "taskbar_far_edge_left": "Taskbar - far edge - Left [TESTING]"
+      - "taskbar_left_edge": "Taskbar - far edge (Overlay) - Left"
+      - "taskbar_center_edge": "Taskbar - far edge (Overlay) - Center"
+      - "taskbar_right_edge": "Taskbar - far edge (Overlay) - Right"
+    - playerWidth: "0 0"
+      $name: Media player width ↔ (min max, px, 0 = no limit)
+    - playerHeight: "40 40"
+      $name: Media player height ↕ (min max, px, 0 = no limit)
+    - playerMargin: "4 4"
+      $name: Media player margin ↔ (left right, px)
+    - mirrorLayout: false
+      $name: Mirror layout (flip album art, text, and buttons to opposite sides)
+    $name: Media player Settings
+
+  - AlbumArtSetting:
+    - showAlbumArt: true
+      $name: Show album art
+    - albumArtWidth: "32 64"
+      $name: Album art width ↔ (min max, px)
+    - albumArtHeight: "32 32"
+      $name: Album art height ↕ (min max, px)
+    - albumArtMargin: "0 0"
+      $name: Album art margin ↔ (left right, px)
+    $name: Album Art Settings
+
+  - TextAreaSetting:
+    - showTrackTitle: true
+      $name: Show track title
+    - showTrackArtist: true
+      $name: Show artist name
+    - textAreaWidth: "0 120"
+      $name: Text area width ↔ (min max, px, 0 = no limit)
+    - textAreaHeight: "0 0"
+      $name: Text area height ↕ (min max, px, 0 = no limit)
+    - textAreaMargin: "5 5"
+      $name: Text area margin ↔ (left right, px)
+    $name: Text area Settings
   $name: Main Settings
 
 - DisplaySettings:
-  - iconStyle: "fluent_outline"
-    $name: Icon style
-    $options:
-    - "custom_icons": "Custom icon [ Not Working ]"
-    - "fluent_outline": "Segoe Fluent Icons (Outline)"
-    - "fluent_filled": "Segoe Fluent Icons (Filled)"
-    - "mdl2_outline": "Segoe MDL2 Assets (Outline)"
-    - "mdl2_filled": "Segoe MDL2 Assets (Filled)"
-  - showMediaButtons: true
-    $name: Show media buttons
-  - mediaButtons: [prev, play, next]
-    $name: Media Buttons Order
-    $description: Select which media control buttons to display and their order. Duplicates are ignored.
-    $options:
-    - prev: Previous
-    - play: Play/Pause
-    - next: Next
-    - rewind: Rewind 5s
-    - forward: Forward 5s
-    - shuffle: Shuffle
-    - repeat: Repeat
-  - mirrorLayout: false
-    $name: Mirror layout (flip album art, text, and buttons to opposite sides)
-  - mediaButtonsMargin: "2 2"
-    $name: Media buttons margin (left right, px)
-  - showTrackTitle: true
-    $name: Show track title
-  - showFullTitleOnHover: true
-    $name: Show full track title on hover (tooltip)
-  - showTrackArtist: true
-    $name: Show artist name
-  - showAlbumArt: true
-    $name: Show album art
-  - albumArtEmptyBehavior: "show"
-    $name: Album art behavior when no cover available
-    $options:
-    - "show": "Show area (default)"
-    - "hide": "Hide area"
-    - "show_question": "Show area with question mark"
-    - "show_note": "Show area with music note"
-  - showPauseOverlay: false
-    $name: Show pause icon overlay on album art when paused
-  - pauseOverlayOpacity: 60
-    $name: Pause overlay background opacity (0-100)
-  - showAppIcon: false
-    $name: Show media app icon overlay
-  - appIconCorner: "bottom_right"
-    $name: App icon corner
-    $options:
-    - "top_left":     "Top left"
-    - "top_right":    "Top right"
-    - "bottom_left":  "Bottom left"
-    - "bottom_right": "Bottom right"
-  - appIconSize: 12
-    $name: App icon size (px)
-  $name: Display Settings
+  - IconsSettings:
+    - iconStyle: "fluent_filled"
+      $name: Icon style
+      $options:
+      - "custom_icons": "Custom Icons Pack [Not Working]"
+      - "fluent_outline": "Segoe Fluent Icons (Outline)"
+      - "fluent_filled": "Segoe Fluent Icons (Filled)"
+      - "mdl2_outline": "Segoe MDL2 Assets (Outline)"
+      - "mdl2_filled": "Segoe MDL2 Assets (Filled)"
+    $name: Icons
 
-- AppearanceSettings:
-  - theme: "auto"
-    $name: Theme
-    $options:
-    - "auto":   "Follow system"
-    - "dark":   "Always dark"
-    - "light":  "Always light"
-    - "custom": "Custom colors"
-  - backgroundType: "none"
-    $name: Background type
-    $options:
-    - "none":       "None (transparent)"
-    - "solid":      "Solid color"
-    - "acrylic":    "Acrylic"
-    - "mica":       "Mica"
-    - "mica_alt":   "Mica Alt"
-    - "album_art":  "Album art"
-    - "album_art_blur": "Album art - Blur"
-  - cornerRadius: 4
-    $name: Panel corner radius (px)
-  - albumArtSize: 32
-    $name: Album art size (px)
-  - albumArtOpacity: 100
-    $name: Album art opacity (0-100)
-  - albumArtCornerRadius: 4
-    $name: Album art corner radius (px)
-  - albumArtMargin: "0 0"
-    $name: Album art margin (left right, px)
-  - textMargin: "4 4"
-    $name: Text margin (left right, px)
-  - controlsMargin: "0 0"
-    $name: Controls margin (left right, px)
-  - buttonSpacing: 0
-    $name: Spacing between media buttons (px)
-  - buttonCornerRadius: 4
-    $name: Media button corner radius (px)
-  - titleFontSize: 12
-    $name: Title font size (pt)
-  - titleFont: segoe_ui_variable
-    $name: Title Font
-    $options:
-      - segoe_ui_variable: Segoe UI Variable Display (default)
-      - segoe_ui: Segoe UI
-      - segoe_ui_semibold: Segoe UI Semibold
-      - segoe_ui_bold: Segoe UI Bold
-      - segoe_ui_light: Segoe UI Light
-      - segoe_ui_semilight: Segoe UI Semilight
-      - aptos: Aptos
-      - calibri: Calibri
-      - cambria: Cambria
-      - candara: Candara
-      - consolas: Consolas
-      - corbel: Corbel
-      - arial: Arial
-      - trebuchet: Trebuchet MS
-      - verdana: Verdana
-      - tahoma: Tahoma
-      - georgia: Georgia
-      - times_new_roman: Times New Roman
-  - artistFontSize: 11
-    $name: Artist font size (pt)
-  - artistFont: segoe_ui_semibold
-    $name: Artist Font
-    $options:
-      - segoe_ui_variable: Segoe UI Variable Display
-      - segoe_ui: Segoe UI
-      - segoe_ui_semibold: Segoe UI Semibold (default)
-      - segoe_ui_bold: Segoe UI Bold
-      - segoe_ui_light: Segoe UI Light
-      - segoe_ui_semilight: Segoe UI Semilight
-      - aptos: Aptos
-      - calibri: Calibri
-      - cambria: Cambria
-      - candara: Candara
-      - consolas: Consolas
-      - corbel: Corbel
-      - arial: Arial
-      - trebuchet: Trebuchet MS
-      - verdana: Verdana
-      - tahoma: Tahoma
-      - georgia: Georgia
-      - times_new_roman: Times New Roman
-  - textSpacing: 1
-    $name: Spacing between title and artist (px)
-  - customButtonColor: "255 255 255"
-    $name: Custom theme - Button color (R G B 0-255)
-  - customTitleColor: "255 255 255"
-    $name: Custom theme - Title color (R G B 0-255)
-  - customArtistColor: "200 200 200"
-    $name: Custom theme - Artist color (R G B 0-255)
-  $name: Appearance Settings
+  - MediaButtonsSettings:
+    - showMediaButtons: true
+      $name: Show media buttons
+    - mediaButtons: [prev, play, next]
+      $name: Media Buttons Order
+      $description: Select which media control buttons to display and their order. Duplicates are ignored.
+      $options:
+      - prev: Previous
+      - play: Play/Pause
+      - next: Next
+      - rewind: Rewind 5s
+      - forward: Forward 5s
+      - shuffle: Shuffle
+      - repeat: Repeat
+    - mediaButtonsMargin: "2 2"
+      $name: Media buttons margin (left right, px)
+    - buttonSpacing: 0
+      $name: Spacing between media buttons (px)
+    - buttonSize: 28
+      $name: Button size (px)
+    - buttonIconSize: 12
+      $name: Button icon size (px)
+    - buttonCornerRadius: 4
+      $name: Media button corner radius (px)
+    $name: Media Buttons
+
+  - AlbumArtDisplaySettings:
+    - albumArtEmptyBehavior: "show"
+      $name: Album art behavior when no cover available
+      $options:
+      - "show": "Show area (default)"
+      - "hide": "Hide area"
+      - "show_question": "Show area with question mark"
+      - "show_note": "Show area with music note"
+    - showPauseOverlay: false
+      $name: Show pause icon overlay on album art when paused
+    - pauseOverlayOpacity: 60
+      $name: Pause overlay background opacity (0-100)
+    - albumArtOpacity: 100
+      $name: Album art opacity (0-100)
+    - albumArtCornerRadius: 4
+      $name: Album art corner radius (px)
+    - showAppIcon: false
+      $name: Show media app icon overlay
+    - appIconCorner: "bottom_right"
+      $name: App icon corner
+      $options:
+      - "top_left":     "Top left"
+      - "top_right":    "Top right"
+      - "bottom_left":  "Bottom left"
+      - "bottom_right": "Bottom right"
+    - appIconSize: 12
+      $name: App icon size (px)
+    $name: Album Art Display
+
+  - TextDisplaySettings:
+    - showFullTitleOnHover: true
+      $name: Show full track title on hover (tooltip)
+    - textSpacing: 1
+      $name: Spacing between title and artist (px)
+    - titleFontSize: 12
+      $name: Title font size (pt)
+    - titleFont: segoe_ui_variable
+      $name: Title Font
+      $options:
+        - segoe_ui_variable: Segoe UI Variable Display
+        - segoe_ui: Segoe UI
+        - segoe_ui_semibold: Segoe UI Semibold
+        - segoe_ui_bold: Segoe UI Bold
+        - segoe_ui_light: Segoe UI Light
+        - segoe_ui_semilight: Segoe UI Semilight
+        - aptos: Aptos
+        - calibri: Calibri
+        - cambria: Cambria
+        - candara: Candara
+        - consolas: Consolas
+        - corbel: Corbel
+        - arial: Arial
+        - trebuchet: Trebuchet MS
+        - verdana: Verdana
+        - tahoma: Tahoma
+        - georgia: Georgia
+        - times_new_roman: Times New Roman
+    - artistFontSize: 11
+      $name: Artist font size (pt)
+    - artistFont: segoe_ui_variable
+      $name: Artist Font
+      $options:
+        - segoe_ui_variable: Segoe UI Variable Display
+        - segoe_ui: Segoe UI
+        - segoe_ui_semibold: Segoe UI Semibold
+        - segoe_ui_bold: Segoe UI Bold
+        - segoe_ui_light: Segoe UI Light
+        - segoe_ui_semilight: Segoe UI Semilight
+        - aptos: Aptos
+        - calibri: Calibri
+        - cambria: Cambria
+        - candara: Candara
+        - consolas: Consolas
+        - corbel: Corbel
+        - arial: Arial
+        - trebuchet: Trebuchet MS
+        - verdana: Verdana
+        - tahoma: Tahoma
+        - georgia: Georgia
+        - times_new_roman: Times New Roman
+    $name: Text Display
+
+  - ThemeSettings:
+    - theme: "auto"
+      $name: Theme
+      $options:
+      - "auto":   "Follow system"
+      - "dark":   "Always dark"
+      - "light":  "Always light"
+      - "custom": "Custom colors"
+    - backgroundType: "none"
+      $name: Background type
+      $options:
+      - "none":       "None (transparent)"
+      - "solid":      "Solid color"
+      - "acrylic":    "Acrylic"
+      - "mica":       "Mica"
+      - "mica_alt":   "Mica Alt"
+      - "album_art":  "Album art"
+      - "album_art_blur": "Album art - Blur"
+    - cornerRadius: 4
+      $name: Panel corner radius (px)
+    - customButtonColor: "255 255 255"
+      $name: Custom theme - Button color (R G B 0-255)
+    - customTitleColor: "255 255 255"
+      $name: Custom theme - Title color (R G B 0-255)
+    - customArtistColor: "200 200 200"
+      $name: Custom theme - Artist color (R G B 0-255)
+    $name: Theme & Colors
+  $name: Display & Appearance
 
 - BehaviorSettings:
-  - playerLeftClick: "play_pause"
-    $name: Player - Left click
-    $options:
-    - "none": "Nothing"
-    - "switch_session": "Switch active media session"
-    - "play_pause": "Play/Pause"
-    - "next_track": "Next track"
-    - "prev_track": "Previous track"
-    - "stop": "Stop playback"
-    - "open_app": "Open media app"
-  - playerRightClick: "none"
-    $name: Player - Right click
-    $options:
-    - "none": "Nothing"
-    - "switch_session": "Switch active media session"
-    - "play_pause": "Play/Pause"
-    - "next_track": "Next track"
-    - "prev_track": "Previous track"
-    - "stop": "Stop playback"
-    - "open_app": "Open media app"
-  - playerMiddleClick: "stop"
-    $name: Player - Middle click
-    $options:
-    - "none": "Nothing"
-    - "switch_session": "Switch active media session"
-    - "play_pause": "Play/Pause"
-    - "next_track": "Next track"
-    - "prev_track": "Previous track"
-    - "stop": "Stop playback"
-    - "open_app": "Open media app"
-  - playerLeftDoubleClick: "none"
-    $name: Player - Left double click
-    $options:
-    - "none": "Nothing"
-    - "switch_session": "Switch active media session"
-    - "play_pause": "Play/Pause"
-    - "next_track": "Next track"
-    - "prev_track": "Previous track"
-    - "stop": "Stop playback"
-    - "open_app": "Open media app"
-  - playerRightDoubleClick: "none"
-    $name: Player - Right double click
-    $options:
-    - "none": "Nothing"
-    - "switch_session": "Switch active media session"
-    - "play_pause": "Play/Pause"
-    - "next_track": "Next track"
-    - "prev_track": "Previous track"
-    - "stop": "Stop playback"
-    - "open_app": "Open media app"
-  - playerWheelAction: "switch_tracks"
-    $name: Player - Mouse wheel
-    $options:
-    - "none": "Nothing"
-    - "switch_tracks": "Switch tracks (up=prev, down=next)"
-    - "switch_sessions": "Switch sessions (up/down)"
-  - albumArtLeftClick: "none"
-    $name: Album art - Left click
-    $options:
-    - "none": "Nothing"
-    - "switch_session": "Switch active media session"
-    - "play_pause": "Play/Pause"
-    - "next_track": "Next track"
-    - "prev_track": "Previous track"
-    - "stop": "Stop playback"
-    - "open_app": "Open media app"
-  - albumArtRightClick: "none"
-    $name: Album art - Right click
-    $options:
-    - "none": "Nothing"
-    - "switch_session": "Switch active media session"
-    - "play_pause": "Play/Pause"
-    - "next_track": "Next track"
-    - "prev_track": "Previous track"
-    - "stop": "Stop playback"
-    - "open_app": "Open media app"
-  - albumArtMiddleClick: "none"
-    $name: Album art - Middle click
-    $options:
-    - "none": "Nothing"
-    - "switch_session": "Switch active media session"
-    - "play_pause": "Play/Pause"
-    - "next_track": "Next track"
-    - "prev_track": "Previous track"
-    - "stop": "Stop playback"
-    - "open_app": "Open media app"
-  - albumArtLeftDoubleClick: "open_app"
-    $name: Album art - Left double click
-    $options:
-    - "none": "Nothing"
-    - "switch_session": "Switch active media session"
-    - "play_pause": "Play/Pause"
-    - "next_track": "Next track"
-    - "prev_track": "Previous track"
-    - "stop": "Stop playback"
-    - "open_app": "Open media app"
-  - albumArtRightDoubleClick: "none"
-    $name: Album art - Right double click
-    $options:
-    - "none": "Nothing"
-    - "switch_session": "Switch active media session"
-    - "play_pause": "Play/Pause"
-    - "next_track": "Next track"
-    - "prev_track": "Previous track"
-    - "stop": "Stop playback"
-    - "open_app": "Open media app"
-  - albumArtWheelAction: "switch_sessions"
-    $name: Album art - Mouse wheel
-    $options:
-    - "none": "Nothing"
-    - "switch_tracks": "Switch tracks (up=prev, down=next)"
-    - "switch_sessions": "Switch sessions (up/down)"
+  - ClickActionSettings:
+      - - object: player
+          $name: Object
+          $options:
+          - none: Nothing
+          - player: Player area
+          - album_art: Album art area
+        - click: left_click
+          $name: Click type
+          $options:
+          - none: Nothing
+          - left_click: Left click
+          - left_double_click: Left double click
+          - right_click: Right click
+          - right_double_click: Right double click
+          - middle_click: Middle click
+          - middle_double_click: Middle double click
+        - action: play_pause
+          $name: Action
+          $options:
+          - none: Nothing
+          - switch_session: Switch active media session
+          - play_pause: Play/Pause
+          - next_track: Next track
+          - prev_track: Previous track
+          - stop: Stop playback
+          - rewind_5s: Rewind 5s
+          - forward_5s: Forward 5s
+          - toggle_shuffle: Toggle Shuffle
+          - toggle_repeat: Toggle Repeat
+          - open_app: Open media app
+      - - object: album_art
+          $name: Object
+          $options:
+          - none: Nothing
+          - player: Player area
+          - album_art: Album art area
+        - click: left_double_click
+          $name: Click type
+          $options:
+          - none: Nothing
+          - left_click: Left click
+          - left_double_click: Left double click
+          - right_click: Right click
+          - right_double_click: Right double click
+          - middle_click: Middle click
+          - middle_double_click: Middle double click
+        - action: open_app
+          $name: Action
+          $options:
+          - none: Nothing
+          - switch_session: Switch active media session
+          - play_pause: Play/Pause
+          - next_track: Next track
+          - prev_track: Previous track
+          - stop: Stop playback
+          - rewind_5s: Rewind 5s
+          - forward_5s: Forward 5s
+          - toggle_shuffle: Toggle Shuffle
+          - toggle_repeat: Toggle Repeat
+          - open_app: Open media app
+    $name: Click Actions
+  - MouseWheelActionSettings:
+      - - object: player
+          $name: Object
+          $options:
+          - none: Nothing
+          - player: Player area
+          - album_art: Album art area
+        - click: mouse_wheel
+          $name: Mouse type
+          $options:
+          - none: Nothing
+          - mouse_wheel: Mouse wheel
+          - mouse_wheel_up: Mouse wheel up
+          - mouse_wheel_down: Mouse wheel down
+        - action: switch_tracks
+          $name: Action
+          $options:
+            - none: Nothing
+            - "switch_tracks": "Switch tracks (up=prev, down=next)"
+            - "switch_sessions": "Switch sessions (up/down)"
+            - "system_sound": "Change system sound volume (up/down)"
+            - "app_sound": "Change app sound volume (up/down)"
+      - - object: album_art
+          $name: Object
+          $options:
+          - none: Nothing
+          - player: Player area
+          - album_art: Album art area
+        - click: mouse_wheel
+          $name: Mouse type
+          $options:
+          - none: Nothing
+          - mouse_wheel: Mouse wheel
+          - mouse_wheel_up: Mouse wheel up
+          - mouse_wheel_down: Mouse wheel down
+        - action: switch_sessions
+          $name: Action
+          $options:
+            - none: Nothing
+            - "switch_tracks": "Switch tracks (up=prev, down=next)"
+            - "switch_sessions": "Switch sessions (up/down)"
+            - "system_sound": "Change system sound volume (up/down)"
+            - "app_sound": "Change app sound volume (up/down)"
+    $name: Mouse wheel Actions
   - hideWhenNoMedia: true
     $name: Hide when no media is playing
   - hideFullscreen: true
     $name: Hide when a fullscreen app is running
   - idleHideSeconds: 0
     $name: Idle auto-hide timeout (seconds, 0 = disabled)
-  - enableAlbumArtHoverEffect: false
-    $name: Enable button-style hover effect on album art
   - enablePlayerHoverEffect: true
     $name: Enable button-style hover effect on player
   - enableMediaButtonsHoverEffect: true
     $name: Enable hover effect on media buttons (play, prev, next, etc.)
   $name: Behavior Settings
 
+- AnimationSettings:
+  - enableSmoothPositionAnimation: true
+    $name: Enable smooth position animation (like taskbar icons)
+  $name: Animation Settings
+
 - DebugSettings:
+  - ignoredProcesses: ""
+    $name: Ignore media from processes (separate with ;)
   - enableTreeDump: false
     $name: Dump XAML element names to log on inject
   - showDebugBorders: false
     $name: Show debug borders (hitboxes)
+  - showLayoutAnchors: false
+    $name: Show layout anchors and centers
   $name: Debug Settings
 */
 // ==/WindhawkModSettings==
@@ -355,6 +395,8 @@ By installing and using this mod, you do so at your own risk. The author is not 
 #include <winrt/Windows.UI.Xaml.Media.h>
 #include <winrt/Windows.UI.Xaml.Media.Imaging.h>
 #include <winrt/Windows.UI.Xaml.Shapes.h>
+#include <winrt/Windows.UI.Xaml.Media.Animation.h>
+#include <winrt/Windows.UI.Xaml.Markup.h>
 #include <winrt/Windows.UI.Xaml.Input.h>
 #include <winrt/Windows.UI.Xaml.Automation.h>
 #include <winrt/Windows.UI.ViewManagement.h>
@@ -365,9 +407,17 @@ By installing and using this mod, you do so at your own risk. The author is not 
 
 #include <windows.h>
 #include <shellapi.h>
+#include <shlobj.h>
+#include <shobjidl.h>
+#include <propsys.h>
 #include <windhawk_utils.h>
+#include <audiopolicy.h>
+#include <mmdeviceapi.h>
+#include <endpointvolume.h>
+#include <tlhelp32.h>
 
 #include <atomic>
+#include <functional>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -381,6 +431,7 @@ using namespace winrt::Windows::UI::Xaml;
 using namespace winrt::Windows::UI::Xaml::Controls;
 using namespace winrt::Windows::UI::Xaml::Media;
 using namespace winrt::Windows::UI::Xaml::Media::Imaging;
+using namespace winrt::Windows::UI::Xaml::Media::Animation;
 using namespace winrt::Windows::UI::Xaml::Input;
 using namespace winrt::Windows::Media::Control;
 using namespace winrt::Windows::Storage::Streams;
@@ -388,69 +439,81 @@ using namespace winrt::Windows::Storage::Streams;
 #define LOG(fmt, ...) Wh_Log(L"[FMP] " fmt, ##__VA_ARGS__)
 
 struct ModSettings {
-    std::wstring position             = L"tray_right";
-    std::wstring albumArtLeftClick    = L"switch_session";
+    std::wstring position             = L"tray_left";
+    std::wstring albumArtLeftClick    = L"none";
     std::wstring albumArtRightClick   = L"none";
     std::wstring albumArtMiddleClick  = L"none";
-    std::wstring albumArtLeftDoubleClick  = L"none";
+    std::wstring albumArtLeftDoubleClick  = L"open_app";
     std::wstring albumArtRightDoubleClick = L"none";
-    std::wstring albumArtWheelAction  = L"switch_tracks";
-    std::wstring playerLeftClick      = L"none";
+    std::wstring albumArtWheelAction  = L"switch_sessions";
+    std::wstring playerLeftClick      = L"play_pause";
     std::wstring playerRightClick     = L"none";
-    std::wstring playerMiddleClick    = L"stop";
+    std::wstring playerMiddleClick    = L"none";
     std::wstring playerLeftDoubleClick  = L"none";
     std::wstring playerRightDoubleClick = L"none";
-    std::wstring playerWheelAction    = L"none";
+    std::wstring playerWheelAction    = L"switch_tracks";
     bool         mirrorLayout         = false;
     bool         showMediaButtons     = true;
-    int          playerMinWidth       = 200;
-    int          playerMaxWidth       = 400;
-    int          playerHeight         = 40;
+    int          playerMinWidth       = 0;
+    int          playerMaxWidth       = 0;
+    int          playerMinHeight      = 40;
+    int          playerMaxHeight      = 40;
     bool         showAlbumArt         = true;
     std::wstring albumArtEmptyBehavior = L"show";
-    bool         showPauseOverlay     = true;
+    bool         showPauseOverlay     = false;
     int          pauseOverlayOpacity  = 60;
-    int          albumArtSize         = 30;
+    int          albumArtMinWidth     = 32;
+    int          albumArtMaxWidth     = 64;
+    int          albumArtMinHeight    = 32;
+    int          albumArtMaxHeight    = 32;
     int          albumArtOpacity      = 100;
-    int          albumArtLeftMargin   = 2;
+    int          albumArtLeftMargin   = 0;
     int          albumArtRightMargin  = 0;
     bool         showTrackTitle       = true;
     bool         showFullTitleOnHover = true;
     bool         showTrackArtist      = true;
-    std::wstring iconStyle            = L"outline";
+    std::wstring iconStyle            = L"fluent_filled";
     bool         showAppIcon          = false;
     std::wstring appIconCorner        = L"bottom_right";
     int          appIconSize          = 12;
     bool         hideWhenNoMedia      = true;
-    bool         enableAlbumArtHoverEffect = false;
     bool         enablePlayerHoverEffect   = true;
     bool         enableMediaButtonsHoverEffect = true;
-    int          textMarginLeft       = 5;
-    int          textMarginRight      = 0;
+    bool         enableSmoothPositionAnimation = true;
     int          controlsMarginLeft   = 4;
     int          controlsMarginRight  = 0;
-    int          playerMarginLeft     = 0;
-    int          playerMarginRight    = 0;
-    int          mediaButtonsLeftMargin  = 0;
-    int          mediaButtonsRightMargin = 1;
+    int          playerMarginLeft     = 4;
+    int          playerMarginRight    = 4;
+    int          mediaButtonsLeftMargin  = 2;
+    int          mediaButtonsRightMargin = 2;
+    int          textAreaMinWidth     = 0;
+    int          textAreaMaxWidth     = 120;
+    int          textAreaMinHeight    = 0;
+    int          textAreaMaxHeight    = 0;
+    int          textAreaLeftMargin   = 5;
+    int          textAreaRightMargin  = 5;
     bool         hideFullscreen       = true;
     int          idleHideSeconds      = 0;
     std::wstring theme                = L"auto";
     std::wstring backgroundType       = L"none";
-    int          cornerRadius         = 5;
+    int          cornerRadius         = 4;
     int          albumArtCornerRadius = 4;
     int          buttonSpacing        = 0;
-    int          buttonCornerRadius   = 14;
+    int          buttonSize           = 28;
+    int          buttonIconSize       = 12;
+    int          buttonCornerRadius   = 4;
     int          titleFontSize        = 12;
-    int          artistFontSize       = 10;
+    int          artistFontSize       = 11;
     std::wstring titleFont            = L"segoe_ui_variable";
-    std::wstring artistFont           = L"segoe_ui_semibold";
+    std::wstring artistFont           = L"segoe_ui_variable";
     int          textSpacing          = 1;
     std::wstring customButtonColor    = L"255 255 255";
     std::wstring customTitleColor     = L"255 255 255";
     std::wstring customArtistColor    = L"200 200 200";
+    std::wstring ignoredProcesses     = L"";
     bool         enableTreeDump       = false;
     bool         showDebugBorders     = false;
+    bool         showLayoutAnchors    = false;
 };
 static ModSettings g_settings;
 
@@ -546,69 +609,143 @@ static void LoadSettings() {
         }
     };
 
-    g_settings.position             = Str(L"MainSettings.position",    L"tray_right");
-    ParseMargin(L"MainSettings.playerMargin", L"0 0", g_settings.playerMarginLeft, g_settings.playerMarginRight);
-    ParseMargin(L"MainSettings.playerWidth", L"80 320", g_settings.playerMinWidth, g_settings.playerMaxWidth);
-    int playerHeightMin = 40, playerHeightMax = 40;
-    ParseMargin(L"MainSettings.playerHeight", L"40 40", playerHeightMin, playerHeightMax);
-    g_settings.playerHeight = playerHeightMax;
+    g_settings.position             = Str(L"MainSettings.PlayerSetting.position",    L"tray_right");
 
-    g_settings.mirrorLayout         = Wh_GetIntSetting(L"DisplaySettings.mirrorLayout") != 0;
-    g_settings.showMediaButtons     = Wh_GetIntSetting(L"DisplaySettings.showMediaButtons") != 0;
-    ParseMargin(L"DisplaySettings.mediaButtonsMargin", L"0 1", g_settings.mediaButtonsLeftMargin, g_settings.mediaButtonsRightMargin);
-    g_settings.showTrackTitle       = Wh_GetIntSetting(L"DisplaySettings.showTrackTitle")    != 0;
-    g_settings.showFullTitleOnHover = Wh_GetIntSetting(L"DisplaySettings.showFullTitleOnHover") != 0;
-    g_settings.showTrackArtist      = Wh_GetIntSetting(L"DisplaySettings.showTrackArtist")   != 0;
-    g_settings.showAlbumArt         = Wh_GetIntSetting(L"DisplaySettings.showAlbumArt")      != 0;
-    g_settings.albumArtEmptyBehavior = Str(L"DisplaySettings.albumArtEmptyBehavior", L"show");
-    g_settings.showPauseOverlay     = Wh_GetIntSetting(L"DisplaySettings.showPauseOverlay")  != 0;
-    g_settings.pauseOverlayOpacity  = Int(L"DisplaySettings.pauseOverlayOpacity",     0, 100,  60);
-    g_settings.iconStyle            = Str(L"DisplaySettings.iconStyle", L"fluent_outline");
-    g_settings.showAppIcon          = Wh_GetIntSetting(L"DisplaySettings.showAppIcon")       != 0;
-    g_settings.appIconCorner        = Str(L"DisplaySettings.appIconCorner",  L"bottom_right");
-    g_settings.appIconSize          = Int(L"DisplaySettings.appIconSize",         8,  32,  12);
+    ParseMargin(L"MainSettings.PlayerSetting.playerMargin", L"0 0", g_settings.playerMarginLeft, g_settings.playerMarginRight);
+    ParseMargin(L"MainSettings.PlayerSetting.playerWidth", L"80 320", g_settings.playerMinWidth, g_settings.playerMaxWidth);
+    ParseMargin(L"MainSettings.PlayerSetting.playerHeight", L"40 40", g_settings.playerMinHeight, g_settings.playerMaxHeight);
 
-    g_settings.theme                = Str(L"AppearanceSettings.theme",          L"auto");
-    g_settings.backgroundType       = Str(L"AppearanceSettings.backgroundType", L"none");
-    g_settings.cornerRadius         = Int(L"AppearanceSettings.cornerRadius",          0,  24,   5);
-    g_settings.albumArtSize         = Int(L"AppearanceSettings.albumArtSize",         16,  60,  30);
-    g_settings.albumArtOpacity      = Int(L"AppearanceSettings.albumArtOpacity",       0, 100, 100);
-    g_settings.albumArtCornerRadius = Int(L"AppearanceSettings.albumArtCornerRadius",  0,  24,   4);
-    ParseMargin(L"AppearanceSettings.albumArtMargin", L"2 0", g_settings.albumArtLeftMargin, g_settings.albumArtRightMargin);
-    ParseMargin(L"AppearanceSettings.textMargin", L"5 0", g_settings.textMarginLeft, g_settings.textMarginRight);
-    ParseMargin(L"AppearanceSettings.controlsMargin", L"4 0", g_settings.controlsMarginLeft, g_settings.controlsMarginRight);
-    g_settings.buttonSpacing        = Wh_GetIntSetting(L"AppearanceSettings.buttonSpacing");
-    g_settings.buttonCornerRadius   = Int(L"AppearanceSettings.buttonCornerRadius",   0,  24,  14);
-    g_settings.titleFontSize        = Int(L"AppearanceSettings.titleFontSize",         7,  24,  12);
-    g_settings.titleFont            = MapFontName(Str(L"AppearanceSettings.titleFont", L"segoe_ui_variable"));
-    g_settings.artistFontSize       = Int(L"AppearanceSettings.artistFontSize",        7,  24,  10);
-    g_settings.artistFont           = MapFontName(Str(L"AppearanceSettings.artistFont", L"segoe_ui_semibold"));
-    g_settings.textSpacing          = Int(L"AppearanceSettings.textSpacing",           0,  20,   1);
-    g_settings.customButtonColor    = Str(L"AppearanceSettings.customButtonColor", L"255 255 255");
-    g_settings.customTitleColor     = Str(L"AppearanceSettings.customTitleColor", L"255 255 255");
-    g_settings.customArtistColor    = Str(L"AppearanceSettings.customArtistColor", L"200 200 200");
+    ParseMargin(L"MainSettings.AlbumArtSetting.albumArtWidth", L"32 64", g_settings.albumArtMinWidth, g_settings.albumArtMaxWidth);
+    ParseMargin(L"MainSettings.AlbumArtSetting.albumArtHeight", L"32 32", g_settings.albumArtMinHeight, g_settings.albumArtMaxHeight);
+    ParseMargin(L"MainSettings.AlbumArtSetting.albumArtMargin", L"2 0", g_settings.albumArtLeftMargin, g_settings.albumArtRightMargin);
 
-    g_settings.albumArtLeftClick    = Str(L"BehaviorSettings.albumArtLeftClick", L"switch_session");
-    g_settings.albumArtRightClick   = Str(L"BehaviorSettings.albumArtRightClick", L"none");
-    g_settings.albumArtMiddleClick  = Str(L"BehaviorSettings.albumArtMiddleClick", L"none");
-    g_settings.albumArtLeftDoubleClick  = Str(L"BehaviorSettings.albumArtLeftDoubleClick", L"none");
-    g_settings.albumArtRightDoubleClick = Str(L"BehaviorSettings.albumArtRightDoubleClick", L"none");
-    g_settings.albumArtWheelAction  = Str(L"BehaviorSettings.albumArtWheelAction", L"switch_tracks");
-    g_settings.playerLeftClick      = Str(L"BehaviorSettings.playerLeftClick", L"none");
-    g_settings.playerRightClick     = Str(L"BehaviorSettings.playerRightClick", L"none");
-    g_settings.playerMiddleClick    = Str(L"BehaviorSettings.playerMiddleClick", L"stop");
-    g_settings.playerLeftDoubleClick  = Str(L"BehaviorSettings.playerLeftDoubleClick", L"none");
-    g_settings.playerRightDoubleClick = Str(L"BehaviorSettings.playerRightDoubleClick", L"none");
-    g_settings.playerWheelAction    = Str(L"BehaviorSettings.playerWheelAction", L"none");
+    ParseMargin(L"MainSettings.TextAreaSetting.textAreaWidth", L"0 120", g_settings.textAreaMinWidth, g_settings.textAreaMaxWidth);
+    ParseMargin(L"MainSettings.TextAreaSetting.textAreaHeight", L"0 0", g_settings.textAreaMinHeight, g_settings.textAreaMaxHeight);
+    ParseMargin(L"MainSettings.TextAreaSetting.textAreaMargin", L"0 0", g_settings.textAreaLeftMargin, g_settings.textAreaRightMargin);
+
+    g_settings.mirrorLayout         = Wh_GetIntSetting(L"MainSettings.PlayerSetting.mirrorLayout") != 0;
+    g_settings.showMediaButtons     = Wh_GetIntSetting(L"DisplaySettings.MediaButtonsSettings.showMediaButtons") != 0;
+    ParseMargin(L"DisplaySettings.MediaButtonsSettings.mediaButtonsMargin", L"0 1", g_settings.mediaButtonsLeftMargin, g_settings.mediaButtonsRightMargin);
+    g_settings.showTrackTitle       = Wh_GetIntSetting(L"MainSettings.TextAreaSetting.showTrackTitle")    != 0;
+    g_settings.showFullTitleOnHover = Wh_GetIntSetting(L"DisplaySettings.TextDisplaySettings.showFullTitleOnHover") != 0;
+    g_settings.showTrackArtist      = Wh_GetIntSetting(L"MainSettings.TextAreaSetting.showTrackArtist")   != 0;
+    g_settings.showAlbumArt         = Wh_GetIntSetting(L"MainSettings.AlbumArtSetting.showAlbumArt")      != 0;
+    g_settings.albumArtEmptyBehavior = Str(L"DisplaySettings.AlbumArtDisplaySettings.albumArtEmptyBehavior", L"show");
+    g_settings.showPauseOverlay     = Wh_GetIntSetting(L"DisplaySettings.AlbumArtDisplaySettings.showPauseOverlay")  != 0;
+    g_settings.pauseOverlayOpacity  = Int(L"DisplaySettings.AlbumArtDisplaySettings.pauseOverlayOpacity",     0, 100,  60);
+    g_settings.iconStyle            = Str(L"DisplaySettings.IconsSettings.iconStyle", L"fluent_outline");
+    g_settings.showAppIcon          = Wh_GetIntSetting(L"DisplaySettings.AlbumArtDisplaySettings.showAppIcon")       != 0;
+    g_settings.appIconCorner        = Str(L"DisplaySettings.AlbumArtDisplaySettings.appIconCorner",  L"bottom_right");
+    g_settings.appIconSize          = Int(L"DisplaySettings.AlbumArtDisplaySettings.appIconSize",         8,  32,  12);
+
+    g_settings.theme                = Str(L"DisplaySettings.ThemeSettings.theme",          L"auto");
+    g_settings.backgroundType       = Str(L"DisplaySettings.ThemeSettings.backgroundType", L"none");
+    g_settings.cornerRadius         = Int(L"DisplaySettings.ThemeSettings.cornerRadius",          0,  24,   5);
+    g_settings.albumArtOpacity      = Int(L"DisplaySettings.AlbumArtDisplaySettings.albumArtOpacity",       0, 100, 100);
+    g_settings.albumArtCornerRadius = Int(L"DisplaySettings.AlbumArtDisplaySettings.albumArtCornerRadius",  0,  24,   4);
+    ParseMargin(L"DisplaySettings.LayoutSettings.controlsMargin", L"4 0", g_settings.controlsMarginLeft, g_settings.controlsMarginRight);
+    g_settings.buttonSpacing        = Wh_GetIntSetting(L"DisplaySettings.MediaButtonsSettings.buttonSpacing");
+    g_settings.buttonSize           = Int(L"DisplaySettings.MediaButtonsSettings.buttonSize",          16,  48,  28);
+    g_settings.buttonIconSize       = Int(L"DisplaySettings.MediaButtonsSettings.buttonIconSize",       8,  32,  16);
+    g_settings.buttonCornerRadius   = Int(L"DisplaySettings.MediaButtonsSettings.buttonCornerRadius",   0,  24,  14);
+    g_settings.titleFontSize        = Int(L"DisplaySettings.TextDisplaySettings.titleFontSize",         7,  24,  12);
+    g_settings.titleFont            = MapFontName(Str(L"DisplaySettings.TextDisplaySettings.titleFont", L"segoe_ui_variable"));
+    g_settings.artistFontSize       = Int(L"DisplaySettings.TextDisplaySettings.artistFontSize",        7,  24,  10);
+    g_settings.artistFont           = MapFontName(Str(L"DisplaySettings.TextDisplaySettings.artistFont", L"segoe_ui_semibold"));
+    g_settings.textSpacing          = Int(L"DisplaySettings.TextDisplaySettings.textSpacing",           0,  20,   1);
+    g_settings.customButtonColor    = Str(L"DisplaySettings.ThemeSettings.customButtonColor", L"255 255 255");
+    g_settings.customTitleColor     = Str(L"DisplaySettings.ThemeSettings.customTitleColor", L"255 255 255");
+    g_settings.customArtistColor    = Str(L"DisplaySettings.ThemeSettings.customArtistColor", L"200 200 200");
+
+    for (int i = 0; i < 20; i++) {
+        PCWSTR objectStr = Wh_GetStringSetting(L"BehaviorSettings.ClickActionSettings[%d].object", i);
+        PCWSTR clickStr = Wh_GetStringSetting(L"BehaviorSettings.ClickActionSettings[%d].click", i);
+        PCWSTR actionStr = Wh_GetStringSetting(L"BehaviorSettings.ClickActionSettings[%d].action", i);
+
+        if (!objectStr || !clickStr || !actionStr) {
+            Wh_FreeStringSetting(objectStr);
+            Wh_FreeStringSetting(clickStr);
+            Wh_FreeStringSetting(actionStr);
+            break;
+        }
+
+        std::wstring object(objectStr);
+        std::wstring click(clickStr);
+        std::wstring action(actionStr);
+
+        Wh_FreeStringSetting(objectStr);
+        Wh_FreeStringSetting(clickStr);
+        Wh_FreeStringSetting(actionStr);
+
+        if (object.empty()) object = L"none";
+        if (click.empty()) click = L"none";
+        if (action.empty()) action = L"none";
+
+        if (object == L"none" || click == L"none") {
+            continue;
+        }
+
+        if (object == L"album_art") {
+            if (click == L"left_click") g_settings.albumArtLeftClick = action;
+            else if (click == L"right_click") g_settings.albumArtRightClick = action;
+            else if (click == L"middle_click") g_settings.albumArtMiddleClick = action;
+            else if (click == L"left_double_click") g_settings.albumArtLeftDoubleClick = action;
+            else if (click == L"right_double_click") g_settings.albumArtRightDoubleClick = action;
+        } else if (object == L"player") {
+            if (click == L"left_click") g_settings.playerLeftClick = action;
+            else if (click == L"right_click") g_settings.playerRightClick = action;
+            else if (click == L"middle_click") g_settings.playerMiddleClick = action;
+            else if (click == L"left_double_click") g_settings.playerLeftDoubleClick = action;
+            else if (click == L"right_double_click") g_settings.playerRightDoubleClick = action;
+        }
+    }
+
+    for (int i = 0; i < 20; i++) {
+        PCWSTR objectStr = Wh_GetStringSetting(L"BehaviorSettings.MouseWheelActionSettings[%d].object", i);
+        PCWSTR clickStr = Wh_GetStringSetting(L"BehaviorSettings.MouseWheelActionSettings[%d].click", i);
+        PCWSTR actionStr = Wh_GetStringSetting(L"BehaviorSettings.MouseWheelActionSettings[%d].action", i);
+
+        if (!objectStr || !clickStr || !actionStr) {
+            Wh_FreeStringSetting(objectStr);
+            Wh_FreeStringSetting(clickStr);
+            Wh_FreeStringSetting(actionStr);
+            break;
+        }
+
+        std::wstring object(objectStr);
+        std::wstring click(clickStr);
+        std::wstring action(actionStr);
+
+        Wh_FreeStringSetting(objectStr);
+        Wh_FreeStringSetting(clickStr);
+        Wh_FreeStringSetting(actionStr);
+
+        if (object.empty()) object = L"none";
+        if (click.empty()) click = L"none";
+        if (action.empty()) action = L"none";
+
+        if (object == L"none" || click == L"none") {
+            continue;
+        }
+
+        if (object == L"album_art" && click == L"mouse_wheel") {
+            g_settings.albumArtWheelAction = action;
+        } else if (object == L"player" && click == L"mouse_wheel") {
+            g_settings.playerWheelAction = action;
+        }
+    }
     g_settings.hideWhenNoMedia      = Wh_GetIntSetting(L"BehaviorSettings.hideWhenNoMedia")   != 0;
     g_settings.hideFullscreen       = Wh_GetIntSetting(L"BehaviorSettings.hideFullscreen")    != 0;
     g_settings.idleHideSeconds      = std::max(Wh_GetIntSetting(L"BehaviorSettings.idleHideSeconds"), 0);
-    g_settings.enableAlbumArtHoverEffect = Wh_GetIntSetting(L"BehaviorSettings.enableAlbumArtHoverEffect") != 0;
     g_settings.enablePlayerHoverEffect   = Wh_GetIntSetting(L"BehaviorSettings.enablePlayerHoverEffect") != 0;
     g_settings.enableMediaButtonsHoverEffect = Wh_GetIntSetting(L"BehaviorSettings.enableMediaButtonsHoverEffect") != 0;
 
+    g_settings.enableSmoothPositionAnimation = Wh_GetIntSetting(L"AnimationSettings.enableSmoothPositionAnimation") != 0;
+
+    g_settings.ignoredProcesses     = Str(L"DebugSettings.ignoredProcesses", L"");
     g_settings.enableTreeDump       = Wh_GetIntSetting(L"DebugSettings.enableTreeDump")    != 0;
     g_settings.showDebugBorders     = Wh_GetIntSetting(L"DebugSettings.showDebugBorders")  != 0;
+    g_settings.showLayoutAnchors    = Wh_GetIntSetting(L"DebugSettings.showLayoutAnchors") != 0;
 
     {
         std::lock_guard<std::mutex> lock(g_mediaButtonsMutex);
@@ -616,7 +753,7 @@ static void LoadSettings() {
         std::set<MediaButtonType> seen;
 
         for (int i = 0; i < 10; i++) {
-            PCWSTR itemStr = Wh_GetStringSetting(L"DisplaySettings.mediaButtons[%d]", i);
+            PCWSTR itemStr = Wh_GetStringSetting(L"DisplaySettings.MediaButtonsSettings.mediaButtons[%d]", i);
             if (!itemStr || !*itemStr) {
                 Wh_FreeStringSetting(itemStr);
                 break;
@@ -665,6 +802,12 @@ static void StopRetryThread();
 static std::atomic<bool> g_unloading{false};
 static std::atomic<bool> g_applyingSettings{false};
 
+static IMMDeviceEnumerator* g_pDeviceEnumerator = nullptr;
+
+static const CLSID XIID_MMDeviceEnumerator = __uuidof(MMDeviceEnumerator);
+static const IID XIID_IMMDeviceEnumerator = __uuidof(IMMDeviceEnumerator);
+static const IID XIID_IAudioSessionManager2 = __uuidof(IAudioSessionManager2);
+
 static HWND             g_taskbarWnd      = nullptr;
 static Grid             g_playerGrid      = nullptr;
 static FrameworkElement g_injectionParent = nullptr;
@@ -676,6 +819,8 @@ static HANDLE g_themeWatchThread  = nullptr;
 static HANDLE g_themeWatchStop    = nullptr;
 
 static FrameworkElement g_trackedElement = nullptr;
+static Thickness g_trackedElementOriginalMargin{};
+static bool g_hasTrackedElementOriginalMargin = false;
 static std::wstring g_trackPosition = L"";
 static winrt::event_token g_layoutUpdateToken{};
 
@@ -758,6 +903,7 @@ static GlobalSystemMediaTransportControlsSessionManager g_sessionMgr     = nullp
 static GlobalSystemMediaTransportControlsSession        g_currentSession = nullptr;
 static std::mutex  g_sessionMtx;
 static bool g_userSwitchedSession = false;
+static std::atomic<bool> g_forceSessionRefresh{false};
 
 static winrt::event_token g_evSessionsChanged{};
 static winrt::event_token g_evCurrentChanged{};
@@ -880,6 +1026,212 @@ static winrt::Windows::UI::Color GetSystemButtonBorderColor() {
     else return winrt::Windows::UI::Color{0x14, 0xFF, 0xFF, 0xFF};
 }
 
+static ObjectAnimationUsingKeyFrames MakeDiscreteObjectAnimation(
+    DependencyObject const& target,
+    const wchar_t* propertyPath,
+    winrt::Windows::Foundation::IInspectable const& value)
+{
+    ObjectAnimationUsingKeyFrames anim;
+    anim.EnableDependentAnimation(true);
+    DiscreteObjectKeyFrame kf;
+    kf.Value(value);
+    anim.KeyFrames().Append(kf);
+    Storyboard::SetTarget(anim, target);
+    Storyboard::SetTargetProperty(anim, winrt::hstring(propertyPath));
+    return anim;
+}
+
+static Storyboard MakeRootBorderStoryboard(
+    Border const& root,
+    Brush const& background,
+    Brush const& borderBrush)
+{
+    Storyboard sb;
+    sb.Children().Append(MakeDiscreteObjectAnimation(
+        root, L"Background", winrt::box_value(background)));
+    sb.Children().Append(MakeDiscreteObjectAnimation(
+        root, L"BorderBrush", winrt::box_value(borderBrush)));
+    return sb;
+}
+
+static VisualState FindVisualState(VisualStateGroup const& group, std::wstring_view name) {
+    for (auto const& state : group.States()) {
+        if (state.Name() == name) return state;
+    }
+    return nullptr;
+}
+
+static Border GetButtonTemplateRoot(Button const& btn) {
+    if (!btn) return nullptr;
+    try {
+        btn.ApplyTemplate();
+        if (auto named = btn.FindName(L"Root")) {
+            if (auto border = named.try_as<Border>()) return border;
+        }
+        if (VisualTreeHelper::GetChildrenCount(btn) > 0) {
+            return VisualTreeHelper::GetChild(btn, 0).try_as<Border>();
+        }
+    } catch (...) {}
+    return nullptr;
+}
+
+static VisualStateGroup FindCommonStatesGroup(Button const& btn) {
+    for (auto const& group : VisualStateManager::GetVisualStateGroups(btn)) {
+        if (group.Name() == L"CommonStates") return group;
+    }
+    if (auto root = GetButtonTemplateRoot(btn)) {
+        for (auto const& group : VisualStateManager::GetVisualStateGroups(root)) {
+            if (group.Name() == L"CommonStates") return group;
+        }
+    }
+    return nullptr;
+}
+
+static Style GetFluentMediaButtonStyle() {
+    static winrt::weak_ref<Style> cached;
+    if (auto existing = cached.get()) return existing;
+
+    static const wchar_t kStyleXaml[] = LR"(<Style TargetType="Button"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Setter Property="Background" Value="Transparent"/>
+  <Setter Property="BorderBrush" Value="Transparent"/>
+  <Setter Property="BorderThickness" Value="0"/>
+  <Setter Property="UseSystemFocusVisuals" Value="False"/>
+  <Setter Property="Template">
+    <Setter.Value>
+      <ControlTemplate TargetType="Button">
+        <Border x:Name="Root"
+                Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                CornerRadius="{TemplateBinding CornerRadius}"
+                Padding="{TemplateBinding Padding}">
+          <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="CommonStates">
+              <VisualState x:Name="Normal"/>
+              <VisualState x:Name="PointerOver"/>
+              <VisualState x:Name="Pressed"/>
+              <VisualState x:Name="Disabled"/>
+            </VisualStateGroup>
+          </VisualStateManager.VisualStateGroups>
+          <ContentPresenter Content="{TemplateBinding Content}"
+                            ContentTransitions="{TemplateBinding ContentTransitions}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"/>
+        </Border>
+      </ControlTemplate>
+    </Setter.Value>
+  </Setter>
+</Style>)";
+
+    try {
+        auto style = winrt::Windows::UI::Xaml::Markup::XamlReader::Load(
+            winrt::hstring(kStyleXaml)).as<Style>();
+        cached = style;
+        return style;
+    } catch (...) {
+        return nullptr;
+    }
+}
+
+static void ApplyFluentMediaButtonStyle(Button const& btn) {
+    if (auto style = GetFluentMediaButtonStyle()) {
+        btn.Style(style);
+    }
+}
+
+static void SetupCommonStates(
+    Button const& btn,
+    Brush const& normalBackground,
+    Brush const& pointerOverBackground,
+    Brush const& pressedBackground,
+    Brush const& disabledBackground,
+    Brush const& normalBorderBrush,
+    Brush const& pointerOverBorderBrush,
+    Brush const& pressedBorderBrush,
+    Brush const& disabledBorderBrush)
+{
+    auto root = GetButtonTemplateRoot(btn);
+    if (!root) return;
+
+    auto commonStates = FindCommonStatesGroup(btn);
+    if (!commonStates) return;
+
+    auto assignStoryboard = [&](std::wstring_view name, Brush const& bg, Brush const& border) {
+        if (auto state = FindVisualState(commonStates, name)) {
+            state.Storyboard(MakeRootBorderStoryboard(root, bg, border));
+        }
+    };
+
+    assignStoryboard(L"Normal", normalBackground, normalBorderBrush);
+    assignStoryboard(L"PointerOver", pointerOverBackground, pointerOverBorderBrush);
+    assignStoryboard(L"Pressed", pressedBackground, pressedBorderBrush);
+    assignStoryboard(L"Disabled", disabledBackground, disabledBorderBrush);
+}
+
+static void GoToCommonState(Button const& btn, bool effectEnabled, bool pressed, bool hovered) {
+    if (!btn) return;
+    winrt::hstring stateName = L"Normal";
+    if (effectEnabled) {
+        if (pressed) {
+            stateName = L"Pressed";
+        } else if (hovered) {
+            stateName = L"PointerOver";
+        }
+    }
+    try {
+        VisualStateManager::GoToState(btn, stateName, true);
+    } catch (...) {}
+}
+
+static void RunWhenButtonReady(Button const& btn, std::function<void()> const& action) {
+    if (!btn || !action) return;
+    auto run = std::make_shared<std::function<void()>>(action);
+    auto invoke = [btn, run]() {
+        try {
+            btn.ApplyTemplate();
+            (*run)();
+        } catch (...) {}
+    };
+    try {
+        if (btn.IsLoaded()) {
+            invoke();
+        } else {
+            btn.Loaded([invoke](auto const&, auto const&) { invoke(); });
+        }
+    } catch (...) {
+        invoke();
+    }
+}
+
+static void SetupMediaButtonCommonStates(Button const& btn) {
+    auto transparent = MakeBrush({0x00, 0, 0, 0});
+    SetupCommonStates(
+        btn,
+        transparent,
+        MakeBrush(GetSystemButtonHoverColor()),
+        MakeBrush(GetSystemButtonPressedColor()),
+        transparent,
+        transparent, transparent, transparent, transparent);
+}
+
+static void SetupPlayerButtonCommonStates(Button const& btn, Brush const& normalBackground) {
+    auto transparent = MakeBrush({0x00, 0, 0, 0});
+    auto border = MakeBrush(GetSystemButtonBorderColor());
+    SetupCommonStates(
+        btn,
+        normalBackground,
+        MakeBrush(GetSystemButtonHoverColor()),
+        MakeBrush(GetSystemButtonPressedColor()),
+        transparent,
+        transparent,
+        border,
+        border,
+        transparent);
+}
+
 static Brush MakeBackgroundBrush() {
     auto& t = g_settings.backgroundType;
 
@@ -949,6 +1301,7 @@ static void DumpXamlTree(DependencyObject const& node, int depth, int maxDepth) 
 static constexpr wchar_t kGridName[]        = L"FluentMediaBar";
 static constexpr wchar_t kArtImageName[]    = L"FluentMedia_Art";
 static constexpr wchar_t kAppIconImageName[]= L"FluentMedia_AppIcon";
+static constexpr wchar_t kAnchorOverlayName[]= L"FluentMedia_DebugAnchorTarget";
 static constexpr wchar_t kTextStackName[]   = L"FluentMedia_TextStack";
 static constexpr wchar_t kTitleBlockName[]  = L"FluentMedia_Title";
 static constexpr wchar_t kArtistBlockName[] = L"FluentMedia_Artist";
@@ -1064,6 +1417,101 @@ static void SwitchMediaSession() {
     }
 }
 
+static void InitAudioDeviceEnumerator() {
+    if (!g_pDeviceEnumerator) {
+        CoCreateInstance(
+            XIID_MMDeviceEnumerator, NULL, CLSCTX_INPROC_SERVER,
+            XIID_IMMDeviceEnumerator, (LPVOID*)&g_pDeviceEnumerator);
+    }
+}
+
+static void CleanupAudioDeviceEnumerator() {
+    if (g_pDeviceEnumerator) {
+        g_pDeviceEnumerator->Release();
+        g_pDeviceEnumerator = nullptr;
+    }
+}
+
+static bool AdjustAppVolumeByAUMID(const std::wstring& aumid, float volumeDelta) {
+    InitAudioDeviceEnumerator();
+    if (!g_pDeviceEnumerator) return false;
+
+    winrt::com_ptr<IMMDevice> defaultDevice;
+    HRESULT hr = g_pDeviceEnumerator->GetDefaultAudioEndpoint(eRender, eConsole, defaultDevice.put());
+    if (FAILED(hr)) return false;
+
+    winrt::com_ptr<IAudioSessionManager2> sessionManager;
+    hr = defaultDevice->Activate(XIID_IAudioSessionManager2, CLSCTX_ALL, NULL, sessionManager.put_void());
+    if (FAILED(hr)) return false;
+
+    winrt::com_ptr<IAudioSessionEnumerator> sessionEnumerator;
+    hr = sessionManager->GetSessionEnumerator(sessionEnumerator.put());
+    if (FAILED(hr)) return false;
+
+    int sessionCount = 0;
+    hr = sessionEnumerator->GetCount(&sessionCount);
+    if (FAILED(hr)) return false;
+
+    bool found = false;
+    for (int i = 0; i < sessionCount; i++) {
+        winrt::com_ptr<IAudioSessionControl> sessionControl;
+        hr = sessionEnumerator->GetSession(i, sessionControl.put());
+        if (FAILED(hr)) continue;
+
+        winrt::com_ptr<IAudioSessionControl2> sessionControl2;
+        hr = sessionControl->QueryInterface(__uuidof(IAudioSessionControl2), sessionControl2.put_void());
+        if (FAILED(hr)) continue;
+
+        LPWSTR sessionId = nullptr;
+        hr = sessionControl2->GetSessionIdentifier(&sessionId);
+        if (SUCCEEDED(hr) && sessionId) {
+            std::wstring sessionIdStr(sessionId);
+            CoTaskMemFree(sessionId);
+
+            if (sessionIdStr.find(aumid) != std::wstring::npos) {
+                winrt::com_ptr<ISimpleAudioVolume> vol;
+                if (SUCCEEDED(sessionControl->QueryInterface(__uuidof(ISimpleAudioVolume), vol.put_void()))) {
+                    float currentVolume = 0.0f;
+                    if (SUCCEEDED(vol->GetMasterVolume(&currentVolume))) {
+                        float newVolume = std::clamp(currentVolume + volumeDelta, 0.0f, 1.0f);
+                        vol->SetMasterVolume(newVolume, NULL);
+                        found = true;
+                    }
+                }
+            }
+        }
+    }
+
+    return found;
+}
+
+static void ChangeSystemVolume(bool increase) {
+    InitAudioDeviceEnumerator();
+    if (!g_pDeviceEnumerator) return;
+
+    winrt::com_ptr<IMMDevice> defaultDevice;
+    HRESULT hr = g_pDeviceEnumerator->GetDefaultAudioEndpoint(eRender, eConsole, defaultDevice.put());
+    if (FAILED(hr)) return;
+
+    winrt::com_ptr<IAudioEndpointVolume> endpointVolume;
+    hr = defaultDevice->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_ALL, NULL, endpointVolume.put_void());
+    if (FAILED(hr)) return;
+
+    float currentVolume = 0.0f;
+    if (SUCCEEDED(endpointVolume->GetMasterVolumeLevelScalar(&currentVolume))) {
+        float newVolume = currentVolume + (increase ? 0.005f : -0.005f);
+        newVolume = std::clamp(newVolume, 0.0f, 1.0f);
+        endpointVolume->SetMasterVolumeLevelScalar(newVolume, NULL);
+    }
+
+    HWND hShellTrayWnd = FindWindow(L"Shell_TrayWnd", nullptr);
+    if (hShellTrayWnd) {
+        SHORT appCommand = increase ? APPCOMMAND_VOLUME_UP : APPCOMMAND_VOLUME_DOWN;
+        PostMessage(hShellTrayWnd, WM_APPCOMMAND, (WPARAM)hShellTrayWnd,
+                    MAKELPARAM(0, appCommand));
+    }
+}
+
 static void ExecuteMediaAction(const std::wstring& action) {
     if (action == L"none") {
         return;
@@ -1079,7 +1527,31 @@ static void ExecuteMediaAction(const std::wstring& action) {
         SendMediaCommandAsync(1);
         DispatchMediaUpdate();
     } else if (action == L"stop") {
+        g_forceSessionRefresh = true;
         SendMediaCommandAsync(4);
+        DispatchMediaUpdate();
+        std::thread([]() {
+            for (DWORD delay : {300, 1200, 2500}) {
+                Sleep(delay);
+                if (g_unloading) return;
+                g_forceSessionRefresh = true;
+                OnSessionsChanged();
+                FetchPlaybackInfoAsync();
+                FetchMediaPropertiesAsync();
+            }
+        }).detach();
+    } else if (action == L"rewind_5s") {
+        SendMediaCommandAsync(5);
+        DispatchMediaUpdate();
+    } else if (action == L"forward_5s") {
+        SendMediaCommandAsync(6);
+        DispatchMediaUpdate();
+    } else if (action == L"toggle_shuffle") {
+        SendMediaCommandAsync(7);
+        DispatchMediaUpdate();
+    } else if (action == L"toggle_repeat") {
+        SendMediaCommandAsync(8);
+        DispatchMediaUpdate();
     } else if (action == L"open_app") {
         std::thread([]() {
             std::wstring app;
@@ -1153,47 +1625,133 @@ static void ExecuteMediaAction(const std::wstring& action) {
     }
 }
 
+static std::wstring ToLowerCopy(std::wstring value) {
+    for (auto& c : value) c = towlower(c);
+    return value;
+}
+
+static std::wstring PathFileStem(std::wstring path) {
+    auto slash = path.find_last_of(L"\\/");
+    if (slash != std::wstring::npos) path = path.substr(slash + 1);
+    auto dot = path.rfind(L'.');
+    if (dot != std::wstring::npos) path = path.substr(0, dot);
+    return path;
+}
+
+static std::wstring TrimCopy(std::wstring value) {
+    const wchar_t* ws = L" \t\r\n";
+    size_t first = value.find_first_not_of(ws);
+    if (first == std::wstring::npos) return L"";
+    size_t last = value.find_last_not_of(ws);
+    return value.substr(first, last - first + 1);
+}
+
+static bool IsIgnoredMediaApp(const std::wstring& appUserModelId) {
+    if (g_settings.ignoredProcesses.empty() || appUserModelId.empty()) return false;
+
+    std::wstring appLower = ToLowerCopy(appUserModelId);
+    std::wstring appStemLower = ToLowerCopy(PathFileStem(appUserModelId));
+    size_t start = 0;
+    while (start <= g_settings.ignoredProcesses.size()) {
+        size_t end = g_settings.ignoredProcesses.find(L';', start);
+        std::wstring item = TrimCopy(g_settings.ignoredProcesses.substr(
+            start, end == std::wstring::npos ? std::wstring::npos : end - start));
+        if (!item.empty()) {
+            std::wstring itemLower = ToLowerCopy(item);
+            std::wstring itemStemLower = ToLowerCopy(PathFileStem(item));
+            if (appLower == itemLower ||
+                appStemLower == itemStemLower ||
+                appLower.find(itemLower) != std::wstring::npos ||
+                appLower.find(itemStemLower) != std::wstring::npos) {
+                return true;
+            }
+        }
+        if (end == std::wstring::npos) break;
+        start = end + 1;
+    }
+    return false;
+}
+
+static std::wstring GetWindowAppUserModelId(HWND hWnd) {
+    static const PROPERTYKEY kAppUserModelIdKey = {
+        {0x9F4C2855, 0x9F79, 0x4B39, {0xA8, 0xD0, 0xE1, 0xD4, 0x2D, 0xE1, 0xD5, 0xF3}},
+        5
+    };
+    std::wstring result;
+    IPropertyStore* store = nullptr;
+    if (SUCCEEDED(SHGetPropertyStoreForWindow(hWnd, IID_PPV_ARGS(&store))) && store) {
+        PROPVARIANT pv;
+        PropVariantInit(&pv);
+        if (SUCCEEDED(store->GetValue(kAppUserModelIdKey, &pv)) && pv.vt == VT_LPWSTR && pv.pwszVal) {
+            result = pv.pwszVal;
+        }
+        PropVariantClear(&pv);
+        store->Release();
+    }
+    return result;
+}
+
+static bool AppIdMatchesProcess(const std::wstring& appUserModelId, HWND hWnd, DWORD* outPid = nullptr, std::wstring* outProcPath = nullptr) {
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hWnd, &pid);
+    if (outPid) *outPid = pid;
+    if (!pid) return false;
+
+    std::wstring windowAumid = GetWindowAppUserModelId(hWnd);
+    std::wstring appLower = ToLowerCopy(appUserModelId);
+    std::wstring windowAumidLower = ToLowerCopy(windowAumid);
+
+    if (!windowAumidLower.empty() &&
+        (appLower == windowAumidLower ||
+         appLower.find(windowAumidLower) != std::wstring::npos ||
+         windowAumidLower.find(appLower) != std::wstring::npos)) {
+        return true;
+    }
+
+    wchar_t procPath[MAX_PATH] = {};
+    HANDLE hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (hProc) {
+        DWORD sz = MAX_PATH;
+        QueryFullProcessImageNameW(hProc, 0, procPath, &sz);
+        CloseHandle(hProc);
+    }
+    if (outProcPath) *outProcPath = procPath;
+
+    std::wstring procLower = ToLowerCopy(PathFileStem(procPath));
+    if (procLower.empty()) return false;
+
+    std::wstring appStemLower = ToLowerCopy(PathFileStem(appUserModelId));
+    return appLower.find(procLower) != std::wstring::npos ||
+           procLower.find(appLower) != std::wstring::npos ||
+           appStemLower.find(procLower) != std::wstring::npos ||
+           procLower.find(appStemLower) != std::wstring::npos ||
+           (!windowAumidLower.empty() &&
+            (windowAumidLower.find(procLower) != std::wstring::npos ||
+             procLower.find(windowAumidLower) != std::wstring::npos));
+}
+
 static std::vector<BYTE> FetchAppIconBytes(const std::wstring& appUserModelId, int iconSize) {
     std::vector<BYTE> result;
     if (appUserModelId.empty()) return result;
 
     HICON hIcon = nullptr;
 
-    struct FindData { const std::wstring* aumid; HICON icon; DWORD pid; };
-    FindData fd{&appUserModelId, nullptr, 0};
+    struct FindData { const std::wstring* aumid; HICON icon; DWORD pid; std::wstring procPath; };
+    FindData fd{&appUserModelId, nullptr, 0, L""};
 
     EnumWindows([](HWND hWnd, LPARAM lParam) -> BOOL {
         auto* fd2 = reinterpret_cast<FindData*>(lParam);
         if (!IsWindowVisible(hWnd)) return TRUE;
 
         DWORD pid = 0;
-        GetWindowThreadProcessId(hWnd, &pid);
-        if (!pid) return TRUE;
-
-        wchar_t procPath[MAX_PATH] = {};
-        HANDLE hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-        if (hProc) {
-            DWORD sz = MAX_PATH;
-            QueryFullProcessImageNameW(hProc, 0, procPath, &sz);
-            CloseHandle(hProc);
-        }
-
-        std::wstring procName = procPath;
-        auto slash = procName.rfind(L'\\');
-        if (slash != std::wstring::npos) procName = procName.substr(slash + 1);
-
-        auto dot = procName.rfind(L'.');
-        if (dot != std::wstring::npos) procName = procName.substr(0, dot);
-
-        const std::wstring& aumid = *fd2->aumid;
-        std::wstring aumidLower = aumid;
-        std::wstring procLower  = procName;
-        for (auto& c : aumidLower) c = towlower(c);
-        for (auto& c : procLower)  c = towlower(c);
-
-        if (aumidLower.find(procLower) == std::wstring::npos &&
-            procLower.find(aumidLower) == std::wstring::npos)
+        std::wstring procPath;
+        if (!AppIdMatchesProcess(*fd2->aumid, hWnd, &pid, &procPath))
             return TRUE;
+
+        if (!fd2->pid) {
+            fd2->pid = pid;
+            fd2->procPath = procPath;
+        }
 
         HICON icon = (HICON)GetClassLongPtrW(hWnd, GCLP_HICONSM);
         if (!icon) icon = (HICON)GetClassLongPtrW(hWnd, GCLP_HICON);
@@ -1203,6 +1761,7 @@ static std::vector<BYTE> FetchAppIconBytes(const std::wstring& appUserModelId, i
         if (icon) {
             fd2->icon = icon;
             fd2->pid  = pid;
+            fd2->procPath = procPath;
             return FALSE;
         }
         return TRUE;
@@ -1211,18 +1770,30 @@ static std::vector<BYTE> FetchAppIconBytes(const std::wstring& appUserModelId, i
     hIcon = fd.icon;
 
     if (!hIcon && fd.pid) {
-        wchar_t procPath[MAX_PATH] = {};
-        HANDLE hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, fd.pid);
-        if (hProc) {
-            DWORD sz = MAX_PATH;
-            QueryFullProcessImageNameW(hProc, 0, procPath, &sz);
-            CloseHandle(hProc);
+        if (fd.procPath.empty()) {
+            wchar_t procPath[MAX_PATH] = {};
+            HANDLE hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, fd.pid);
+            if (hProc) {
+                DWORD sz = MAX_PATH;
+                QueryFullProcessImageNameW(hProc, 0, procPath, &sz);
+                CloseHandle(hProc);
+            }
+            fd.procPath = procPath;
         }
-        if (procPath[0]) {
+        if (!fd.procPath.empty()) {
             SHFILEINFOW sfi{};
-            if (SHGetFileInfoW(procPath, 0, &sfi, sizeof(sfi), SHGFI_ICON | SHGFI_SMALLICON))
+            if (SHGetFileInfoW(fd.procPath.c_str(), 0, &sfi, sizeof(sfi), SHGFI_ICON | SHGFI_SMALLICON))
                 hIcon = sfi.hIcon;
         }
+    }
+
+    if (!hIcon && appUserModelId.find(L".exe") != std::wstring::npos) {
+        std::wstring exePath = appUserModelId;
+        if (exePath.size() >= 2 && exePath.front() == L'"' && exePath.back() == L'"')
+            exePath = exePath.substr(1, exePath.size() - 2);
+        SHFILEINFOW sfi{};
+        if (SHGetFileInfoW(exePath.c_str(), 0, &sfi, sizeof(sfi), SHGFI_ICON | SHGFI_SMALLICON))
+            hIcon = sfi.hIcon;
     }
 
     if (!hIcon) return result;
@@ -1293,15 +1864,27 @@ static void FetchMediaPropertiesAsync() {
             {
                 std::lock_guard<std::mutex> lk(g_sessionMtx);
                 session = g_currentSession;
-                if (session) aumid = std::wstring(session.SourceAppUserModelId());
+                if (session) {
+                    try {
+                        aumid = std::wstring(session.SourceAppUserModelId());
+                    } catch (...) {
+                        winrt::uninit_apartment();
+                        return;
+                    }
+                }
             }
             if (!session) {
                 winrt::uninit_apartment();
                 return;
             }
 
-            auto props = session.TryGetMediaPropertiesAsync().get();
-            if (props) {
+            try {
+                auto props = session.TryGetMediaPropertiesAsync().get();
+                if (!props) {
+                    winrt::uninit_apartment();
+                    return;
+                }
+
                 std::vector<BYTE> thumbBytes;
                 uint64_t          thumbHash = 0;
 
@@ -1328,30 +1911,37 @@ static void FetchMediaPropertiesAsync() {
                 {
                     std::lock_guard<std::mutex> lk(g_mediaMtx);
                     appIconKey = g_media.appIconKey;
-                }
-                if (g_settings.showAppIcon && aumid != appIconKey) {
-                    appIconBytes = FetchAppIconBytes(aumid, g_settings.appIconSize);
-                    appIconKey   = aumid;
-                    g_cachedAppIconSize = g_settings.appIconSize;
-                } else if (g_settings.showAppIcon) {
-                    std::lock_guard<std::mutex> lk(g_mediaMtx);
                     appIconBytes = g_media.appIconBytes;
-                    appIconKey   = g_media.appIconKey;
+                }
+                if (g_settings.showAppIcon && (aumid != appIconKey || appIconBytes.empty())) {
+                    try {
+                        appIconBytes = FetchAppIconBytes(aumid, g_settings.appIconSize);
+                        appIconKey   = aumid;
+                        g_cachedAppIconSize = g_settings.appIconSize;
+                    } catch (...) {
+
+                    }
                 }
 
                 {
                     std::lock_guard<std::mutex> lk(g_mediaMtx);
-                    g_media.title          = std::wstring(props.Title());
-                    g_media.artist         = std::wstring(props.Artist());
-                    g_media.hasMedia       = true;
-                    g_media.thumbnailBytes = std::move(thumbBytes);
-                    g_media.thumbnailHash  = thumbHash;
-                    g_media.appUserModelId = aumid;
-                    if (g_settings.showAppIcon) {
-                        g_media.appIconBytes   = std::move(appIconBytes);
-                        g_media.appIconKey     = appIconKey;
+                    try {
+                        g_media.title          = std::wstring(props.Title());
+                        g_media.artist         = std::wstring(props.Artist());
+                        g_media.hasMedia       = true;
+                        g_media.thumbnailBytes = std::move(thumbBytes);
+                        g_media.thumbnailHash  = thumbHash;
+                        g_media.appUserModelId = aumid;
+                        if (g_settings.showAppIcon) {
+                            g_media.appIconBytes   = std::move(appIconBytes);
+                            g_media.appIconKey     = appIconKey;
+                        }
+                    } catch (...) {
+
                     }
                 }
+            } catch (...) {
+
             }
         } catch (...) {}
         DispatchMediaUpdate();
@@ -1367,34 +1957,40 @@ static void FetchPlaybackInfoAsync() {
             GlobalSystemMediaTransportControlsSession session{nullptr};
             { std::lock_guard<std::mutex> lk(g_sessionMtx); session = g_currentSession; }
             if (session) {
-                auto info = session.GetPlaybackInfo();
-                bool playing = info && (info.PlaybackStatus() == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing);
-                {
-                    std::lock_guard<std::mutex> lk(g_mediaMtx);
-                    g_media.isPlaying = playing;
-                }
-                if (playing) {
-                    std::lock_guard<std::mutex> lk(g_sessionMtx);
-                    g_userSwitchedSession = false;
-                }
-
                 try {
-                    auto shuffleRef = info.IsShuffleActive();
-                    if (shuffleRef) {
-                        g_shuffleEnabled = shuffleRef.Value();
+                    auto info = session.GetPlaybackInfo();
+                    if (!info) {
+                        winrt::uninit_apartment();
+                        return;
                     }
-                } catch (...) {}
 
-                try {
-                    auto repeatRef = info.AutoRepeatMode();
-                    if (repeatRef) {
-                        using RM = winrt::Windows::Media::MediaPlaybackAutoRepeatMode;
-                        auto v = repeatRef.Value();
-                        if (v == RM::Track) g_repeatMode = RepeatMode::One;
-                        else if (v == RM::List) g_repeatMode = RepeatMode::All;
-                        else g_repeatMode = RepeatMode::Off;
+                    auto status = info.PlaybackStatus();
+                    bool playing = (status == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing);
+                    {
+                        std::lock_guard<std::mutex> lk(g_mediaMtx);
+                        g_media.isPlaying = playing;
                     }
-                } catch (...) {}
+
+                    try {
+                        auto shuffleRef = info.IsShuffleActive();
+                        if (shuffleRef) {
+                            g_shuffleEnabled = shuffleRef.Value();
+                        }
+                    } catch (...) {}
+
+                    try {
+                        auto repeatRef = info.AutoRepeatMode();
+                        if (repeatRef) {
+                            using RM = winrt::Windows::Media::MediaPlaybackAutoRepeatMode;
+                            auto v = repeatRef.Value();
+                            if (v == RM::Track) g_repeatMode = RepeatMode::One;
+                            else if (v == RM::List) g_repeatMode = RepeatMode::All;
+                            else g_repeatMode = RepeatMode::Off;
+                        }
+                    } catch (...) {}
+                } catch (...) {
+
+                }
             }
         } catch (...) {}
         DispatchMediaUpdate();
@@ -1417,6 +2013,11 @@ static GlobalSystemMediaTransportControlsSession PickBestSession() {
     try {
         GlobalSystemMediaTransportControlsSession best{nullptr};
         for (auto const& s : g_sessionMgr.GetSessions()) {
+            try {
+                if (IsIgnoredMediaApp(std::wstring(s.SourceAppUserModelId())))
+                    continue;
+            } catch (...) {}
+
             auto pb = s.GetPlaybackInfo();
             if (!pb) continue;
             if (pb.PlaybackStatus() == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing) return s;
@@ -1442,8 +2043,18 @@ static void AttachToSession(GlobalSystemMediaTransportControlsSession session) {
     {
         std::lock_guard<std::mutex> lk(g_sessionMtx);
         g_currentSession = session;
-        g_evMediaProps = g_currentSession.MediaPropertiesChanged([](auto const&, auto const&) { FetchMediaPropertiesAsync(); });
-        g_evPlayback = g_currentSession.PlaybackInfoChanged([](auto const&, auto const&) { FetchPlaybackInfoAsync(); });
+        try {
+            g_evMediaProps = g_currentSession.MediaPropertiesChanged([](auto const&, auto const&) {
+                if (!g_unloading) FetchMediaPropertiesAsync();
+            });
+            g_evPlayback = g_currentSession.PlaybackInfoChanged([](auto const&, auto const&) {
+                if (!g_unloading) FetchPlaybackInfoAsync();
+            });
+        } catch (...) {
+
+            g_currentSession = nullptr;
+            return;
+        }
     }
 fetch:
     FetchMediaPropertiesAsync();
@@ -1453,12 +2064,17 @@ fetch:
 static void OnSessionsChanged() {
     if (g_unloading) return;
     bool userSwitched = false;
+    bool forceRefresh = g_forceSessionRefresh.exchange(false);
     {
         std::lock_guard<std::mutex> lk(g_sessionMtx);
         userSwitched = g_userSwitchedSession;
     }
-    if (!userSwitched) {
-        AttachToSession(PickBestSession());
+    if (forceRefresh || !userSwitched) {
+        try {
+            AttachToSession(PickBestSession());
+        } catch (...) {
+
+        }
     }
 }
 
@@ -1550,7 +2166,11 @@ static DWORD WINAPI TimerThreadProc(void*) {
         if (g_applyingSettings) continue;
 
         HWND hWnd = g_taskbarWnd;
-        if (!hWnd) continue;
+        if (!hWnd || !IsWindow(hWnd)) {
+            hWnd = FindCurrentProcessTaskbarWnd();
+            g_taskbarWnd = hWnd;
+            if (!hWnd) continue;
+        }
 
         if (wait == WAIT_OBJECT_0 + 1 || g_settings.theme == L"auto") {
             bool currentThemeIsLight = IsSystemLightTheme();
@@ -1684,7 +2304,14 @@ static void RefreshThemeColors() {
         auto bgBrush = MakeBackgroundBrush();
 
         if (auto fe = FindChildByName(g_playerGrid, L"FluentMedia_OuterBorder")) {
-            if (auto b = fe.try_as<Border>()) b.Background(bgBrush);
+            if (auto btn = fe.try_as<Button>()) {
+                ApplyFluentMediaButtonStyle(btn);
+                auto playerNormalBg = g_settings.enablePlayerHoverEffect
+                    ? MakeBrush({0x00, 0, 0, 0})
+                    : bgBrush;
+                SetupPlayerButtonCommonStates(btn, playerNormalBg);
+                GoToCommonState(btn, g_settings.enablePlayerHoverEffect, false, false);
+            }
         }
 
         if (auto fe = FindChildByName(g_playerGrid, kTitleBlockName))
@@ -1696,6 +2323,9 @@ static void RefreshThemeColors() {
         for (const wchar_t* name : {kPrevBtnName, kPlayBtnName, kNextBtnName, kRewindBtnName, kForwardBtnName, kShuffleBtnName, kRepeatBtnName}) {
             if (auto fe = FindChildByName(g_playerGrid, name)) {
                 if (auto btn = fe.try_as<Button>()) {
+                    ApplyFluentMediaButtonStyle(btn);
+                    SetupMediaButtonCommonStates(btn);
+                    GoToCommonState(btn, g_settings.enableMediaButtonsHoverEffect, false, false);
                     if (auto ct = btn.Content().try_as<TextBlock>()) ct.Foreground(MakeBrush(buttonClr));
                 }
             }
@@ -1835,11 +2465,11 @@ static TextBlock MakeIconText(const wchar_t* glyph, double sz, winrt::Windows::U
 static Button MakeControlButton(int cmd, bool isPlaying, winrt::Windows::UI::Color iconColor) {
     Button btn;
     try {
-        btn.Width(28); btn.Height(28);
+        btn.Width((double)g_settings.buttonSize);
+        btn.Height((double)g_settings.buttonSize);
         btn.Padding({1,1,1,1});
         double cr = (double)g_settings.buttonCornerRadius;
         btn.CornerRadius({cr,cr,cr,cr});
-        btn.Background(MakeBrush({0x00,0,0,0}));
         btn.BorderThickness({0,0,0,0});
         btn.VerticalAlignment(VerticalAlignment::Center);
         btn.HorizontalAlignment(HorizontalAlignment::Center);
@@ -1851,7 +2481,7 @@ static Button MakeControlButton(int cmd, bool isPlaying, winrt::Windows::UI::Col
             opacity = 0.4;
         }
 
-        auto iconText = MakeIconText(glyph, 12.0, iconColor);
+        auto iconText = MakeIconText(glyph, (double)g_settings.buttonIconSize, iconColor);
         iconText.Opacity(opacity);
         btn.Content(winrt::box_value(iconText));
 
@@ -1862,22 +2492,19 @@ static Button MakeControlButton(int cmd, bool isPlaying, winrt::Windows::UI::Col
             }
         });
 
+        ApplyFluentMediaButtonStyle(btn);
+
         auto isPressed = std::make_shared<bool>(false);
         auto isHovered = std::make_shared<bool>(false);
 
         auto updateBtnVisualState = [btn, isPressed, isHovered]() {
-            if (!g_settings.enableMediaButtonsHoverEffect) {
-                btn.Background(MakeBrush({0x00,0,0,0}));
-                return;
-            }
-            if (*isPressed) {
-                btn.Background(MakeBrush(GetSystemButtonPressedColor()));
-            } else if (*isHovered) {
-                btn.Background(MakeBrush(GetSystemButtonHoverColor()));
-            } else {
-                btn.Background(MakeBrush({0x00,0,0,0}));
-            }
+            GoToCommonState(btn, g_settings.enableMediaButtonsHoverEffect, *isPressed, *isHovered);
         };
+
+        RunWhenButtonReady(btn, [btn, updateBtnVisualState]() {
+            SetupMediaButtonCommonStates(btn);
+            updateBtnVisualState();
+        });
 
         btn.PointerEntered([isHovered, updateBtnVisualState](auto const&, auto const&) {
             *isHovered = true;
@@ -1945,6 +2572,41 @@ static Button MakeControlButton(int cmd, bool isPlaying, winrt::Windows::UI::Col
     return btn;
 }
 
+static void AddLayoutAnchorOverlay(Grid const& target, const wchar_t* name, winrt::Windows::UI::Color color) {
+    if (!target || !g_settings.showLayoutAnchors) return;
+    try {
+        Grid overlay;
+        overlay.Name(name);
+        overlay.IsHitTestVisible(false);
+        overlay.HorizontalAlignment(HorizontalAlignment::Stretch);
+        overlay.VerticalAlignment(VerticalAlignment::Stretch);
+
+        winrt::Windows::UI::Xaml::Shapes::Rectangle vLine;
+        vLine.Width(1);
+        vLine.Fill(MakeBrush(color));
+        vLine.HorizontalAlignment(HorizontalAlignment::Center);
+        vLine.VerticalAlignment(VerticalAlignment::Stretch);
+
+        winrt::Windows::UI::Xaml::Shapes::Rectangle hLine;
+        hLine.Height(1);
+        hLine.Fill(MakeBrush(color));
+        hLine.HorizontalAlignment(HorizontalAlignment::Stretch);
+        hLine.VerticalAlignment(VerticalAlignment::Center);
+
+        Border outline;
+        outline.BorderBrush(MakeBrush(color));
+        outline.BorderThickness({1,1,1,1});
+        outline.HorizontalAlignment(HorizontalAlignment::Stretch);
+        outline.VerticalAlignment(VerticalAlignment::Stretch);
+
+        overlay.Children().Append(outline);
+        overlay.Children().Append(vLine);
+        overlay.Children().Append(hLine);
+        Canvas::SetZIndex(overlay, 5000);
+        target.Children().Append(overlay);
+    } catch (...) {}
+}
+
 static Grid BuildPlayerGrid() {
     try {
         auto textClr = TextColor();
@@ -1952,31 +2614,52 @@ static Grid BuildPlayerGrid() {
         auto buttonClr = ButtonColor();
         auto bgBrush = MakeBackgroundBrush();
         double cr    = (double)g_settings.cornerRadius;
-        double ph    = (double)g_settings.playerHeight;
+        double phMin = (double)g_settings.playerMinHeight;
+        double phMax = (double)g_settings.playerMaxHeight;
 
         bool hasTextOrButtons = g_settings.showTrackTitle || g_settings.showTrackArtist || (g_settings.showMediaButtons && !g_mediaButtons.empty());
 
-        Border outerBorder;
-        outerBorder.Name(L"FluentMedia_OuterBorder");
-        outerBorder.CornerRadius({cr,cr,cr,cr});
-        outerBorder.Background(bgBrush);
-
-        if (hasTextOrButtons) {
-            outerBorder.Padding({4,2,4,2});
+        Button playerButton;
+        playerButton.Name(L"FluentMedia_OuterBorder");
+        if (cr > 0) {
+            playerButton.CornerRadius({cr, cr, cr, cr});
         } else {
-            outerBorder.Padding({0,0,0,0});
+            playerButton.CornerRadius({0, 0, 0, 0});
+        }
+        playerButton.BorderThickness({0, 0, 0, 0});
+        playerButton.UseSystemFocusVisuals(false);
+        playerButton.IsHitTestVisible(false);
+        playerButton.HorizontalAlignment(HorizontalAlignment::Stretch);
+        playerButton.VerticalAlignment(VerticalAlignment::Stretch);
+        if (phMin > 0) {
+            playerButton.MinHeight(phMin);
+        }
+        if (phMax > 0) {
+            playerButton.MaxHeight(phMax);
         }
 
-        outerBorder.VerticalAlignment(VerticalAlignment::Center);
-        outerBorder.MinHeight(ph);
+        Grid chromeFill;
+        if (phMin > 0) {
+            chromeFill.MinHeight(phMin);
+        }
+        if (phMax > 0) {
+            chromeFill.MaxHeight(phMax);
+        }
+        chromeFill.IsHitTestVisible(false);
+        playerButton.Content(chromeFill);
 
         if (g_settings.showDebugBorders) {
-            outerBorder.BorderBrush(MakeBrush({0xFF, 0xFF, 0x00, 0x00}));
-            outerBorder.BorderThickness({2,2,2,2});
+            playerButton.BorderBrush(MakeBrush({0xFF, 0xFF, 0x00, 0x00}));
+            playerButton.BorderThickness({2, 2, 2, 2});
         }
 
         Grid panel;
         panel.VerticalAlignment(VerticalAlignment::Center);
+        panel.HorizontalAlignment(HorizontalAlignment::Stretch);
+        if (hasTextOrButtons) {
+            panel.Margin({4, 2, 4, 2});
+        }
+        AddLayoutAnchorOverlay(panel, L"FluentMedia_DebugPanelAnchors", {0xD0, 0x00, 0xFF, 0x00});
 
         if (g_settings.showDebugBorders) {
             Border panelDebugBorder;
@@ -1987,40 +2670,55 @@ static Grid BuildPlayerGrid() {
 
         bool buttonsLeft = g_settings.mirrorLayout;
         bool albumArtLeft = !g_settings.mirrorLayout;
+        bool hasText = g_settings.showTrackTitle || g_settings.showTrackArtist;
 
-        ColumnDefinition colFirst, colText, colLast;
+        ColumnDefinition colFirst, colText, colSpacer, colLast;
         colFirst.Width({1.0, GridUnitType::Auto});
 
-        if (g_settings.showTrackTitle || g_settings.showTrackArtist) {
+        if (hasText) {
             colText.Width({1.0, GridUnitType::Star});
         } else {
-            colText.Width({1.0, GridUnitType::Auto});
+            colText.Width({0.0, GridUnitType::Pixel});
         }
+
+        colSpacer.Width({0.0, GridUnitType::Pixel});
 
         colLast.Width({1.0, GridUnitType::Auto});
         panel.ColumnDefinitions().Append(colFirst);
         panel.ColumnDefinitions().Append(colText);
+        panel.ColumnDefinitions().Append(colSpacer);
         panel.ColumnDefinitions().Append(colLast);
 
         Grid artContainer{nullptr};
 
         if (g_settings.showAlbumArt) {
-            int artSz = std::max(8, std::min(g_settings.albumArtSize, (int)(ph - 4)));
             double acr = (double)g_settings.albumArtCornerRadius;
             int iconSz = g_settings.appIconSize;
 
             artContainer = Grid();
-            artContainer.Width(artSz); artContainer.Height(artSz);
             artContainer.VerticalAlignment(VerticalAlignment::Center);
+            artContainer.HorizontalAlignment(HorizontalAlignment::Center);
 
-            if (hasTextOrButtons) {
-                artContainer.Margin({(double)g_settings.albumArtLeftMargin, 0, (double)g_settings.albumArtRightMargin, 0});
-            } else {
-                artContainer.Margin({0, 0, 0, 0});
+            if (g_settings.albumArtMinWidth > 0) {
+                artContainer.MinWidth((double)g_settings.albumArtMinWidth);
             }
+            if (g_settings.albumArtMaxWidth > 0) {
+                artContainer.MaxWidth((double)g_settings.albumArtMaxWidth);
+            }
+            if (g_settings.albumArtMinHeight > 0) {
+                artContainer.MinHeight((double)g_settings.albumArtMinHeight);
+            }
+            if (g_settings.albumArtMaxHeight > 0) {
+                artContainer.MaxHeight((double)g_settings.albumArtMaxHeight);
+            }
+
+            double artLeftMargin = (double)g_settings.albumArtLeftMargin;
+            double artRightMargin = (double)g_settings.albumArtRightMargin;
+            artContainer.Margin({artLeftMargin, 0, artRightMargin, 0});
 
             artContainer.Opacity(g_settings.albumArtOpacity / 100.0);
             artContainer.Background(MakeBrush({0x00,0x00,0x00,0x00}));
+            AddLayoutAnchorOverlay(artContainer, L"FluentMedia_DebugArtAnchors", {0xD0, 0xFF, 0xFF, 0x00});
 
             if (g_settings.showDebugBorders) {
                 Border artDebugBorder;
@@ -2032,16 +2730,24 @@ static Grid BuildPlayerGrid() {
             winrt::Windows::UI::Xaml::Shapes::Rectangle placeholder;
             placeholder.Fill(MakeBrush({0x40,0x80,0x80,0x80}));
             placeholder.RadiusX(acr); placeholder.RadiusY(acr);
+            placeholder.HorizontalAlignment(HorizontalAlignment::Stretch);
+            placeholder.VerticalAlignment(VerticalAlignment::Stretch);
             artContainer.Children().Append(placeholder);
 
             Border artBorder;
             artBorder.CornerRadius({acr,acr,acr,acr});
-            artBorder.Width(artSz); artBorder.Height(artSz);
+            artBorder.HorizontalAlignment(HorizontalAlignment::Stretch);
+            artBorder.VerticalAlignment(VerticalAlignment::Stretch);
 
             Controls::Image artImage;
             artImage.Name(kArtImageName);
-            artImage.Stretch(Stretch::UniformToFill);
-            artImage.Width(artSz); artImage.Height(artSz);
+
+            bool isSquare = (g_settings.albumArtMinWidth == g_settings.albumArtMinHeight) &&
+                           (g_settings.albumArtMaxWidth == g_settings.albumArtMaxHeight);
+            artImage.Stretch(isSquare ? Stretch::UniformToFill : Stretch::Uniform);
+
+            artImage.HorizontalAlignment(HorizontalAlignment::Center);
+            artImage.VerticalAlignment(VerticalAlignment::Center);
             artBorder.Child(artImage);
             artContainer.Children().Append(artBorder);
 
@@ -2053,7 +2759,6 @@ static Grid BuildPlayerGrid() {
 
             if (g_settings.showAppIcon) {
                 Grid iconOverlay;
-                iconOverlay.Width(artSz); iconOverlay.Height(artSz);
                 iconOverlay.VerticalAlignment(VerticalAlignment::Stretch);
                 iconOverlay.HorizontalAlignment(HorizontalAlignment::Stretch);
 
@@ -2096,8 +2801,8 @@ static Grid BuildPlayerGrid() {
             if (g_settings.showPauseOverlay) {
                 Border pauseBorder;
                 pauseBorder.Name(L"PauseIconOverlay");
-                pauseBorder.Width(artSz);
-                pauseBorder.Height(artSz);
+                pauseBorder.HorizontalAlignment(HorizontalAlignment::Stretch);
+                pauseBorder.VerticalAlignment(VerticalAlignment::Stretch);
                 pauseBorder.CornerRadius({acr + 1, acr + 1, acr + 1, acr + 1});
                 BYTE opacity = (BYTE)((g_settings.pauseOverlayOpacity * 255) / 100);
                 pauseBorder.Background(MakeBrush({opacity, 0x00, 0x00, 0x00}));
@@ -2116,49 +2821,14 @@ static Grid BuildPlayerGrid() {
                 artContainer.Children().Append(pauseBorder);
             }
 
-            Border artHoverOverlay;
-            artHoverOverlay.CornerRadius({acr, acr, acr, acr});
-            artHoverOverlay.Background(MakeBrush({0x00, 0, 0, 0}));
-            artHoverOverlay.IsHitTestVisible(false);
-            Canvas::SetZIndex(artHoverOverlay, 20);
-            artContainer.Children().Append(artHoverOverlay);
-
-            auto artIsPressed = std::make_shared<bool>(false);
-            auto artIsHovered = std::make_shared<bool>(false);
-
-            auto updateArtVisualStateSystem = [artHoverOverlay, artIsPressed, artIsHovered]() {
-                if (g_settings.enableAlbumArtHoverEffect) {
-                    if (*artIsPressed) {
-                        artHoverOverlay.Background(MakeBrush(GetSystemButtonPressedColor()));
-                    } else if (*artIsHovered) {
-                        artHoverOverlay.Background(MakeBrush(GetSystemButtonHoverColor()));
-                    } else {
-                        artHoverOverlay.Background(MakeBrush({0x00, 0x00, 0x00, 0x00}));
-                    }
-                }
-            };
-
-            artContainer.PointerEntered([artIsHovered, updateArtVisualStateSystem](auto const&, auto const&) mutable {
-                *artIsHovered = true;
-                updateArtVisualStateSystem();
-            });
-
-            artContainer.PointerExited([artIsHovered, updateArtVisualStateSystem](auto const&, auto const&) mutable {
-                *artIsHovered = false;
-                updateArtVisualStateSystem();
-            });
-
-            artContainer.PointerPressed([artIsPressed, updateArtVisualStateSystem](auto const& sender, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e) mutable {
+            artContainer.PointerPressed([](auto const& sender, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e) mutable {
                 if (auto elem = sender.template try_as<UIElement>()) {
                     elem.CapturePointer(e.Pointer());
                 }
-                *artIsPressed = true;
-                updateArtVisualStateSystem();
                 e.Handled(true);
             });
 
-            artContainer.PointerReleased([artIsPressed, artIsHovered, updateArtVisualStateSystem](auto const& sender, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e) mutable {
-                *artIsPressed = false;
+            artContainer.PointerReleased([](auto const& sender, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e) mutable {
                 bool actuallyHovered = false;
                 if (auto elem = sender.template try_as<UIElement>()) {
                     elem.ReleasePointerCapture(e.Pointer());
@@ -2169,8 +2839,6 @@ static Grid BuildPlayerGrid() {
                         actuallyHovered = (pos.X >= 0 && pos.X <= bounds.Width && pos.Y >= 0 && pos.Y <= bounds.Height);
                     } catch (...) { actuallyHovered = false; }
                 }
-                *artIsHovered = actuallyHovered;
-                updateArtVisualStateSystem();
 
                 if (g_unloading) return;
 
@@ -2187,28 +2855,7 @@ static Grid BuildPlayerGrid() {
                 e.Handled(true);
             });
 
-            artContainer.PointerCanceled([artIsPressed, artIsHovered, updateArtVisualStateSystem](auto const&, auto const&) mutable {
-                *artIsPressed = false;
-                *artIsHovered = false;
-                updateArtVisualStateSystem();
-            });
-
-            artContainer.PointerCaptureLost([artIsPressed, artIsHovered, updateArtVisualStateSystem](auto const& sender, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e) mutable {
-                *artIsPressed = false;
-                if (auto elem = sender.template try_as<UIElement>()) {
-                    try {
-                        auto pointerPoint = e.GetCurrentPoint(elem);
-                        auto bounds = elem.RenderSize();
-                        auto pos = pointerPoint.Position();
-                        *artIsHovered = (pos.X >= 0 && pos.X <= bounds.Width && pos.Y >= 0 && pos.Y <= bounds.Height);
-                    } catch (...) { *artIsHovered = false; }
-                }
-                updateArtVisualStateSystem();
-            });
-
-            artContainer.DoubleTapped([artIsPressed, updateArtVisualStateSystem](auto const&, winrt::Windows::UI::Xaml::Input::DoubleTappedRoutedEventArgs const& e) mutable {
-                *artIsPressed = false;
-                updateArtVisualStateSystem();
+            artContainer.DoubleTapped([](auto const&, winrt::Windows::UI::Xaml::Input::DoubleTappedRoutedEventArgs const& e) mutable {
                 if (g_unloading) return;
                 ExecuteMediaAction(g_settings.albumArtLeftDoubleClick);
                 e.Handled(true);
@@ -2228,6 +2875,24 @@ static Grid BuildPlayerGrid() {
                     DispatchMediaUpdate();
                 } else if (action == L"switch_sessions") {
                     if (delta != 0) SwitchMediaSession();
+                } else if (action == L"system_sound") {
+                    ChangeSystemVolume(delta > 0);
+                } else if (action == L"app_sound") {
+                    std::thread([delta]() {
+                        std::wstring aumid;
+                        {
+                            std::lock_guard<std::mutex> lk(g_sessionMtx);
+                            if (g_currentSession) {
+                                try {
+                                    aumid = std::wstring(g_currentSession.SourceAppUserModelId());
+                                } catch (...) {}
+                            }
+                        }
+                        if (!aumid.empty()) {
+                            float volumeDelta = (delta > 0) ? 0.02f : -0.02f;
+                            AdjustAppVolumeByAUMID(aumid, volumeDelta);
+                        }
+                    }).detach();
                 }
                 e.Handled(true);
             });
@@ -2237,7 +2902,7 @@ static Grid BuildPlayerGrid() {
             if (albumArtLeft) {
                 Grid::SetColumn(artContainer, 0);
             } else {
-                Grid::SetColumn(artContainer, 2);
+                Grid::SetColumn(artContainer, 3);
             }
             panel.Children().Append(artContainer);
         }
@@ -2245,7 +2910,29 @@ static Grid BuildPlayerGrid() {
         if (g_settings.showTrackTitle || g_settings.showTrackArtist) {
             Border textContainer;
             textContainer.VerticalAlignment(VerticalAlignment::Center);
-            textContainer.Margin({(double)g_settings.textMarginLeft, 0, (double)g_settings.textMarginRight, 0});
+
+            if (albumArtLeft) {
+                textContainer.HorizontalAlignment(HorizontalAlignment::Left);
+            } else {
+                textContainer.HorizontalAlignment(HorizontalAlignment::Right);
+            }
+
+            if (g_settings.textAreaMinWidth > 0) {
+                textContainer.MinWidth((double)g_settings.textAreaMinWidth);
+            }
+            if (g_settings.textAreaMaxWidth > 0) {
+                textContainer.MaxWidth((double)g_settings.textAreaMaxWidth);
+            }
+            if (g_settings.textAreaMinHeight > 0) {
+                textContainer.MinHeight((double)g_settings.textAreaMinHeight);
+            }
+            if (g_settings.textAreaMaxHeight > 0) {
+                textContainer.MaxHeight((double)g_settings.textAreaMaxHeight);
+            }
+
+            double leftMargin = (double)g_settings.textAreaLeftMargin;
+            double rightMargin = (double)g_settings.textAreaRightMargin;
+            textContainer.Margin({leftMargin, 0, rightMargin, 0});
 
             if (g_settings.showDebugBorders) {
                 textContainer.BorderBrush(MakeBrush({0xFF, 0x00, 0xFF, 0xFF}));
@@ -2311,7 +2998,7 @@ static Grid BuildPlayerGrid() {
                 Border ctrlDebugBorder;
                 ctrlDebugBorder.BorderBrush(MakeBrush({0xFF, 0xFF, 0x00, 0xFF}));
                 ctrlDebugBorder.BorderThickness({1,1,1,1});
-                Grid::SetColumn(ctrlDebugBorder, buttonsLeft ? 0 : 2);
+                Grid::SetColumn(ctrlDebugBorder, buttonsLeft ? 0 : 3);
                 panel.Children().Append(ctrlDebugBorder);
             }
 
@@ -2348,7 +3035,7 @@ static Grid BuildPlayerGrid() {
             if (buttonsLeft) {
                 Grid::SetColumn(ctrlPanel, 0);
             } else {
-                Grid::SetColumn(ctrlPanel, 2);
+                Grid::SetColumn(ctrlPanel, 3);
             }
 
             if (hasButtons) {
@@ -2356,12 +3043,20 @@ static Grid BuildPlayerGrid() {
             }
         }
 
-        outerBorder.Child(panel);
-
         Grid wrapper;
         wrapper.Name(kGridName);
         wrapper.VerticalAlignment(VerticalAlignment::Stretch);
         wrapper.HorizontalAlignment(HorizontalAlignment::Left);
+        AddLayoutAnchorOverlay(wrapper, L"FluentMedia_DebugPlayerAnchors", {0xD0, 0xFF, 0x50, 0x50});
+
+        try {
+            if (g_settings.enableSmoothPositionAnimation) {
+                TransitionCollection transitions;
+                RepositionThemeTransition marginTransition;
+                transitions.Append(marginTransition);
+                wrapper.Transitions(transitions);
+            }
+        } catch (...) {}
 
         if (hasTextOrButtons && g_settings.playerMinWidth > 0) {
             wrapper.MinWidth((double)g_settings.playerMinWidth);
@@ -2371,138 +3066,139 @@ static Grid BuildPlayerGrid() {
             wrapper.MaxWidth((double)g_settings.playerMaxWidth);
         }
 
-        wrapper.Background(MakeBrush({0x00,0,0,0}));
-        wrapper.Children().Append(outerBorder);
-
-        if (g_settings.enablePlayerHoverEffect) {
-            outerBorder.Background(MakeBrush({0x00, 0x00, 0x00, 0x00}));
-            outerBorder.BorderBrush(MakeBrush({0x00, 0x00, 0x00, 0x00}));
-            outerBorder.BorderThickness({1,1,1,1});
-            double borderCr = (double)g_settings.cornerRadius;
-            outerBorder.CornerRadius({borderCr,borderCr,borderCr,borderCr});
-
-            try {
-                winrt::Windows::UI::Xaml::BrushTransition bgTransition;
-                bgTransition.Duration(winrt::Windows::Foundation::TimeSpan(std::chrono::milliseconds(83)));
-                outerBorder.BackgroundTransition(bgTransition);
-            } catch (...) {}
-
-            auto isPressed = std::make_shared<bool>(false);
-            auto isHovered = std::make_shared<bool>(false);
-
-            auto updateVisualState = [outerBorder, isPressed, isHovered]() {
-                if (*isPressed) {
-                    outerBorder.Background(MakeBrush(GetSystemButtonPressedColor()));
-                    outerBorder.BorderBrush(MakeBrush(GetSystemButtonBorderColor()));
-                } else if (*isHovered) {
-                    outerBorder.Background(MakeBrush(GetSystemButtonHoverColor()));
-                    outerBorder.BorderBrush(MakeBrush(GetSystemButtonBorderColor()));
-                } else {
-                    outerBorder.Background(MakeBrush({0x00, 0x00, 0x00, 0x00}));
-                    outerBorder.BorderBrush(MakeBrush({0x00, 0x00, 0x00, 0x00}));
-                }
-            };
-
-            wrapper.PointerEntered([isHovered, updateVisualState](auto const&, auto const&) mutable {
-                *isHovered = true;
-                updateVisualState();
-            });
-
-            wrapper.PointerExited([isHovered, updateVisualState](auto const&, auto const&) mutable {
-                *isHovered = false;
-                updateVisualState();
-            });
-
-            wrapper.PointerPressed([isPressed, updateVisualState](auto const& sender, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e) mutable {
-                if (auto elem = sender.template try_as<UIElement>()) {
-                    elem.CapturePointer(e.Pointer());
-                }
-                *isPressed = true;
-                updateVisualState();
-            });
-
-            wrapper.PointerReleased([isPressed, isHovered, updateVisualState](auto const& sender, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e) mutable {
-                *isPressed = false;
-                bool actuallyHovered = false;
-                if (auto elem = sender.template try_as<UIElement>()) {
-                    elem.ReleasePointerCapture(e.Pointer());
-                    try {
-                        auto pointerPoint = e.GetCurrentPoint(elem);
-                        auto bounds = elem.RenderSize();
-                        auto pos = pointerPoint.Position();
-                        actuallyHovered = (pos.X >= 0 && pos.X <= bounds.Width && pos.Y >= 0 && pos.Y <= bounds.Height);
-                    } catch (...) { actuallyHovered = false; }
-                }
-                *isHovered = actuallyHovered;
-                updateVisualState();
-
-                if (g_unloading || e.Handled()) return;
-
-                if (actuallyHovered) {
-                    auto kind = e.GetCurrentPoint(nullptr).Properties().PointerUpdateKind();
-                    if (kind == winrt::Windows::UI::Input::PointerUpdateKind::LeftButtonReleased) {
-                        ExecuteMediaAction(g_settings.playerLeftClick);
-                    } else if (kind == winrt::Windows::UI::Input::PointerUpdateKind::RightButtonReleased) {
-                        ExecuteMediaAction(g_settings.playerRightClick);
-                    } else if (kind == winrt::Windows::UI::Input::PointerUpdateKind::MiddleButtonReleased) {
-                        ExecuteMediaAction(g_settings.playerMiddleClick);
-                    }
-                }
-            });
-
-            wrapper.PointerCanceled([isPressed, isHovered, updateVisualState](auto const&, auto const&) mutable {
-                *isPressed = false;
-                *isHovered = false;
-                updateVisualState();
-            });
-
-            wrapper.PointerCaptureLost([isPressed, isHovered, updateVisualState](auto const& sender, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e) mutable {
-                *isPressed = false;
-                if (auto elem = sender.template try_as<UIElement>()) {
-                    try {
-                        auto pointerPoint = e.GetCurrentPoint(elem);
-                        auto bounds = elem.RenderSize();
-                        auto pos = pointerPoint.Position();
-                        *isHovered = (pos.X >= 0 && pos.X <= bounds.Width && pos.Y >= 0 && pos.Y <= bounds.Height);
-                    } catch (...) { *isHovered = false; }
-                }
-                updateVisualState();
-            });
-
-            wrapper.DoubleTapped([isPressed, updateVisualState](auto const&, winrt::Windows::UI::Xaml::Input::DoubleTappedRoutedEventArgs const& e) mutable {
-                *isPressed = false;
-                updateVisualState();
-                if (g_unloading) return;
-                ExecuteMediaAction(g_settings.playerLeftDoubleClick);
-                e.Handled(true);
-            });
-        } else {
-            wrapper.PointerPressed([](auto const& sender, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e) {
-                if (auto elem = sender.template try_as<UIElement>()) elem.CapturePointer(e.Pointer());
-            });
-            wrapper.PointerReleased([](auto const& sender, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e) {
-                bool actuallyHovered = false;
-                if (auto elem = sender.template try_as<UIElement>()) {
-                    elem.ReleasePointerCapture(e.Pointer());
-                    try {
-                        auto bounds = elem.RenderSize();
-                        auto pos = e.GetCurrentPoint(elem).Position();
-                        actuallyHovered = (pos.X >= 0 && pos.X <= bounds.Width && pos.Y >= 0 && pos.Y <= bounds.Height);
-                    } catch (...) {}
-                }
-                if (g_unloading || e.Handled()) return;
-                if (actuallyHovered) {
-                    auto kind = e.GetCurrentPoint(nullptr).Properties().PointerUpdateKind();
-                    if (kind == winrt::Windows::UI::Input::PointerUpdateKind::LeftButtonReleased) {
-                        ExecuteMediaAction(g_settings.playerLeftClick);
-                    } else if (kind == winrt::Windows::UI::Input::PointerUpdateKind::RightButtonReleased) {
-                        ExecuteMediaAction(g_settings.playerRightClick);
-                    } else if (kind == winrt::Windows::UI::Input::PointerUpdateKind::MiddleButtonReleased) {
-                        ExecuteMediaAction(g_settings.playerMiddleClick);
-                    }
-                }
-            });
+        if (g_settings.playerMinHeight > 0) {
+            wrapper.MinHeight((double)g_settings.playerMinHeight);
         }
+
+        if (g_settings.playerMaxHeight > 0) {
+            wrapper.MaxHeight((double)g_settings.playerMaxHeight);
+        }
+
+        wrapper.Background(MakeBrush({0x00, 0, 0, 0}));
+        Canvas::SetZIndex(panel, 0);
+        Canvas::SetZIndex(playerButton, 1);
+        wrapper.Children().Append(panel);
+        wrapper.Children().Append(playerButton);
+
+        ApplyFluentMediaButtonStyle(playerButton);
+        if (!g_settings.showDebugBorders) {
+            playerButton.BorderThickness({1, 1, 1, 1});
+        }
+
+        auto isPressed = std::make_shared<bool>(false);
+        auto isHovered = std::make_shared<bool>(false);
+
+        auto playerNormalBg = g_settings.enablePlayerHoverEffect
+            ? MakeBrush({0x00, 0, 0, 0})
+            : bgBrush;
+
+        auto updatePlayerVisualState = [playerButton, isPressed, isHovered]() {
+            GoToCommonState(playerButton, g_settings.enablePlayerHoverEffect, *isPressed, *isHovered);
+        };
+
+        RunWhenButtonReady(playerButton, [playerButton, playerNormalBg, updatePlayerVisualState]() {
+            SetupPlayerButtonCommonStates(playerButton, playerNormalBg);
+            updatePlayerVisualState();
+        });
+
+        wrapper.Loaded([playerButton, playerNormalBg, updatePlayerVisualState](auto const&, auto const&) {
+            try {
+                SetupPlayerButtonCommonStates(playerButton, playerNormalBg);
+                updatePlayerVisualState();
+            } catch (...) {}
+        });
+
+        panel.PointerEntered([isHovered, updatePlayerVisualState](auto const&, auto const&) {
+            *isHovered = true;
+            updatePlayerVisualState();
+        });
+
+        panel.PointerExited([wrapper, isHovered, updatePlayerVisualState](auto const&, PointerRoutedEventArgs const& e) {
+            bool stillInside = false;
+            try {
+                auto pos = e.GetCurrentPoint(wrapper).Position();
+                auto bounds = wrapper.RenderSize();
+                stillInside = pos.X >= 0 && pos.X <= bounds.Width && pos.Y >= 0 && pos.Y <= bounds.Height;
+            } catch (...) {}
+            if (!stillInside) {
+                *isHovered = false;
+                updatePlayerVisualState();
+            }
+        });
+
+        wrapper.PointerEntered([isHovered, updatePlayerVisualState](auto const&, auto const&) mutable {
+            *isHovered = true;
+            updatePlayerVisualState();
+        });
+
+        wrapper.PointerExited([isHovered, updatePlayerVisualState](auto const&, auto const&) mutable {
+            *isHovered = false;
+            updatePlayerVisualState();
+        });
+
+        wrapper.PointerPressed([isPressed, updatePlayerVisualState](auto const& sender, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e) mutable {
+            if (auto elem = sender.template try_as<UIElement>()) {
+                elem.CapturePointer(e.Pointer());
+            }
+            *isPressed = true;
+            updatePlayerVisualState();
+        });
+
+        wrapper.PointerReleased([isPressed, isHovered, updatePlayerVisualState](auto const& sender, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e) mutable {
+            *isPressed = false;
+            bool actuallyHovered = false;
+            if (auto elem = sender.template try_as<UIElement>()) {
+                elem.ReleasePointerCapture(e.Pointer());
+                try {
+                    auto pointerPoint = e.GetCurrentPoint(elem);
+                    auto bounds = elem.RenderSize();
+                    auto pos = pointerPoint.Position();
+                    actuallyHovered = (pos.X >= 0 && pos.X <= bounds.Width && pos.Y >= 0 && pos.Y <= bounds.Height);
+                } catch (...) { actuallyHovered = false; }
+            }
+            *isHovered = actuallyHovered;
+            updatePlayerVisualState();
+
+            if (g_unloading || e.Handled()) return;
+
+            if (actuallyHovered) {
+                auto kind = e.GetCurrentPoint(nullptr).Properties().PointerUpdateKind();
+                if (kind == winrt::Windows::UI::Input::PointerUpdateKind::LeftButtonReleased) {
+                    ExecuteMediaAction(g_settings.playerLeftClick);
+                } else if (kind == winrt::Windows::UI::Input::PointerUpdateKind::RightButtonReleased) {
+                    ExecuteMediaAction(g_settings.playerRightClick);
+                } else if (kind == winrt::Windows::UI::Input::PointerUpdateKind::MiddleButtonReleased) {
+                    ExecuteMediaAction(g_settings.playerMiddleClick);
+                }
+            }
+        });
+
+        wrapper.PointerCanceled([isPressed, isHovered, updatePlayerVisualState](auto const&, auto const&) mutable {
+            *isPressed = false;
+            *isHovered = false;
+            updatePlayerVisualState();
+        });
+
+        wrapper.PointerCaptureLost([isPressed, isHovered, updatePlayerVisualState](auto const& sender, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e) mutable {
+            *isPressed = false;
+            if (auto elem = sender.template try_as<UIElement>()) {
+                try {
+                    auto pointerPoint = e.GetCurrentPoint(elem);
+                    auto bounds = elem.RenderSize();
+                    auto pos = pointerPoint.Position();
+                    *isHovered = (pos.X >= 0 && pos.X <= bounds.Width && pos.Y >= 0 && pos.Y <= bounds.Height);
+                } catch (...) { *isHovered = false; }
+            }
+            updatePlayerVisualState();
+        });
+
+        wrapper.DoubleTapped([isPressed, updatePlayerVisualState](auto const&, winrt::Windows::UI::Xaml::Input::DoubleTappedRoutedEventArgs const& e) mutable {
+            *isPressed = false;
+            updatePlayerVisualState();
+            if (g_unloading) return;
+            ExecuteMediaAction(g_settings.playerLeftDoubleClick);
+            e.Handled(true);
+        });
 
         wrapper.Tag(winrt::box_value(winrt::hstring(L"FluentMediaBarWrapper")));
 
@@ -2520,6 +3216,24 @@ static Grid BuildPlayerGrid() {
                 DispatchMediaUpdate();
             } else if (action == L"switch_sessions") {
                 if (delta != 0) SwitchMediaSession();
+            } else if (action == L"system_sound") {
+                ChangeSystemVolume(delta > 0);
+            } else if (action == L"app_sound") {
+                std::thread([delta]() {
+                    std::wstring aumid;
+                    {
+                        std::lock_guard<std::mutex> lk(g_sessionMtx);
+                        if (g_currentSession) {
+                            try {
+                                aumid = std::wstring(g_currentSession.SourceAppUserModelId());
+                            } catch (...) {}
+                        }
+                    }
+                    if (!aumid.empty()) {
+                        float volumeDelta = (delta > 0) ? 0.02f : -0.02f;
+                        AdjustAppVolumeByAUMID(aumid, volumeDelta);
+                    }
+                }).detach();
             }
             e.Handled(true);
         });
@@ -2544,6 +3258,72 @@ struct InjectionTarget {
     Grid grid;
     int  insertCol = 0;
 };
+
+static int RemovePlayerGridChildren(Grid const& targetGrid) {
+    if (!targetGrid) return -1;
+
+    int firstCol = -1;
+    for (int i = (int)targetGrid.Children().Size() - 1; i >= 0; --i) {
+        auto fe = targetGrid.Children().GetAt(i).try_as<FrameworkElement>();
+        if (fe && fe.Name() == kGridName) {
+            if (firstCol < 0) firstCol = Grid::GetColumn(fe);
+            try { targetGrid.Children().RemoveAt(i); } catch (...) {}
+        }
+    }
+    return firstCol;
+}
+
+static void RemoveAnchorDebugOverlays(Grid const& targetGrid) {
+    if (!targetGrid) return;
+    for (int i = (int)targetGrid.Children().Size() - 1; i >= 0; --i) {
+        auto fe = targetGrid.Children().GetAt(i).try_as<FrameworkElement>();
+        if (fe && fe.Name() == kAnchorOverlayName) {
+            try { targetGrid.Children().RemoveAt(i); } catch (...) {}
+        }
+    }
+}
+
+static void UpdateAnchorDebugOverlay(Grid const& targetGrid, FrameworkElement const& targetElem) {
+    if (!targetGrid) return;
+
+    if (!g_settings.showLayoutAnchors || !targetElem) {
+        RemoveAnchorDebugOverlays(targetGrid);
+        return;
+    }
+
+    try {
+        Border overlay{nullptr};
+        for (uint32_t i = 0; i < targetGrid.Children().Size(); ++i) {
+            auto fe = targetGrid.Children().GetAt(i).try_as<FrameworkElement>();
+            if (fe && fe.Name() == kAnchorOverlayName) {
+                overlay = fe.try_as<Border>();
+                break;
+            }
+        }
+
+        if (!overlay) {
+            overlay = Border();
+            overlay.Name(kAnchorOverlayName);
+            overlay.IsHitTestVisible(false);
+            overlay.BorderBrush(MakeBrush({0xE0, 0x00, 0xA2, 0xFF}));
+            overlay.BorderThickness({2,2,2,2});
+            overlay.Background(MakeBrush({0x20, 0x00, 0xA2, 0xFF}));
+            overlay.HorizontalAlignment(HorizontalAlignment::Left);
+            overlay.VerticalAlignment(VerticalAlignment::Top);
+            Canvas::SetZIndex(overlay, 5001);
+            targetGrid.Children().Append(overlay);
+        }
+
+        auto transform = targetElem.TransformToVisual(targetGrid);
+        auto point = transform.TransformPoint({0, 0});
+        overlay.Width(std::max(1.0, targetElem.ActualWidth()));
+        overlay.Height(std::max(1.0, targetElem.ActualHeight()));
+        overlay.Margin({point.X, point.Y, 0, 0});
+        overlay.Visibility(Visibility::Visible);
+    } catch (...) {
+        RemoveAnchorDebugOverlays(targetGrid);
+    }
+}
 
 static const wchar_t* const kStartButtonNames[] = {
     L"StartButton",
@@ -2724,6 +3504,53 @@ static FrameworkElement FindLastElementByClassName(FrameworkElement const& paren
     return lastFound;
 }
 
+static FrameworkElement FindChildByClassName(FrameworkElement const& parent, const wchar_t* className, int depth = 32) {
+    if (!parent || depth <= 0) return nullptr;
+
+    int childCount = VisualTreeHelper::GetChildrenCount(parent);
+    for (int i = 0; i < childCount; i++) {
+        auto child = VisualTreeHelper::GetChild(parent, i).try_as<FrameworkElement>();
+        if (!child) continue;
+
+        if (winrt::get_class_name(child) == className) return child;
+        if (auto found = FindChildByClassName(child, className, depth - 1)) return found;
+    }
+
+    return nullptr;
+}
+
+static double FindLeftmostVisibleChildX(FrameworkElement const& parent, UIElement const& relativeTo, int depth = 3) {
+    if (!parent || !relativeTo || depth < 0) return -1.0;
+
+    double leftmost = -1.0;
+    int childCount = VisualTreeHelper::GetChildrenCount(parent);
+    for (int i = 0; i < childCount; i++) {
+        auto child = VisualTreeHelper::GetChild(parent, i).try_as<FrameworkElement>();
+        if (!child) continue;
+
+        try {
+            if (child.Visibility() == Visibility::Visible && child.ActualWidth() > 1.0) {
+                auto transform = child.TransformToVisual(relativeTo);
+                auto point = transform.TransformPoint({0, 0});
+                if (point.X >= 0.0 && (leftmost < 0.0 || point.X < leftmost))
+                    leftmost = point.X;
+            }
+        } catch (...) {}
+
+        double nested = FindLeftmostVisibleChildX(child, relativeTo, depth - 1);
+        if (nested >= 0.0 && (leftmost < 0.0 || nested < leftmost))
+            leftmost = nested;
+    }
+
+    return leftmost;
+}
+
+static FrameworkElement FindTrayElement(FrameworkElement const& trayGrid, FrameworkElement const& root, const wchar_t* name) {
+    auto elem = FindChildByName(trayGrid, name);
+    if (!elem) elem = FindChildByName(root, name);
+    return elem;
+}
+
 static bool IsStartButtonModActive(FrameworkElement const& root) {
     try {
         auto rootGrid = FindTaskbarRootGrid(root);
@@ -2794,6 +3621,30 @@ static InjectionTarget ResolveInjectionTarget(
             if (omniBtn) col = Grid::GetColumn(omniBtn) + 1;
             else col = -1;
         }
+        else if (position == L"tray_language_left") {
+            auto languageBtn = FindTrayElement(trayGrid, root, L"NonActivatableStack");
+            col = languageBtn ? Grid::GetColumn(languageBtn) : -1;
+        }
+        else if (position == L"tray_language_right") {
+            auto languageBtn = FindTrayElement(trayGrid, root, L"NonActivatableStack");
+            col = languageBtn ? Grid::GetColumn(languageBtn) + 1 : -1;
+        }
+        else if (position == L"tray_hidden_icons_left") {
+            auto hiddenIconsBtn = FindTrayElement(trayGrid, root, L"NotifyIconStack");
+            col = hiddenIconsBtn ? Grid::GetColumn(hiddenIconsBtn) : -1;
+        }
+        else if (position == L"tray_hidden_icons_right") {
+            auto hiddenIconsBtn = FindTrayElement(trayGrid, root, L"NotifyIconStack");
+            col = hiddenIconsBtn ? Grid::GetColumn(hiddenIconsBtn) + 1 : -1;
+        }
+        else if (position == L"tray_icons_left") {
+            auto trayIcons = FindTrayElement(trayGrid, root, L"NotificationAreaIcons");
+            col = trayIcons ? Grid::GetColumn(trayIcons) : -1;
+        }
+        else if (position == L"tray_icons_right") {
+            auto trayIcons = FindTrayElement(trayGrid, root, L"NotificationAreaIcons");
+            col = trayIcons ? Grid::GetColumn(trayIcons) + 1 : -1;
+        }
         else if (position == L"tray_after_showdesktop_left") {
             auto showDesktop = FindChildByName(trayGrid, L"ShowDesktopStack");
             if (!showDesktop) showDesktop = FindChildByName(root, L"ShowDesktopStack");
@@ -2819,7 +3670,9 @@ static InjectionTarget ResolveInjectionTarget(
         position == L"taskbar_after_taskview_right"||
         position == L"taskbar_after_widgets_left"||
         position == L"taskbar_after_widgets_right"||
+        position == L"taskbar_far_edge_left" ||
         position == L"taskbar_left_edge"   ||
+        position == L"taskbar_center_edge" ||
         position == L"taskbar_right_edge")
     {
         auto rootGrid = FindTaskbarRootGrid(root);
@@ -2874,6 +3727,8 @@ static bool InjectPlayerGrid() {
         bool startButtonModActive = IsStartButtonModActive(root);
 
         bool isTrayGrid = (targetGrid.Name() == L"SystemTrayFrameGrid");
+        RemovePlayerGridChildren(targetGrid);
+        RemoveAnchorDebugOverlays(targetGrid);
 
         if (isTrayGrid) {
             ColumnDefinition newCol;
@@ -2905,6 +3760,7 @@ static bool InjectPlayerGrid() {
             auto trayFrame = FindChildByName(targetGrid, L"SystemTrayFrameGrid");
 
             bool isEdgePosition = (g_settings.position == L"taskbar_left_edge" ||
+                                   g_settings.position == L"taskbar_center_edge" ||
                                    g_settings.position == L"taskbar_right_edge");
 
             bool isTrackingPosition = (g_settings.position == L"taskbar_left_start" ||
@@ -2914,7 +3770,8 @@ static bool InjectPlayerGrid() {
                                        g_settings.position == L"taskbar_after_taskview_left" ||
                                        g_settings.position == L"taskbar_after_taskview_right" ||
                                        g_settings.position == L"taskbar_after_widgets_left" ||
-                                       g_settings.position == L"taskbar_after_widgets_right");
+                                       g_settings.position == L"taskbar_after_widgets_right" ||
+                                       g_settings.position == L"taskbar_far_edge_left");
 
             if (isEdgePosition || isTrackingPosition) {
                 double leftMargin  = (double)g_settings.playerMarginLeft;
@@ -2924,6 +3781,10 @@ static bool InjectPlayerGrid() {
 
                 if (isEdgePosition) {
                     if (g_settings.position == L"taskbar_left_edge") {
+                        playerGrid.Margin({leftMargin, 0, rightMargin, 0});
+                    }
+                    else if (g_settings.position == L"taskbar_center_edge") {
+                        playerGrid.HorizontalAlignment(HorizontalAlignment::Center);
                         playerGrid.Margin({leftMargin, 0, rightMargin, 0});
                     }
                     else if (g_settings.position == L"taskbar_right_edge") {
@@ -2936,7 +3797,10 @@ static bool InjectPlayerGrid() {
                     std::wstring trackSide = L"right";
 
                     if (repeater) {
-                        if (g_settings.position == L"taskbar_left_start") {
+                        if (g_settings.position == L"taskbar_far_edge_left") {
+                            targetElem = repeater.try_as<FrameworkElement>();
+                            trackSide = L"far_left";
+                        } else if (g_settings.position == L"taskbar_left_start") {
                             targetElem = FindElementInRepeater(repeater, kStartButtonNames, ARRAYSIZE(kStartButtonNames));
                             trackSide = L"left";
                         } else if (g_settings.position == L"taskbar_right_start") {
@@ -2955,16 +3819,20 @@ static bool InjectPlayerGrid() {
                             targetElem = FindNthElementByClassName(repeater, L"Taskbar.ExperienceToggleButton", 1);
                             trackSide = L"right";
                         } else if (g_settings.position == L"taskbar_after_widgets_left") {
-                            targetElem = FindElementByClassName(repeater, L"Taskbar.ExperienceToggleButton");
+                            targetElem = FindChildByName(repeater, L"AugmentedEntryPointButton");
+                            if (!targetElem) targetElem = FindChildByClassName(repeater, L"Taskbar.AugmentedEntryPointButton");
                             trackSide = L"left";
                         } else if (g_settings.position == L"taskbar_after_widgets_right") {
-                            targetElem = FindElementByClassName(repeater, L"Taskbar.ExperienceToggleButton");
+                            targetElem = FindChildByName(repeater, L"AugmentedEntryPointButton");
+                            if (!targetElem) targetElem = FindChildByClassName(repeater, L"Taskbar.AugmentedEntryPointButton");
                             trackSide = L"right";
                         }
                     }
 
                     if (targetElem) {
                         g_trackedElement = targetElem;
+                        g_trackedElementOriginalMargin = targetElem.Margin();
+                        g_hasTrackedElementOriginalMargin = true;
                         g_trackPosition = trackSide;
 
                         bool startButtonModActiveMod = IsStartButtonModActive(root);
@@ -2981,18 +3849,42 @@ static bool InjectPlayerGrid() {
                         g_layoutUpdateToken = targetGrid.LayoutUpdated(
                             [targetGrid, startButtonModActiveMod, startButtonOffset](winrt::Windows::Foundation::IInspectable const&, winrt::Windows::Foundation::IInspectable const&) {
                                 if (!g_playerGrid || !g_trackedElement || g_unloading) return;
+                                UpdateAnchorDebugOverlay(targetGrid, g_trackedElement);
 
                                 bool isVisible = (g_playerGrid.Visibility() == Visibility::Visible);
                                 double w = isVisible ? g_playerGrid.ActualWidth() : 0.0;
 
                                 double desiredGap = isVisible ? (w + g_settings.playerMarginLeft + g_settings.playerMarginRight) : 0.0;
-                                auto m = g_trackedElement.Margin();
+                                auto m = g_hasTrackedElementOriginalMargin ? g_trackedElementOriginalMargin : g_trackedElement.Margin();
+                                auto currentMargin = g_trackedElement.Margin();
                                 bool changedMargin = false;
 
-                                if (g_trackPosition == L"left") {
-                                    if (std::abs(m.Left - desiredGap) > 1.0) { m.Left = desiredGap; changedMargin = true; }
+                                if (g_trackPosition == L"far_left") {
+                                    try {
+                                        double originalLeft = g_hasTrackedElementOriginalMargin ? g_trackedElementOriginalMargin.Left : 0.0;
+                                        double currentLeftmost = FindLeftmostVisibleChildX(g_trackedElement, targetGrid, 4);
+                                        double naturalLeft = currentLeftmost >= 0.0
+                                            ? currentLeftmost - (currentMargin.Left - originalLeft)
+                                            : desiredGap;
+                                        double requiredExtra = std::max(0.0, desiredGap - naturalLeft);
+                                        double targetLeft = originalLeft + requiredExtra;
+
+                                        if (std::abs(currentMargin.Left - targetLeft) > 1.0 ||
+                                            std::abs(currentMargin.Right - m.Right) > 1.0) {
+                                            m.Left = targetLeft;
+                                            changedMargin = true;
+                                        }
+                                    } catch (...) {
+                                        if (g_hasTrackedElementOriginalMargin &&
+                                            (std::abs(currentMargin.Left - m.Left) > 1.0 ||
+                                             std::abs(currentMargin.Right - m.Right) > 1.0)) {
+                                            changedMargin = true;
+                                        }
+                                    }
+                                } else if (g_trackPosition == L"left") {
+                                    if (std::abs(currentMargin.Left - desiredGap) > 1.0) { m.Left = desiredGap; changedMargin = true; }
                                 } else {
-                                    if (std::abs(m.Right - desiredGap) > 1.0) { m.Right = desiredGap; changedMargin = true; }
+                                    if (std::abs(currentMargin.Right - desiredGap) > 1.0) { m.Right = desiredGap; changedMargin = true; }
                                 }
 
                                 if (changedMargin) g_trackedElement.Margin(m);
@@ -3003,7 +3895,9 @@ static bool InjectPlayerGrid() {
                                         auto point = transform.TransformPoint({0, 0});
                                         double leftPos = point.X;
 
-                                        if (g_trackPosition == L"left") {
+                                        if (g_trackPosition == L"far_left") {
+                                            leftPos = g_settings.playerMarginLeft;
+                                        } else if (g_trackPosition == L"left") {
                                             leftPos = point.X - desiredGap + g_settings.playerMarginLeft;
                                             if (startButtonModActiveMod && startButtonOffset > 0) {
                                                 leftPos += startButtonOffset;
@@ -3062,6 +3956,67 @@ static bool InjectPlayerGrid() {
         g_playerGrid.Visibility(Visibility::Visible);
         g_playerGrid.UpdateLayout();
 
+        if (g_injectionParent) {
+            g_injectionParent.UpdateLayout();
+        }
+
+        Canvas::SetZIndex(g_playerGrid, 1000);
+        bool needsExtraUpdates = (g_settings.position == L"taskbar_left_start" ||
+                                  g_settings.position == L"taskbar_right_start" ||
+                                  g_settings.position == L"taskbar_after_search_left" ||
+                                  g_settings.position == L"taskbar_after_search_right" ||
+                                  g_settings.position == L"taskbar_after_taskview_left" ||
+                                  g_settings.position == L"taskbar_after_taskview_right" ||
+                                  g_settings.position == L"taskbar_after_widgets_left" ||
+                                  g_settings.position == L"taskbar_after_widgets_right" ||
+                                  g_settings.position == L"taskbar_far_edge_left");
+
+        std::thread([playerGrid, targetGrid, needsExtraUpdates]() {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            try {
+                RunFromWindowThread(g_taskbarWnd, [](void* param) {
+                    try {
+                        if (g_playerGrid && g_injectionParent) {
+                            g_playerGrid.UpdateLayout();
+                            g_injectionParent.UpdateLayout();
+                            g_playerGrid.InvalidateArrange();
+                            g_injectionParent.InvalidateArrange();
+                        }
+                    } catch (...) {}
+                }, nullptr);
+            } catch (...) {}
+
+            if (needsExtraUpdates) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                try {
+                    RunFromWindowThread(g_taskbarWnd, [](void* param) {
+                        try {
+                            if (g_playerGrid && g_injectionParent) {
+                                g_playerGrid.UpdateLayout();
+                                g_injectionParent.UpdateLayout();
+                                g_playerGrid.InvalidateArrange();
+                                g_injectionParent.InvalidateArrange();
+                            }
+                        } catch (...) {}
+                    }, nullptr);
+                } catch (...) {}
+
+                std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                try {
+                    RunFromWindowThread(g_taskbarWnd, [](void* param) {
+                        try {
+                            if (g_playerGrid && g_injectionParent) {
+                                g_playerGrid.UpdateLayout();
+                                g_injectionParent.UpdateLayout();
+                                g_playerGrid.InvalidateArrange();
+                                g_injectionParent.InvalidateArrange();
+                            }
+                        } catch (...) {}
+                    }, nullptr);
+                } catch (...) {}
+            }
+        }).detach();
+
         OnSessionsChanged();
         g_needsUiUpdate = true;
         return true;
@@ -3084,28 +4039,28 @@ static void RemovePlayerGrid() {
         
         if (g_trackedElement) {
             try {
-                auto m = g_trackedElement.Margin();
-                if (g_trackPosition == L"left") m.Left = 0;
-                if (g_trackPosition == L"right") m.Right = 0;
-                g_trackedElement.Margin(m);
+                if (g_hasTrackedElementOriginalMargin) {
+                    g_trackedElement.Margin(g_trackedElementOriginalMargin);
+                } else {
+                    auto m = g_trackedElement.Margin();
+                    if (g_trackPosition == L"left" || g_trackPosition == L"far_left") m.Left = 0;
+                    if (g_trackPosition == L"right") m.Right = 0;
+                    g_trackedElement.Margin(m);
+                }
             } catch (...) {}
             g_trackedElement = nullptr;
         }
+        g_hasTrackedElementOriginalMargin = false;
         g_trackPosition = L"";
 
         auto targetGrid = g_injectionParent.try_as<Grid>();
         int playerCol = -1;
 
-        for (uint32_t i = 0; i < targetGrid.Children().Size(); ++i) {
-            auto fe = targetGrid.Children().GetAt(i).try_as<FrameworkElement>();
-            if (fe && fe.Name() == kGridName) {
-                playerCol = Grid::GetColumn(fe);
-                try { targetGrid.Children().RemoveAt(i); } catch (...) {}
-                break;
-            }
-        }
+        RemoveAnchorDebugOverlays(targetGrid);
+        playerCol = RemovePlayerGridChildren(targetGrid);
 
         bool isTrackingPosition = (g_settings.position == L"taskbar_left_edge" ||
+                                  g_settings.position == L"taskbar_center_edge" ||
                                   g_settings.position == L"taskbar_right_edge" ||
                                   g_settings.position == L"taskbar_left_start" ||
                                   g_settings.position == L"taskbar_right_start" ||
@@ -3114,7 +4069,8 @@ static void RemovePlayerGrid() {
                                   g_settings.position == L"taskbar_after_taskview_left" ||
                                   g_settings.position == L"taskbar_after_taskview_right" ||
                                   g_settings.position == L"taskbar_after_widgets_left" ||
-                                  g_settings.position == L"taskbar_after_widgets_right");
+                                  g_settings.position == L"taskbar_after_widgets_right" ||
+                                  g_settings.position == L"taskbar_far_edge_left");
 
         if (!isTrackingPosition && playerCol >= 0 && playerCol < (int)targetGrid.ColumnDefinitions().Size()) {
             for (uint32_t i = 0; i < targetGrid.Children().Size(); ++i) {
@@ -3123,6 +4079,7 @@ static void RemovePlayerGrid() {
                     int childCol = Grid::GetColumn(child);
                     if (childCol > playerCol)
                         Grid::SetColumn(child, childCol - 1);
+
                 }
             }
             targetGrid.ColumnDefinitions().RemoveAt(playerCol);
@@ -3360,7 +4317,9 @@ static void RefreshPlayerContents() {
                             writer.DetachStream();
                             stream.Seek(0);
                             BitmapImage bmp;
-                            bmp.DecodePixelHeight(g_settings.albumArtSize);
+                            if (g_settings.albumArtMaxHeight > 0) {
+                                bmp.DecodePixelHeight(g_settings.albumArtMaxHeight);
+                            }
                             bmp.SetSourceAsync(stream);
                             img.Source(bmp);
                             img.Visibility(Visibility::Visible);
@@ -3588,38 +4547,79 @@ static void UpdateVisibility() {
                 g_playerGrid.Visibility(Visibility::Visible);
             }
         } else {
-            g_playerGrid.Visibility(hide ? Visibility::Collapsed : Visibility::Visible);
+            bool isTrackingPosition = (g_settings.position == L"taskbar_left_start" ||
+                                      g_settings.position == L"taskbar_right_start" ||
+                                      g_settings.position == L"taskbar_after_search_left" ||
+                                      g_settings.position == L"taskbar_after_search_right" ||
+                                      g_settings.position == L"taskbar_after_taskview_left" ||
+                                      g_settings.position == L"taskbar_after_taskview_right" ||
+                                      g_settings.position == L"taskbar_after_widgets_left" ||
+                                      g_settings.position == L"taskbar_after_widgets_right" ||
+                                      g_settings.position == L"taskbar_far_edge_left");
 
-            if (g_injectionParent) {
-                if (auto targetGrid = g_injectionParent.try_as<Grid>()) {
-                    if (g_playerColumn < (int)targetGrid.ColumnDefinitions().Size()) {
-                        auto colDef = targetGrid.ColumnDefinitions().GetAt(g_playerColumn);
-                        if (hide) {
-                            colDef.Width({0.0, GridUnitType::Pixel});
-                        } else {
-                            colDef.Width({1.0, GridUnitType::Auto});
+            if (hide && isTrackingPosition && g_settings.enableSmoothPositionAnimation) {
+                g_playerGrid.Opacity(0.0);
+
+                std::thread([]() {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                    try {
+                        RunFromWindowThread(g_taskbarWnd, [](void* param) {
+                            try {
+                                if (g_playerGrid) {
+                                    g_playerGrid.Visibility(Visibility::Collapsed);
+
+                                    if (g_injectionParent) {
+                                        if (auto targetGrid = g_injectionParent.try_as<Grid>()) {
+                                            if (g_playerColumn < (int)targetGrid.ColumnDefinitions().Size()) {
+                                                auto colDef = targetGrid.ColumnDefinitions().GetAt(g_playerColumn);
+                                                colDef.Width({0.0, GridUnitType::Pixel});
+                                            }
+                                        }
+                                    }
+
+                                    g_playerGrid.MinWidth(0);
+                                    g_playerGrid.MaxWidth(0);
+                                    g_playerGrid.Width(0);
+                                }
+                            } catch (...) {}
+                        }, nullptr);
+                    } catch (...) {}
+                }).detach();
+            } else {
+                g_playerGrid.Visibility(hide ? Visibility::Collapsed : Visibility::Visible);
+                g_playerGrid.Opacity(hide ? 0.0 : 1.0);
+
+                if (g_injectionParent) {
+                    if (auto targetGrid = g_injectionParent.try_as<Grid>()) {
+                        if (g_playerColumn < (int)targetGrid.ColumnDefinitions().Size()) {
+                            auto colDef = targetGrid.ColumnDefinitions().GetAt(g_playerColumn);
+                            if (hide) {
+                                colDef.Width({0.0, GridUnitType::Pixel});
+                            } else {
+                                colDef.Width({1.0, GridUnitType::Auto});
+                            }
                         }
                     }
                 }
-            }
 
-            if (hide) {
-                g_playerGrid.MinWidth(0);
-                g_playerGrid.MaxWidth(0);
-                g_playerGrid.Width(0);
-            } else {
-                bool hasTextOrButtons = g_settings.showTrackTitle || g_settings.showTrackArtist || (g_settings.showMediaButtons && !g_mediaButtons.empty());
-                if (hasTextOrButtons && g_settings.playerMinWidth > 0) {
-                    g_playerGrid.MinWidth((double)g_settings.playerMinWidth);
-                } else {
+                if (hide) {
                     g_playerGrid.MinWidth(0);
-                }
-                if (g_settings.playerMaxWidth > 0) {
-                    g_playerGrid.MaxWidth((double)g_settings.playerMaxWidth);
+                    g_playerGrid.MaxWidth(0);
+                    g_playerGrid.Width(0);
                 } else {
-                    g_playerGrid.ClearValue(FrameworkElement::MaxWidthProperty());
+                    bool hasTextOrButtons = g_settings.showTrackTitle || g_settings.showTrackArtist || (g_settings.showMediaButtons && !g_mediaButtons.empty());
+                    if (hasTextOrButtons && g_settings.playerMinWidth > 0) {
+                        g_playerGrid.MinWidth((double)g_settings.playerMinWidth);
+                    } else {
+                        g_playerGrid.MinWidth(0);
+                    }
+                    if (g_settings.playerMaxWidth > 0) {
+                        g_playerGrid.MaxWidth((double)g_settings.playerMaxWidth);
+                    } else {
+                        g_playerGrid.ClearValue(FrameworkElement::MaxWidthProperty());
+                    }
+                    g_playerGrid.ClearValue(FrameworkElement::WidthProperty());
                 }
-                g_playerGrid.ClearValue(FrameworkElement::WidthProperty());
             }
         }
 
@@ -3799,6 +4799,8 @@ void Wh_ModUninit() {
 
     if (g_taskbarWnd)
         RunFromWindowThread(g_taskbarWnd, [](void*) { RemovePlayerGrid(); }, nullptr);
+
+    CleanupAudioDeviceEnumerator();
 }
 
 void Wh_ModSettingsChanged() {
