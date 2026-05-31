@@ -36,7 +36,6 @@
 If you encounter any issues, bugs, or have suggestions for new features, please report them on the project's GitHub page:
 👉 **[Report an Issue on GitHub](https://github.com/Salyts/Taskbar-Fluent-Media-Player/issues)**
 
-![img](https://i.imgur.com/dTcEZ9G.png)
 */
 // ==/WindhawkModReadme==
 
@@ -5752,6 +5751,7 @@ static HMODULE WINAPI LoadLibraryExW_Hook(LPCWSTR path, HANDLE file, DWORD flags
         if (_wcsicmp(base, L"Taskbar.View.dll") == 0 ||
             _wcsicmp(base, L"SystemTray.dll") == 0 ||
             _wcsicmp(base, L"ExplorerExtensions.dll") == 0) {
+            // Taskbar.View.dll, SystemTray.dll, ExplorerExtensions.dll
             WindhawkUtils::SYMBOL_HOOK hooks[] = {{
                 {LR"(public: __cdecl winrt::SystemTray::implementation::IconView::IconView(void))"},
                 &IconView_IconView_Original,
@@ -5770,7 +5770,7 @@ static bool HookTaskbarDllSymbols() {
     HMODULE h = LoadLibraryExW(L"taskbar.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
     if (!h) { return false; }
 
-    WindhawkUtils::SYMBOL_HOOK hooks[] = {
+    WindhawkUtils::SYMBOL_HOOK taskbarDllHooks[] = {
         {{LR"(const CTaskBand::`vftable'{for `ITaskListWndSite'})"},
          &CTaskBand_ITaskListWndSite_vftable},
         {{LR"(public: virtual class std::shared_ptr<class TaskbarHost> __cdecl CTaskBand::GetTaskbarHost(void)const )"},
@@ -5780,11 +5780,12 @@ static bool HookTaskbarDllSymbols() {
         {{LR"(public: void __cdecl std::_Ref_count_base::_Decref(void))"},
          &Std_Ref_Decref_Original},
     };
-    bool ok = WindhawkUtils::HookSymbols(h, hooks, ARRAYSIZE(hooks));
+    bool ok = WindhawkUtils::HookSymbols(h, taskbarDllHooks, ARRAYSIZE(taskbarDllHooks));
     return ok;
 }
 
 static bool HookTaskbarViewDllSymbols(HMODULE h) {
+    // Taskbar.View.dll, SystemTray.dll, ExplorerExtensions.dll
     WindhawkUtils::SYMBOL_HOOK hooks[] = {{
         {LR"(public: __cdecl winrt::SystemTray::implementation::IconView::IconView(void))"},
         &IconView_IconView_Original,
