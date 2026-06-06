@@ -2,7 +2,7 @@
 // @id              taskbar-fluent-media-player
 // @name            Taskbar Fluent Media Player
 // @description     Taskbar Fluent Media Player — is a Windhawk mod that integrates a modern media player with Fluent Design directly into the Windows 11 taskbar. It allows you to control music and view track information seamlessly without interrupting your workflow.
-// @version         0.6.0-beta
+// @version         1.0.0
 // @author          Salyts
 // @github          https://github.com/Salyts
 // @include         explorer.exe
@@ -12,11 +12,9 @@
 
 // ==WindhawkModReadme==
 /*
-# Taskbar Fluent Media Player 0.6.0-beta
+# Taskbar Fluent Media Player 1.0.0
 
 **Taskbar Fluent Media Player —** is a Windhawk mod that integrates a modern media player with Fluent Design directly into the Windows 11 taskbar. It allows you to control music and view track information seamlessly without interrupting your workflow.
-
----
 
 ![img](https://i.imgur.com/S5vQyUa.png)
 
@@ -44,9 +42,20 @@ If you encounter any issues, bugs, or have suggestions for new features, please 
 /*
 - MainSettings:
   - PlayerSetting:
-    - position: "tray_left"
-      $name: Media player position •
+    - position: "taskbar_left_edge"
+      $name: Media player position
       $options:
+      - "taskbar_left_edge": "Taskbar - far edge (Overlay) - Left"
+      - "taskbar_center_edge": "Taskbar - far edge (Overlay) - Center"
+      - "taskbar_right_edge": "Taskbar - far edge (Overlay) - Right"
+      - "taskbar_left_start": "Taskbar - Start button - Left"
+      - "taskbar_right_start": "Taskbar - Start button - Right"
+      - "taskbar_after_search_left": "Taskbar - Search button - Left"
+      - "taskbar_after_search_right": "Taskbar - Search button - Right"
+      - "taskbar_after_taskview_left": "Taskbar - Task View button - Left"
+      - "taskbar_after_taskview_right": "Taskbar - Task View button - Right"
+      - "taskbar_after_widgets_left": "Taskbar - Widgets button - Left"
+      - "taskbar_after_widgets_right": "Taskbar - Widgets button - Right"
       - "tray_left": "Tray - Far edge - Left"
       - "tray_right": "Tray - Far edge - Right"
       - "tray_before_clock": "Tray - Clock - Left"
@@ -61,17 +70,6 @@ If you encounter any issues, bugs, or have suggestions for new features, please 
       - "tray_icons_right": "Tray - Icons - Right"
       - "tray_after_showdesktop_left": "Tray - Show Desktop - Left"
       - "tray_after_showdesktop_right": "Tray - Show Desktop - Right"
-      - "taskbar_left_start": "Taskbar - Start button - Left"
-      - "taskbar_right_start": "Taskbar - Start button - Right"
-      - "taskbar_after_search_left": "Taskbar - Search button - Left"
-      - "taskbar_after_search_right": "Taskbar - Search button - Right"
-      - "taskbar_after_taskview_left": "Taskbar - Task View button - Left"
-      - "taskbar_after_taskview_right": "Taskbar - Task View button - Right"
-      - "taskbar_after_widgets_left": "Taskbar - Widgets button - Left [Possible errors]"
-      - "taskbar_after_widgets_right": "Taskbar - Widgets button - Right [Possible errors]"
-      - "taskbar_left_edge": "Taskbar - far edge (Overlay) - Left"
-      - "taskbar_center_edge": "Taskbar - far edge (Overlay) - Center"
-      - "taskbar_right_edge": "Taskbar - far edge (Overlay) - Right"
     - playerWidth: "0 0"
       $name: Media player width ↔ (min max, px, 0 = no limit)
     - playerHeight: "40 40"
@@ -80,7 +78,7 @@ If you encounter any issues, bugs, or have suggestions for new features, please 
       $name: Media player margin ↔ (left right, px)
     - mirrorLayout: false
       $name: Mirror layout (flip album art, text, and buttons to opposite sides)
-    $name: Media player Settings
+    $name: Media player
 
   - AlbumArtSetting:
     - showAlbumArt: true
@@ -91,38 +89,32 @@ If you encounter any issues, bugs, or have suggestions for new features, please 
       $name: Album art height ↕ (min max, px)
     - albumArtMargin: "0 0"
       $name: Album art margin ↔ (left right, px)
-    $name: Album Art Settings
+    $name: Album Art
 
   - TextAreaSetting:
     - showTrackTitle: true
       $name: Show track title
     - showTrackArtist: true
       $name: Show artist name
+    - swapTitleArtist: false
+      $name: Swap artist name and track title
+      $description: >-
+        When enabled, the artist name is displayed above the track title instead of below it.
     - textAreaWidth: "0 120"
       $name: Text area width ↔ (min max, px, 0 = no limit)
     - textAreaHeight: "0 0"
       $name: Text area height ↕ (min max, px, 0 = no limit)
     - textAreaMargin: "5 5"
       $name: Text area margin ↔ (left right, px)
-    $name: Text area Settings
-  $name: Main Settings
-
-- DisplaySettings:
-  - IconsSettings:
-    - iconStyle: "fluent_filled"
-      $name: Icon style
-      $options:
-      - "fluent_outline": "Segoe Fluent Icons (Outline)"
-      - "fluent_filled": "Segoe Fluent Icons (Filled)"
-      - "mdl2_outline": "Segoe MDL2 Assets (Outline)"
-      - "mdl2_filled": "Segoe MDL2 Assets (Filled)"
-    $name: Icons
+    - textSpacing: 1
+      $name: Spacing between title and artist (px)
+    $name: Text area
 
   - MediaButtonsSettings:
     - showMediaButtons: true
       $name: Show media buttons
     - mediaButtons: [prev, play, next]
-      $name: Media Buttons Order
+      $name: Media buttons order
       $description: Select which media control buttons to display and their order. Duplicates are ignored.
       $options:
       - prev: Previous
@@ -140,9 +132,206 @@ If you encounter any issues, bugs, or have suggestions for new features, please 
       $name: Button size (px)
     - buttonIconSize: 12
       $name: Button icon size (px)
-    - buttonCornerRadius: 4
-      $name: Media button corner radius (px)
+    - hideUnsupportedButtons: false
+      $name: Hide unsupported buttons
+      $description: >-
+        When enabled, buttons for actions not supported by the current media session
+        (Repeat, Shuffle, Next, Previous, Forward 5s, Rewind 5s) are completely hidden
+        instead of shown as disabled (greyed out). Disabled by default.
     $name: Media Buttons
+  $name: Main Settings
+
+- AppearanceSettings:
+  - BackgroundStyleSettings:
+    - backgroundType: "none"
+      $name: Background type
+      $options:
+      - "none":       "None (transparent)"
+      - "solid":      "Solid color"
+      - "gradient":   "Gradient"
+      - "acrylic":    "Acrylic"
+      - "mica":       "Mica"
+      - "mica_alt":   "Mica Alt"
+      - "album_art_blur": "Album art - Blur"
+    - solidColor: "35 35 35"
+      $name: Primary color (R G B 0-255)
+      $description: "Use '-1 -1 -1' for system contrast color, '-2 -2 -2' for album art color"
+    - solidColor2: "128 128 128"
+      $name: Secondary color for gradient (R G B 0-255)
+      $description: "Use '-1 -1 -1' for system contrast color, '-2 -2 -2' for album art color"
+    - solidOpacity: 100
+      $name: Solid color opacity (0-100)
+    - gradientAngle: 50
+      $name: Gradient rotation angle (0-360)
+    - gradientBalance: 50
+      $name: Gradient color balance (0-100)
+    - acrylicTintOpacity: 50
+      $name: Acrylic tint opacity (0-100)
+    - micaOpacity: 50
+      $name: Mica/Mica Alt opacity (0-100)
+    - blurOpacity: 65
+      $name: Album art blur opacity (0-100)
+    - blurRadius: 11
+      $name: Album art blur strength (1-50)
+    - cornerRadius: 4
+      $name: Panel corner radius (px)
+    - enablePlayerHoverEffect: "auto"
+      $name: Player hover effect
+      $options:
+      - "auto": "Auto (theme changes automatically)"
+      - "black": "Black"
+      - "white": "White"
+      - "off": "Off"
+    - enableMediaButtonsHoverEffect: "auto"
+      $name: Media buttons hover effect
+      $options:
+      - "auto": "Auto (theme changes automatically)"
+      - "black": "Black"
+      - "white": "White"
+      - "off": "Off"
+    $name: Background Style
+
+  - MediaButtonsStyleSettings:
+    - autoTheme: true
+      $name: Enable auto theme
+      $description: >-
+        When enabled, the text color (track title, artist name) and button icon color
+        automatically switch between light and dark variants to match the current Windows
+        color theme. Has no effect on hover effects — those are controlled separately by
+        "Player hover effect" and "Media buttons hover effect".
+    - iconStyle: "fluent_outline"
+      $name: Icon style
+      $options:
+      - "fluent_outline": "Segoe Fluent Icons (Outline)"
+      - "fluent_filled": "Segoe Fluent Icons (Filled)"
+      - "mdl2_outline": "Segoe MDL2 Assets (Outline)"
+      - "mdl2_filled": "Segoe MDL2 Assets (Filled)"
+    - buttonCornerRadius: 4
+      $name: Button corner radius (px)
+    - buttonColor: "255 255 255"
+      $name: Button icons color (R G B 0-255)
+      $description: "Use '-1 -1 -1' for system contrast color, '-2 -2 -2' for album art color"
+    - buttonColorOpacity: 100
+      $name: Button icons opacity (0-100)
+    $name: Media Buttons Style
+
+  - TitleTextStyleSettings:
+    - titleColor: "255 255 255"
+      $name: Title color (R G B 0-255)
+      $description: "Use '-1 -1 -1' for system contrast color, '-2 -2 -2' for album art color"
+    - titleColorOpacity: 100
+      $name: Title opacity (0-100)
+    - titleFont: segoe_ui_variable
+      $name: Title font
+      $options:
+        - segoe_ui_variable: Segoe UI Variable Display
+        - segoe_ui: Segoe UI
+        - aptos: Aptos
+        - calibri: Calibri
+        - cambria: Cambria
+        - candara: Candara
+        - consolas: Consolas
+        - corbel: Corbel
+        - arial: Arial
+        - trebuchet: Trebuchet MS
+        - verdana: Verdana
+        - tahoma: Tahoma
+        - georgia: Georgia
+        - times_new_roman: Times New Roman
+        - custom: Custom...
+    - titleFontSize: 12
+      $name: Title font size
+    - titleFontFamily: ""
+      $name: Title font family (for Custom option)
+      $description: >-
+        For a list of fonts that are shipped with Windows 11, refer to the
+        following page:
+        https://learn.microsoft.com/en-us/typography/fonts/windows_11_font_list
+    - titleFontWeight: ""
+      $name: Title font weight
+      $options:
+      - "": Default
+      - Thin: Thin
+      - ExtraLight: Extra light
+      - Light: Light
+      - SemiLight: Semi light
+      - Normal: Normal
+      - Medium: Medium
+      - SemiBold: Semi bold
+      - Bold: Bold
+      - ExtraBold: Extra bold
+      - Black: Black
+      - ExtraBlack: Extra black
+    - titleFontStyle: ""
+      $name: Title font style
+      $options:
+      - "": Default
+      - Normal: Normal
+      - Oblique: Oblique
+      - Italic: Italic
+    - titleCharacterSpacing: 0
+      $name: Title character spacing
+      $description: Can be a positive or a negative number.
+    $name: Title Text Style
+
+  - ArtistTextStyleSettings:
+    - artistColor: "255 255 255"
+      $name: Artist color (R G B 0-255)
+      $description: "Use '-1 -1 -1' for system contrast color, '-2 -2 -2' for album art color"
+    - artistColorOpacity: 80
+      $name: Artist opacity (0-100)
+    - artistFont: segoe_ui_variable
+      $name: Artist font
+      $options:
+        - segoe_ui_variable: Segoe UI Variable Display
+        - segoe_ui: Segoe UI
+        - aptos: Aptos
+        - calibri: Calibri
+        - cambria: Cambria
+        - candara: Candara
+        - consolas: Consolas
+        - corbel: Corbel
+        - arial: Arial
+        - trebuchet: Trebuchet MS
+        - verdana: Verdana
+        - tahoma: Tahoma
+        - georgia: Georgia
+        - times_new_roman: Times New Roman
+        - custom: Custom...
+    - artistFontSize: 11
+      $name: Artist font size
+    - artistFontFamily: ""
+      $name: Artist font family (for Custom option)
+      $description: >-
+        For a list of fonts that are shipped with Windows 11, refer to the
+        following page:
+        https://learn.microsoft.com/en-us/typography/fonts/windows_11_font_list
+    - artistFontWeight: ""
+      $name: Artist font weight
+      $options:
+      - "": Default
+      - Thin: Thin
+      - ExtraLight: Extra light
+      - Light: Light
+      - SemiLight: Semi light
+      - Normal: Normal
+      - Medium: Medium
+      - SemiBold: Semi bold
+      - Bold: Bold
+      - ExtraBold: Extra bold
+      - Black: Black
+      - ExtraBlack: Extra black
+    - artistFontStyle: ""
+      $name: Artist font style
+      $options:
+      - "": Default
+      - Normal: Normal
+      - Oblique: Oblique
+      - Italic: Italic
+    - artistCharacterSpacing: 0
+      $name: Artist character spacing
+      $description: Can be a positive or a negative number.
+    $name: Artist Text Style
 
   - AlbumArtDisplaySettings:
     - albumArtEmptyBehavior: "show"
@@ -158,7 +347,7 @@ If you encounter any issues, bugs, or have suggestions for new features, please 
       - "low": "Low (faster, less memory)"
       - "medium": "Medium (default)"
       - "high": "High (best quality)"
-    - showPauseOverlay: false
+    - showPauseOverlay: true
       $name: Show pause icon overlay on album art when paused
     - pauseOverlayOpacity: 60
       $name: Pause overlay background opacity (0-100)
@@ -178,115 +367,12 @@ If you encounter any issues, bugs, or have suggestions for new features, please 
     - appIconSize: 12
       $name: App icon size (px)
     $name: Album Art Display
-
-  - TextDisplaySettings:
-    - showFullTitleOnHover: true
-      $name: Show full track title on hover (tooltip)
-    - textSpacing: 1
-      $name: Spacing between title and artist (px)
-    - titleFontSize: 12
-      $name: Title font size
-    - titleFont: segoe_ui_variable
-      $name: Title Font
-      $options:
-        - segoe_ui_variable: Segoe UI Variable Display
-        - segoe_ui: Segoe UI
-        - segoe_ui_semibold: Segoe UI Semibold
-        - segoe_ui_bold: Segoe UI Bold
-        - segoe_ui_light: Segoe UI Light
-        - segoe_ui_semilight: Segoe UI Semilight
-        - aptos: Aptos
-        - calibri: Calibri
-        - cambria: Cambria
-        - candara: Candara
-        - consolas: Consolas
-        - corbel: Corbel
-        - arial: Arial
-        - trebuchet: Trebuchet MS
-        - verdana: Verdana
-        - tahoma: Tahoma
-        - georgia: Georgia
-        - times_new_roman: Times New Roman
-    - artistFontSize: 11
-      $name: Artist font size
-    - artistFont: segoe_ui_variable
-      $name: Artist Font
-      $options:
-        - segoe_ui_variable: Segoe UI Variable Display
-        - segoe_ui: Segoe UI
-        - segoe_ui_semibold: Segoe UI Semibold
-        - segoe_ui_bold: Segoe UI Bold
-        - segoe_ui_light: Segoe UI Light
-        - segoe_ui_semilight: Segoe UI Semilight
-        - aptos: Aptos
-        - calibri: Calibri
-        - cambria: Cambria
-        - candara: Candara
-        - consolas: Consolas
-        - corbel: Corbel
-        - arial: Arial
-        - trebuchet: Trebuchet MS
-        - verdana: Verdana
-        - tahoma: Tahoma
-        - georgia: Georgia
-        - times_new_roman: Times New Roman
-    $name: Text Display
-
-  - ThemeSettings:
-    - autoTheme: true
-      $name: Enable auto theme
-      $description: When enabled, text and button colors are determined automatically based on system theme. When disabled, uses custom Title color, Button icons color, and Artist color settings
-    - backgroundType: "none"
-      $name: Background type
-      $options:
-      - "none":       "None (transparent)"
-      - "solid":      "Solid color"
-      - "gradient":   "Gradient"
-      - "acrylic":    "Acrylic"
-      - "mica":       "Mica"
-      - "mica_alt":   "Mica Alt"
-      - "album_art_blur": "Album art - Blur"
-    - solidColor: "32 32 32"
-      $name: Primary color (R G B 0-255)
-      $description: "Use '-1 -1 -1' for system contrast color, '-2 -2 -2' for album art color"
-    - solidColor2: "64 64 64"
-      $name: Secondary color for gradient (R G B 0-255)
-      $description: "Use '-1 -1 -1' for system contrast color, '-2 -2 -2' for album art color"
-    - solidOpacity: 80
-      $name: Solid color opacity (0-100)
-    - gradientAngle: 0
-      $name: Gradient rotation angle (0-360)
-    - gradientBalance: 50
-      $name: Gradient color balance (0-100)
-    - acrylicTintOpacity: 60
-      $name: Acrylic tint opacity (0-100)
-    - micaOpacity: 20
-      $name: Mica/Mica Alt opacity (0-100)
-    - blurOpacity: 100
-      $name: Album art blur opacity (0-100)
-    - blurRadius: 10
-      $name: Album art blur strength (1-50)
-    - cornerRadius: 4
-      $name: Panel corner radius (px)
-    - buttonColor: "255 255 255"
-      $name: Button icons color (R G B 0-255)
-      $description: "Use '-1 -1 -1' for system contrast color, '-2 -2 -2' for album art color"
-    - buttonColorOpacity: 100
-      $name: Button icons opacity (0-100)
-    - titleColor: "255 255 255"
-      $name: Title color (R G B 0-255)
-      $description: "Use '-1 -1 -1' for system contrast color, '-2 -2 -2' for album art color"
-    - titleColorOpacity: 90
-      $name: Title opacity (0-100)
-    - artistColor: "200 200 200"
-      $name: Artist color (R G B 0-255)
-      $description: "Use '-1 -1 -1' for system contrast color, '-2 -2 -2' for album art color"
-    - artistColorOpacity: 60
-      $name: Artist opacity (0-100)
-    $name: Theme & Colors
-  $name: Display & Appearance
+  $name: Appearance Settings
 
 - BehaviorSettings:
+  - disableAlbumArtClick: false
+    $name: Disable album art click (click through to player)
+    $description: When enabled, clicks on the album art will pass through to the player area underneath
   - ClickActionSettings:
       - - object: player
           $name: Object
@@ -399,19 +485,17 @@ If you encounter any issues, bugs, or have suggestions for new features, please 
     $name: Hide when a fullscreen app is running
   - idleHideSeconds: 0
     $name: Idle auto-hide timeout (seconds, 0 = disabled)
-  - enablePlayerHoverEffect: true
-    $name: Enable button-style hover effect on player
-  - enableMediaButtonsHoverEffect: true
-    $name: Enable hover effect on media buttons (play, prev, next, etc.)
+  - showFullTitleOnHover: true
+    $name: Show full track title on hover (tooltip)
   $name: Behavior Settings
 
 - AnimationSettings:
   - enableSmoothPositionAnimation: true
-    $name: Enable smooth position animation (like taskbar icons)
+    $name: Enable smooth position animation
   $name: Animation Settings
 
 - NotificationSettings:
-  - showSuccessNotification: true
+  - showSuccessNotification: false
     $name: Show notification on successful mod load
     $description: Display a Windows notification when the mod is successfully loaded or reloaded
   $name: Notification Settings
@@ -445,6 +529,7 @@ If you encounter any issues, bugs, or have suggestions for new features, please 
 #include <winrt/Windows.UI.Xaml.Shapes.h>
 #include <winrt/Windows.UI.Xaml.Media.Animation.h>
 #include <winrt/Windows.UI.Xaml.Markup.h>
+#include <winrt/Windows.UI.Xaml.Interop.h>
 #include <winrt/Windows.UI.Xaml.Input.h>
 #include <winrt/Windows.UI.Xaml.Automation.h>
 #include <winrt/Windows.UI.ViewManagement.h>
@@ -522,13 +607,14 @@ struct ModSettings {
     bool         showTrackTitle       = true;
     bool         showFullTitleOnHover = true;
     bool         showTrackArtist      = true;
+    bool         swapTitleArtist      = false;
     std::wstring iconStyle            = L"fluent_filled";
     bool         showAppIcon          = false;
     std::wstring appIconCorner        = L"bottom_right";
     int          appIconSize          = 12;
     bool         hideWhenNoMedia      = true;
-    bool         enablePlayerHoverEffect   = true;
-    bool         enableMediaButtonsHoverEffect = true;
+    std::wstring playerHoverEffectMode = L"auto";
+    std::wstring mediaButtonsHoverEffectMode = L"auto";
     bool         enableSmoothPositionAnimation = true;
     int          controlsMarginLeft   = 4;
     int          controlsMarginRight  = 0;
@@ -558,6 +644,14 @@ struct ModSettings {
     int          artistFontSize       = 11;
     std::wstring titleFont            = L"segoe_ui_variable";
     std::wstring artistFont           = L"segoe_ui_variable";
+    std::wstring titleFontFamily      = L"";
+    std::wstring artistFontFamily     = L"";
+    std::wstring titleFontWeight      = L"";
+    std::wstring artistFontWeight     = L"";
+    std::wstring titleFontStyle       = L"";
+    std::wstring artistFontStyle      = L"";
+    int          titleCharacterSpacing  = 0;
+    int          artistCharacterSpacing = 0;
     int          textSpacing          = 1;
     std::wstring solidColor           = L"32 32 32";
     std::wstring solidColor2          = L"64 64 64";
@@ -577,6 +671,8 @@ struct ModSettings {
     bool         showDebugBorders     = false;
     bool         showLayoutAnchors    = false;
     bool         showSuccessNotification = false;
+    bool         hideUnsupportedButtons  = false;
+    bool         disableAlbumArtClick    = false;
 };
 static ModSettings g_settings;
 
@@ -615,6 +711,7 @@ static std::vector<MediaButtonConfig> g_mediaButtons;
 static std::mutex g_mediaButtonsMutex;
 
 static std::wstring MapFontName(const std::wstring& key) {
+    if (key == L"custom") return L"";
     if (key == L"segoe_ui_variable") return L"Segoe UI Variable Display";
     if (key == L"segoe_ui") return L"Segoe UI";
     if (key == L"segoe_ui_semibold") return L"Segoe UI Semibold";
@@ -671,67 +768,84 @@ static void LoadSettings() {
             } catch (...) { left = right = 0; }
         }
     };
+    auto HoverMode = [&Str](const wchar_t* key) -> std::wstring {
+        std::wstring mode = Str(key, L"auto");
+        if (mode == L"true" || mode == L"1" || mode == L"on") return L"auto";
+        if (mode == L"false" || mode == L"0" || mode == L"off") return L"off";
+        if (mode == L"black" || mode == L"dark") return L"black";
+        if (mode == L"white" || mode == L"light") return L"white";
+        return L"auto";
+    };
 
-    g_settings.position             = Str(L"MainSettings.PlayerSetting.position",    L"tray_right");
+    g_settings.position             = Str(L"MainSettings.PlayerSetting.position",    L"taskbar_left_edge");
 
-    ParseMargin(L"MainSettings.PlayerSetting.playerMargin", L"0 0", g_settings.playerMarginLeft, g_settings.playerMarginRight);
-    ParseMargin(L"MainSettings.PlayerSetting.playerWidth", L"80 320", g_settings.playerMinWidth, g_settings.playerMaxWidth);
+    ParseMargin(L"MainSettings.PlayerSetting.playerMargin", L"4 4", g_settings.playerMarginLeft, g_settings.playerMarginRight);
+    ParseMargin(L"MainSettings.PlayerSetting.playerWidth", L"0 0", g_settings.playerMinWidth, g_settings.playerMaxWidth);
     ParseMargin(L"MainSettings.PlayerSetting.playerHeight", L"40 40", g_settings.playerMinHeight, g_settings.playerMaxHeight);
 
     ParseMargin(L"MainSettings.AlbumArtSetting.albumArtWidth", L"32 64", g_settings.albumArtMinWidth, g_settings.albumArtMaxWidth);
     ParseMargin(L"MainSettings.AlbumArtSetting.albumArtHeight", L"32 32", g_settings.albumArtMinHeight, g_settings.albumArtMaxHeight);
-    ParseMargin(L"MainSettings.AlbumArtSetting.albumArtMargin", L"2 0", g_settings.albumArtLeftMargin, g_settings.albumArtRightMargin);
+    ParseMargin(L"MainSettings.AlbumArtSetting.albumArtMargin", L"0 0", g_settings.albumArtLeftMargin, g_settings.albumArtRightMargin);
 
     ParseMargin(L"MainSettings.TextAreaSetting.textAreaWidth", L"0 120", g_settings.textAreaMinWidth, g_settings.textAreaMaxWidth);
     ParseMargin(L"MainSettings.TextAreaSetting.textAreaHeight", L"0 0", g_settings.textAreaMinHeight, g_settings.textAreaMaxHeight);
-    ParseMargin(L"MainSettings.TextAreaSetting.textAreaMargin", L"0 0", g_settings.textAreaLeftMargin, g_settings.textAreaRightMargin);
+    ParseMargin(L"MainSettings.TextAreaSetting.textAreaMargin", L"5 5", g_settings.textAreaLeftMargin, g_settings.textAreaRightMargin);
 
     g_settings.mirrorLayout         = Wh_GetIntSetting(L"MainSettings.PlayerSetting.mirrorLayout") != 0;
-    g_settings.showMediaButtons     = Wh_GetIntSetting(L"DisplaySettings.MediaButtonsSettings.showMediaButtons") != 0;
-    ParseMargin(L"DisplaySettings.MediaButtonsSettings.mediaButtonsMargin", L"0 1", g_settings.mediaButtonsLeftMargin, g_settings.mediaButtonsRightMargin);
+    g_settings.showMediaButtons     = Wh_GetIntSetting(L"MainSettings.MediaButtonsSettings.showMediaButtons") != 0;
+    ParseMargin(L"MainSettings.MediaButtonsSettings.mediaButtonsMargin", L"2 2", g_settings.mediaButtonsLeftMargin, g_settings.mediaButtonsRightMargin);
     g_settings.showTrackTitle       = Wh_GetIntSetting(L"MainSettings.TextAreaSetting.showTrackTitle")    != 0;
-    g_settings.showFullTitleOnHover = Wh_GetIntSetting(L"DisplaySettings.TextDisplaySettings.showFullTitleOnHover") != 0;
+    g_settings.showFullTitleOnHover = Wh_GetIntSetting(L"BehaviorSettings.showFullTitleOnHover") != 0;
     g_settings.showTrackArtist      = Wh_GetIntSetting(L"MainSettings.TextAreaSetting.showTrackArtist")   != 0;
+    g_settings.swapTitleArtist      = Wh_GetIntSetting(L"MainSettings.TextAreaSetting.swapTitleArtist")   != 0;
     g_settings.showAlbumArt         = Wh_GetIntSetting(L"MainSettings.AlbumArtSetting.showAlbumArt")      != 0;
-    g_settings.albumArtEmptyBehavior = Str(L"DisplaySettings.AlbumArtDisplaySettings.albumArtEmptyBehavior", L"show");
-    g_settings.albumArtQuality      = Str(L"DisplaySettings.AlbumArtDisplaySettings.albumArtQuality", L"medium");
-    g_settings.showPauseOverlay     = Wh_GetIntSetting(L"DisplaySettings.AlbumArtDisplaySettings.showPauseOverlay")  != 0;
-    g_settings.pauseOverlayOpacity  = Int(L"DisplaySettings.AlbumArtDisplaySettings.pauseOverlayOpacity",     0, 100,  60);
-    g_settings.iconStyle            = Str(L"DisplaySettings.IconsSettings.iconStyle", L"fluent_outline");
-    g_settings.showAppIcon          = Wh_GetIntSetting(L"DisplaySettings.AlbumArtDisplaySettings.showAppIcon")       != 0;
-    g_settings.appIconCorner        = Str(L"DisplaySettings.AlbumArtDisplaySettings.appIconCorner",  L"bottom_right");
-    g_settings.appIconSize          = Int(L"DisplaySettings.AlbumArtDisplaySettings.appIconSize",         8,  32,  12);
+    g_settings.albumArtEmptyBehavior = Str(L"AppearanceSettings.AlbumArtDisplaySettings.albumArtEmptyBehavior", L"show");
+    g_settings.albumArtQuality      = Str(L"AppearanceSettings.AlbumArtDisplaySettings.albumArtQuality", L"medium");
+    g_settings.showPauseOverlay     = Wh_GetIntSetting(L"AppearanceSettings.AlbumArtDisplaySettings.showPauseOverlay")  != 0;
+    g_settings.pauseOverlayOpacity  = Int(L"AppearanceSettings.AlbumArtDisplaySettings.pauseOverlayOpacity",     0, 100,  60);
+    g_settings.iconStyle            = Str(L"AppearanceSettings.MediaButtonsStyleSettings.iconStyle", L"fluent_outline");
+    g_settings.showAppIcon          = Wh_GetIntSetting(L"AppearanceSettings.AlbumArtDisplaySettings.showAppIcon")       != 0;
+    g_settings.appIconCorner        = Str(L"AppearanceSettings.AlbumArtDisplaySettings.appIconCorner",  L"bottom_right");
+    g_settings.appIconSize          = Int(L"AppearanceSettings.AlbumArtDisplaySettings.appIconSize",         8,  32,  12);
 
-    g_settings.autoTheme            = Wh_GetIntSetting(L"DisplaySettings.ThemeSettings.autoTheme") != 0;
-    g_settings.backgroundType       = Str(L"DisplaySettings.ThemeSettings.backgroundType", L"none");
-    g_settings.blurOpacity          = Int(L"DisplaySettings.ThemeSettings.blurOpacity",           0, 100, 100);
-    g_settings.blurRadius           = Int(L"DisplaySettings.ThemeSettings.blurRadius",            1,  50,  10);
-    g_settings.cornerRadius         = Int(L"DisplaySettings.ThemeSettings.cornerRadius",          0,  24,   5);
-    g_settings.albumArtOpacity      = Int(L"DisplaySettings.AlbumArtDisplaySettings.albumArtOpacity",       0, 100, 100);
-    g_settings.albumArtCornerRadius = Int(L"DisplaySettings.AlbumArtDisplaySettings.albumArtCornerRadius",  0,  24,   4);
-    ParseMargin(L"DisplaySettings.LayoutSettings.controlsMargin", L"4 0", g_settings.controlsMarginLeft, g_settings.controlsMarginRight);
-    g_settings.buttonSpacing        = Wh_GetIntSetting(L"DisplaySettings.MediaButtonsSettings.buttonSpacing");
-    g_settings.buttonSize           = Int(L"DisplaySettings.MediaButtonsSettings.buttonSize",          16,  48,  28);
-    g_settings.buttonIconSize       = Int(L"DisplaySettings.MediaButtonsSettings.buttonIconSize",       8,  32,  16);
-    g_settings.buttonCornerRadius   = Int(L"DisplaySettings.MediaButtonsSettings.buttonCornerRadius",   0,  24,  14);
-    g_settings.titleFontSize        = Int(L"DisplaySettings.TextDisplaySettings.titleFontSize",         7,  24,  12);
-    g_settings.titleFont            = MapFontName(Str(L"DisplaySettings.TextDisplaySettings.titleFont", L"segoe_ui_variable"));
-    g_settings.artistFontSize       = Int(L"DisplaySettings.TextDisplaySettings.artistFontSize",        7,  24,  10);
-    g_settings.artistFont           = MapFontName(Str(L"DisplaySettings.TextDisplaySettings.artistFont", L"segoe_ui_semibold"));
-    g_settings.textSpacing          = Int(L"DisplaySettings.TextDisplaySettings.textSpacing",           0,  20,   1);
-    g_settings.solidColor           = Str(L"DisplaySettings.ThemeSettings.solidColor", L"32 32 32");
-    g_settings.solidColor2          = Str(L"DisplaySettings.ThemeSettings.solidColor2", L"64 64 64");
-    g_settings.solidOpacity         = Int(L"DisplaySettings.ThemeSettings.solidOpacity", 0, 100, 80);
-    g_settings.gradientAngle        = Int(L"DisplaySettings.ThemeSettings.gradientAngle", 0, 360, 0);
-    g_settings.gradientBalance      = Int(L"DisplaySettings.ThemeSettings.gradientBalance", 0, 100, 50);
-    g_settings.acrylicTintOpacity   = Int(L"DisplaySettings.ThemeSettings.acrylicTintOpacity", 0, 100, 60);
-    g_settings.micaOpacity          = Int(L"DisplaySettings.ThemeSettings.micaOpacity", 0, 100, 20);
-    g_settings.buttonColor          = Str(L"DisplaySettings.ThemeSettings.buttonColor", L"255 255 255");
-    g_settings.buttonColorOpacity   = Int(L"DisplaySettings.ThemeSettings.buttonColorOpacity", 0, 100, 100);
-    g_settings.titleColor           = Str(L"DisplaySettings.ThemeSettings.titleColor", L"255 255 255");
-    g_settings.titleColorOpacity    = Int(L"DisplaySettings.ThemeSettings.titleColorOpacity", 0, 100, 90);
-    g_settings.artistColor          = Str(L"DisplaySettings.ThemeSettings.artistColor", L"200 200 200");
-    g_settings.artistColorOpacity   = Int(L"DisplaySettings.ThemeSettings.artistColorOpacity", 0, 100, 60);
+    g_settings.autoTheme            = Wh_GetIntSetting(L"AppearanceSettings.MediaButtonsStyleSettings.autoTheme") != 0;
+    g_settings.backgroundType       = Str(L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"none");
+    g_settings.blurOpacity          = Int(L"AppearanceSettings.BackgroundStyleSettings.blurOpacity",           0, 100, 65);
+    g_settings.blurRadius           = Int(L"AppearanceSettings.BackgroundStyleSettings.blurRadius",            1,  50,  11);
+    g_settings.cornerRadius         = Int(L"AppearanceSettings.BackgroundStyleSettings.cornerRadius",          0,  24,   4);
+    g_settings.albumArtOpacity      = Int(L"AppearanceSettings.AlbumArtDisplaySettings.albumArtOpacity",       0, 100, 100);
+    g_settings.albumArtCornerRadius = Int(L"AppearanceSettings.AlbumArtDisplaySettings.albumArtCornerRadius",  0,  24,   4);
+    ParseMargin(L"AppearanceSettings.LayoutSettings.controlsMargin", L"4 0", g_settings.controlsMarginLeft, g_settings.controlsMarginRight);
+    g_settings.buttonSpacing        = Wh_GetIntSetting(L"MainSettings.MediaButtonsSettings.buttonSpacing");
+    g_settings.buttonSize           = Int(L"MainSettings.MediaButtonsSettings.buttonSize",          16,  48,  28);
+    g_settings.buttonIconSize       = Int(L"MainSettings.MediaButtonsSettings.buttonIconSize",       8,  32,  12);
+    g_settings.buttonCornerRadius   = Int(L"AppearanceSettings.MediaButtonsStyleSettings.buttonCornerRadius",   0,  24,  4);
+    g_settings.titleFontSize        = Int(L"AppearanceSettings.TitleTextStyleSettings.titleFontSize",         7,  24,  12);
+    g_settings.titleFont            = MapFontName(Str(L"AppearanceSettings.TitleTextStyleSettings.titleFont", L"segoe_ui_variable"));
+    g_settings.titleFontFamily      = Str(L"AppearanceSettings.TitleTextStyleSettings.titleFontFamily", L"");
+    g_settings.titleFontWeight      = Str(L"AppearanceSettings.TitleTextStyleSettings.titleFontWeight", L"");
+    g_settings.titleFontStyle       = Str(L"AppearanceSettings.TitleTextStyleSettings.titleFontStyle", L"");
+    g_settings.titleCharacterSpacing = Wh_GetIntSetting(L"AppearanceSettings.TitleTextStyleSettings.titleCharacterSpacing");
+    g_settings.artistFontSize       = Int(L"AppearanceSettings.ArtistTextStyleSettings.artistFontSize",        7,  24,  11);
+    g_settings.artistFont           = MapFontName(Str(L"AppearanceSettings.ArtistTextStyleSettings.artistFont", L"segoe_ui_variable"));
+    g_settings.artistFontFamily     = Str(L"AppearanceSettings.ArtistTextStyleSettings.artistFontFamily", L"");
+    g_settings.artistFontWeight     = Str(L"AppearanceSettings.ArtistTextStyleSettings.artistFontWeight", L"");
+    g_settings.artistFontStyle      = Str(L"AppearanceSettings.ArtistTextStyleSettings.artistFontStyle", L"");
+    g_settings.artistCharacterSpacing = Wh_GetIntSetting(L"AppearanceSettings.ArtistTextStyleSettings.artistCharacterSpacing");
+    g_settings.textSpacing          = Int(L"MainSettings.TextAreaSetting.textSpacing",           0,  20,   1);
+    g_settings.solidColor           = Str(L"AppearanceSettings.BackgroundStyleSettings.solidColor", L"35 35 35");
+    g_settings.solidColor2          = Str(L"AppearanceSettings.BackgroundStyleSettings.solidColor2", L"128 128 128");
+    g_settings.solidOpacity         = Int(L"AppearanceSettings.BackgroundStyleSettings.solidOpacity", 0, 100, 100);
+    g_settings.gradientAngle        = Int(L"AppearanceSettings.BackgroundStyleSettings.gradientAngle", 0, 360, 50);
+    g_settings.gradientBalance      = Int(L"AppearanceSettings.BackgroundStyleSettings.gradientBalance", 0, 100, 50);
+    g_settings.acrylicTintOpacity   = Int(L"AppearanceSettings.BackgroundStyleSettings.acrylicTintOpacity", 0, 100, 50);
+    g_settings.micaOpacity          = Int(L"AppearanceSettings.BackgroundStyleSettings.micaOpacity", 0, 100, 50);
+    g_settings.buttonColor          = Str(L"AppearanceSettings.MediaButtonsStyleSettings.buttonColor", L"255 255 255");
+    g_settings.buttonColorOpacity   = Int(L"AppearanceSettings.MediaButtonsStyleSettings.buttonColorOpacity", 0, 100, 100);
+    g_settings.titleColor           = Str(L"AppearanceSettings.TitleTextStyleSettings.titleColor", L"255 255 255");
+    g_settings.titleColorOpacity    = Int(L"AppearanceSettings.TitleTextStyleSettings.titleColorOpacity", 0, 100, 100);
+    g_settings.artistColor          = Str(L"AppearanceSettings.ArtistTextStyleSettings.artistColor", L"255 255 255");
+    g_settings.artistColorOpacity   = Int(L"AppearanceSettings.ArtistTextStyleSettings.artistColorOpacity", 0, 100, 80);
 
     for (int i = 0; i < 20; i++) {
         PCWSTR objectStr = Wh_GetStringSetting(L"BehaviorSettings.ClickActionSettings[%d].object", i);
@@ -813,12 +927,16 @@ static void LoadSettings() {
     g_settings.hideWhenNoMedia      = Wh_GetIntSetting(L"BehaviorSettings.hideWhenNoMedia")   != 0;
     g_settings.hideFullscreen       = Wh_GetIntSetting(L"BehaviorSettings.hideFullscreen")    != 0;
     g_settings.idleHideSeconds      = std::max(Wh_GetIntSetting(L"BehaviorSettings.idleHideSeconds"), 0);
-    g_settings.enablePlayerHoverEffect   = Wh_GetIntSetting(L"BehaviorSettings.enablePlayerHoverEffect") != 0;
-    g_settings.enableMediaButtonsHoverEffect = Wh_GetIntSetting(L"BehaviorSettings.enableMediaButtonsHoverEffect") != 0;
+    g_settings.playerHoverEffectMode = HoverMode(L"AppearanceSettings.BackgroundStyleSettings.enablePlayerHoverEffect");
+    g_settings.mediaButtonsHoverEffectMode = HoverMode(L"AppearanceSettings.BackgroundStyleSettings.enableMediaButtonsHoverEffect");
 
     g_settings.enableSmoothPositionAnimation = Wh_GetIntSetting(L"AnimationSettings.enableSmoothPositionAnimation") != 0;
 
     g_settings.showSuccessNotification = Wh_GetIntSetting(L"NotificationSettings.showSuccessNotification") != 0;
+
+    g_settings.hideUnsupportedButtons  = Wh_GetIntSetting(L"MainSettings.MediaButtonsSettings.hideUnsupportedButtons") != 0;
+
+    g_settings.disableAlbumArtClick    = Wh_GetIntSetting(L"BehaviorSettings.disableAlbumArtClick") != 0;
 
     g_settings.ignoredProcesses     = Str(L"DebugSettings.ignoredProcesses", L"");
     g_settings.enableTreeDump       = Wh_GetIntSetting(L"DebugSettings.enableTreeDump")    != 0;
@@ -832,7 +950,7 @@ static void LoadSettings() {
 
         for (int i = 0; i < 10; i++) {
             try {
-                PCWSTR itemStr = Wh_GetStringSetting(L"DisplaySettings.MediaButtonsSettings.mediaButtons[%d]", i);
+                PCWSTR itemStr = Wh_GetStringSetting(L"MainSettings.MediaButtonsSettings.mediaButtons[%d]", i);
                 if (!itemStr) {
                     break;
                 }
@@ -988,6 +1106,11 @@ struct MediaState {
     uint64_t          thumbnailHash = 0;
     std::vector<BYTE> appIconBytes;
     std::wstring      appIconKey;
+    bool              canSkipPrevious  = true;
+    bool              canSkipNext      = true;
+    bool              canShuffle       = true;
+    bool              canRepeat        = true;
+    bool              canSeek          = true;
 };
 
 static MediaState g_media;
@@ -1079,19 +1202,61 @@ static SolidColorBrush MakeBrush(winrt::Windows::UI::Color c) {
     SolidColorBrush b; b.Color(c); return b;
 }
 
-static winrt::Windows::UI::Color GetSystemButtonHoverColor() {
-    if (IsLightTheme()) return winrt::Windows::UI::Color{0x60, 0xFF, 0xFF, 0xFF};
-    else return winrt::Windows::UI::Color{0x10, 0xFF, 0xFF, 0xFF};
+static bool IsHoverEffectEnabled(std::wstring const& mode) {
+    return mode != L"off";
 }
 
-static winrt::Windows::UI::Color GetSystemButtonPressedColor() {
-    if (IsLightTheme()) return winrt::Windows::UI::Color{0x50, 0xFF, 0xFF, 0xFF};
-    else return winrt::Windows::UI::Color{0x0A, 0xFF, 0xFF, 0xFF};
+static bool IsHoverLightTheme(std::wstring const& mode) {
+    if (mode == L"white") return true;
+    if (mode == L"black") return false;
+    return IsSystemLightTheme();
 }
 
-static winrt::Windows::UI::Color GetSystemButtonBorderColor() {
-    if (IsLightTheme()) return winrt::Windows::UI::Color{0x08, 0x00, 0x00, 0x00};
-    else return winrt::Windows::UI::Color{0x14, 0xFF, 0xFF, 0xFF};
+static winrt::Windows::UI::Color GetSystemButtonHoverColor(std::wstring const& mode) {
+    if (IsHoverLightTheme(mode)) {
+        return winrt::Windows::UI::Color{0xCC, 0xFF, 0xFF, 0xFF};
+    }
+    return winrt::Windows::UI::Color{0x1A, 0xFF, 0xFF, 0xFF};
+}
+
+static winrt::Windows::UI::Color GetSystemButtonPressedColor(std::wstring const& mode) {
+    if (IsHoverLightTheme(mode)) {
+        return winrt::Windows::UI::Color{0xE6, 0xFF, 0xFF, 0xFF};
+    }
+    return winrt::Windows::UI::Color{0x0F, 0xFF, 0xFF, 0xFF};
+}
+
+static winrt::Windows::UI::Color GetSystemButtonBorderColor(std::wstring const& mode) {
+    if (IsHoverLightTheme(mode)) {
+        return winrt::Windows::UI::Color{0xCC, 0xFF, 0xFF, 0xFF};
+    }
+    return winrt::Windows::UI::Color{0x14, 0xFF, 0xFF, 0xFF};
+}
+
+static SolidColorBrush g_mediaHoverBrush   = nullptr;
+static SolidColorBrush g_mediaPressedBrush = nullptr;
+static SolidColorBrush g_playerHoverBrush   = nullptr;
+static SolidColorBrush g_playerPressedBrush = nullptr;
+static SolidColorBrush g_playerBorderBrush  = nullptr;
+
+static void EnsureHoverBrushes() {
+    if (!g_mediaHoverBrush) {
+        g_mediaHoverBrush   = SolidColorBrush(GetSystemButtonHoverColor(g_settings.mediaButtonsHoverEffectMode));
+        g_mediaPressedBrush = SolidColorBrush(GetSystemButtonPressedColor(g_settings.mediaButtonsHoverEffectMode));
+    }
+    if (!g_playerHoverBrush) {
+        g_playerHoverBrush   = SolidColorBrush(GetSystemButtonHoverColor(g_settings.playerHoverEffectMode));
+        g_playerPressedBrush = SolidColorBrush(GetSystemButtonPressedColor(g_settings.playerHoverEffectMode));
+        g_playerBorderBrush  = SolidColorBrush(GetSystemButtonBorderColor(g_settings.playerHoverEffectMode));
+    }
+}
+
+static void UpdateHoverBrushColors() {
+    g_mediaHoverBrush    = nullptr;
+    g_mediaPressedBrush  = nullptr;
+    g_playerHoverBrush   = nullptr;
+    g_playerPressedBrush = nullptr;
+    g_playerBorderBrush  = nullptr;
 }
 
 static ObjectAnimationUsingKeyFrames MakeDiscreteObjectAnimation(
@@ -1133,24 +1298,25 @@ static Border GetButtonTemplateRoot(Button const& btn) {
     if (!btn) return nullptr;
     try {
         btn.ApplyTemplate();
+        if (VisualTreeHelper::GetChildrenCount(btn) > 0) {
+            if (auto border = VisualTreeHelper::GetChild(btn, 0).try_as<Border>())
+                return border;
+        }
         if (auto named = btn.FindName(L"Root")) {
             if (auto border = named.try_as<Border>()) return border;
-        }
-        if (VisualTreeHelper::GetChildrenCount(btn) > 0) {
-            return VisualTreeHelper::GetChild(btn, 0).try_as<Border>();
         }
     } catch (...) {}
     return nullptr;
 }
 
 static VisualStateGroup FindCommonStatesGroup(Button const& btn) {
-    for (auto const& group : VisualStateManager::GetVisualStateGroups(btn)) {
-        if (group.Name() == L"CommonStates") return group;
-    }
     if (auto root = GetButtonTemplateRoot(btn)) {
         for (auto const& group : VisualStateManager::GetVisualStateGroups(root)) {
             if (group.Name() == L"CommonStates") return group;
         }
+    }
+    for (auto const& group : VisualStateManager::GetVisualStateGroups(btn)) {
+        if (group.Name() == L"CommonStates") return group;
     }
     return nullptr;
 }
@@ -1200,11 +1366,7 @@ static Style CreateFluentMediaButtonStyle() {
 }
 
 static Style GetFluentMediaButtonStyle() {
-    static winrt::weak_ref<Style> cached;
-    if (auto existing = cached.get()) return existing;
-    auto style = CreateFluentMediaButtonStyle();
-    if (style) cached = style;
-    return style;
+    return CreateFluentMediaButtonStyle();
 }
 
 static void ApplyFluentMediaButtonStyle(Button const& btn) {
@@ -1263,6 +1425,43 @@ static void GoToCommonState(Button const& btn, bool effectEnabled, bool pressed,
     } catch (...) {}
 }
 
+static void ApplyCommonStateDirect(
+    Button const& btn,
+    std::wstring const& hoverMode,
+    bool pressed,
+    bool hovered,
+    bool playerButton,
+    Brush const& normalBackground)
+{
+    if (!btn) return;
+    try {
+        btn.ApplyTemplate();
+        auto root = GetButtonTemplateRoot(btn);
+        if (!root) {
+            GoToCommonState(btn, IsHoverEffectEnabled(hoverMode), pressed, hovered);
+            return;
+        }
+
+        auto transparent = MakeBrush({0x00, 0, 0, 0});
+        Brush background = normalBackground ? normalBackground : transparent;
+        Brush border = transparent;
+
+        if (IsHoverEffectEnabled(hoverMode)) {
+            if (pressed) {
+                background = MakeBrush(GetSystemButtonPressedColor(hoverMode));
+                if (playerButton) border = MakeBrush(GetSystemButtonBorderColor(hoverMode));
+            } else if (hovered) {
+                background = MakeBrush(GetSystemButtonHoverColor(hoverMode));
+                if (playerButton) border = MakeBrush(GetSystemButtonBorderColor(hoverMode));
+            }
+        }
+
+        root.Background(background);
+        root.BorderBrush(border);
+    } catch (...) {
+        GoToCommonState(btn, IsHoverEffectEnabled(hoverMode), pressed, hovered);
+    }
+}
 static void RunWhenButtonReady(Button const& btn, std::function<void()> const& action) {
     if (!btn || !action) return;
     auto run = std::make_shared<std::function<void()>>(action);
@@ -1284,28 +1483,29 @@ static void RunWhenButtonReady(Button const& btn, std::function<void()> const& a
 }
 
 static void SetupMediaButtonCommonStates(Button const& btn) {
+    EnsureHoverBrushes();
     auto transparent = MakeBrush({0x00, 0, 0, 0});
     SetupCommonStates(
         btn,
         transparent,
-        MakeBrush(GetSystemButtonHoverColor()),
-        MakeBrush(GetSystemButtonPressedColor()),
+        g_mediaHoverBrush,
+        g_mediaPressedBrush,
         transparent,
         transparent, transparent, transparent, transparent);
 }
 
 static void SetupPlayerButtonCommonStates(Button const& btn, Brush const& normalBackground) {
+    EnsureHoverBrushes();
     auto transparent = MakeBrush({0x00, 0, 0, 0});
-    auto border = MakeBrush(GetSystemButtonBorderColor());
     SetupCommonStates(
         btn,
         normalBackground,
-        MakeBrush(GetSystemButtonHoverColor()),
-        MakeBrush(GetSystemButtonPressedColor()),
+        g_playerHoverBrush,
+        g_playerPressedBrush,
         transparent,
         transparent,
-        border,
-        border,
+        g_playerBorderBrush,
+        g_playerBorderBrush,
         transparent);
 }
 
@@ -1607,6 +1807,7 @@ static winrt::Windows::UI::Color ParseColorWithSpecialValues(const std::wstring&
 
 static winrt::Windows::UI::Color TextColor() {
     if (g_settings.autoTheme) {
+
         BYTE alpha = (BYTE)((90.0 / 100.0) * 255);
         if (IsSystemLightTheme()) {
             return winrt::Windows::UI::Color{alpha, 0x00, 0x00, 0x00};
@@ -1619,15 +1820,15 @@ static winrt::Windows::UI::Color TextColor() {
 }
 
 static winrt::Windows::UI::Color ArtistColor() {
+    BYTE alpha = (BYTE)((g_settings.artistColorOpacity / 100.0) * 255);
     if (g_settings.autoTheme) {
-        BYTE alpha = (BYTE)((80.0 / 100.0) * 255);
+
         if (IsSystemLightTheme()) {
             return winrt::Windows::UI::Color{alpha, 0x00, 0x00, 0x00};
         } else {
             return winrt::Windows::UI::Color{alpha, 0xFF, 0xFF, 0xFF};
         }
     }
-    BYTE alpha = (BYTE)((g_settings.artistColorOpacity / 100.0) * 255);
     return ParseColorWithSpecialValues(g_settings.artistColor, alpha);
 }
 
@@ -2489,6 +2690,25 @@ static void FetchPlaybackInfoAsync() {
                             else g_repeatMode = RepeatMode::Off;
                         }
                     } catch (...) {}
+
+                    try {
+                        auto controls = info.Controls();
+                        if (controls) {
+                            bool canPrev   = controls.IsPreviousEnabled();
+                            bool canNext   = controls.IsNextEnabled();
+                            bool canShuf   = controls.IsShuffleEnabled();
+                            bool canRep    = controls.IsRepeatEnabled();
+                            bool canSeek   = controls.IsPlaybackPositionEnabled();
+                            {
+                                std::lock_guard<std::mutex> lk(g_mediaMtx);
+                                g_media.canSkipPrevious = canPrev;
+                                g_media.canSkipNext     = canNext;
+                                g_media.canShuffle      = canShuf;
+                                g_media.canRepeat       = canRep;
+                                g_media.canSeek         = canSeek;
+                            }
+                        }
+                    } catch (...) {}
                 } catch (...) {
 
                 }
@@ -2508,6 +2728,14 @@ static void DetachCurrentSession() {
         if (g_evPlayback.value)   { g_currentSession.PlaybackInfoChanged(g_evPlayback); g_evPlayback = {}; }
     } catch (...) {}
     g_currentSession = nullptr;
+    {
+        std::lock_guard<std::mutex> lkm(g_mediaMtx);
+        g_media.canSkipPrevious = true;
+        g_media.canSkipNext     = true;
+        g_media.canShuffle      = true;
+        g_media.canRepeat       = true;
+        g_media.canSeek         = true;
+    }
 }
 
 static GlobalSystemMediaTransportControlsSession PickBestSession() {
@@ -2817,6 +3045,13 @@ static void DispatchMediaUpdate() {
 
 static void RefreshPlayerContents();
 static void UpdateVisibility();
+static void RefreshThemeColors();
+
+static std::atomic<bool> g_themeRefreshPending{false};
+
+static bool ShouldRefreshForSystemThemeChange() {
+    return g_settings.autoTheme;
+}
 
 static DWORD WINAPI TimerThreadProc(void*) {
     static bool lastThemeWasLight = IsSystemLightTheme();
@@ -2842,11 +3077,16 @@ static DWORD WINAPI TimerThreadProc(void*) {
         }
 
         if (wait == WAIT_OBJECT_0 + 1) {
-            if (g_settings.autoTheme) {
+            if (ShouldRefreshForSystemThemeChange()) {
                 bool currentThemeIsLight = IsSystemLightTheme();
                 if (currentThemeIsLight != lastThemeWasLight) {
                     lastThemeWasLight = currentThemeIsLight;
-                    g_needsUiUpdate = true;
+                    RunFromWindowThread(hWnd, [](void*) {
+                        if (!g_unloading && !g_applyingSettings && g_playerGrid) {
+                            RefreshThemeColors();
+                            UpdateVisibility();
+                        }
+                    }, nullptr);
                 }
             }
             if (hKey) {
@@ -2912,25 +3152,7 @@ static void StopIdleTimer() {
     if (g_idleStopEvent) { CloseHandle(g_idleStopEvent); g_idleStopEvent = nullptr; }
 }
 
-static void RefreshThemeColors();
-
 static LRESULT CALLBACK ThemeWatchWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    if (msg == WM_SETTINGCHANGE) {
-        const wchar_t* section = reinterpret_cast<const wchar_t*>(lParam);
-        bool shouldRefresh = false;
-        if (!section || !*section) {
-            shouldRefresh = true;
-        } else if (wcscmp(section, L"ImmersiveColorSet") == 0) {
-            shouldRefresh = true; 
-        }
-
-        if (shouldRefresh && g_taskbarWnd) {
-            RunFromWindowThread(g_taskbarWnd, [](void*) {
-                if (!g_unloading && !g_applyingSettings && g_playerGrid)
-                    RefreshThemeColors();
-            }, nullptr);
-        }
-    }
     return DefWindowProcW(hWnd, msg, wParam, lParam);
 }
 
@@ -2981,6 +3203,8 @@ static void StopThemeWatcher() {
 static void RefreshThemeColors() {
     if (!g_playerGrid || g_unloading || g_applyingSettings) return;
     try {
+        UpdateHoverBrushColors();
+
         auto textClr = TextColor();
         auto artistClr = ArtistColor();
         auto buttonClr = ButtonColor();
@@ -3017,10 +3241,10 @@ static void RefreshThemeColors() {
 
         if (auto fe = FindChildByName(g_playerGrid, L"FluentMedia_OuterBorder")) {
             if (auto btn = fe.try_as<Button>()) {
-                ApplyFreshFluentMediaButtonStyle(btn);
-                auto transparentBg = MakeBrush({0x00, 0, 0, 0});
-                SetupPlayerButtonCommonStates(btn, transparentBg);
-                VisualStateManager::GoToState(btn, L"Normal", false);
+                btn.ApplyTemplate();
+                auto normalBg = MakeBackgroundBrush();
+                SetupPlayerButtonCommonStates(btn, normalBg);
+                try { VisualStateManager::GoToState(btn, L"Normal", false); } catch (...) {}
             }
         }
 
@@ -3033,10 +3257,11 @@ static void RefreshThemeColors() {
         for (const wchar_t* name : {kPrevBtnName, kPlayBtnName, kNextBtnName, kRewindBtnName, kForwardBtnName, kShuffleBtnName, kRepeatBtnName}) {
             if (auto fe = FindChildByName(g_playerGrid, name)) {
                 if (auto btn = fe.try_as<Button>()) {
-                    ApplyFreshFluentMediaButtonStyle(btn);
-                    SetupMediaButtonCommonStates(btn);
-                    VisualStateManager::GoToState(btn, L"Normal", false);
                     if (auto ct = btn.Content().try_as<TextBlock>()) ct.Foreground(MakeBrush(buttonClr));
+                    ApplyFreshFluentMediaButtonStyle(btn);
+                    btn.ApplyTemplate();
+                    SetupMediaButtonCommonStates(btn);
+                    try { VisualStateManager::GoToState(btn, L"Normal", false); } catch (...) {}
                 }
             }
         }
@@ -3186,6 +3411,7 @@ static TextBlock MakeIconText(const wchar_t* glyph, double sz, winrt::Windows::U
 static Button MakeControlButton(int cmd, bool isPlaying, winrt::Windows::UI::Color iconColor) {
     Button btn;
     try {
+
         if (cmd < 1 || cmd > 8) {
             Wh_Log(L"MakeControlButton: Invalid command %d, defaulting to 2 (play/pause)", cmd);
             cmd = 2;
@@ -3229,7 +3455,7 @@ static Button MakeControlButton(int cmd, bool isPlaying, winrt::Windows::UI::Col
 
         auto updateBtnVisualState = [btn, isPressed, isHovered]() {
             try {
-                GoToCommonState(btn, g_settings.enableMediaButtonsHoverEffect, *isPressed, *isHovered);
+                ApplyCommonStateDirect(btn, g_settings.mediaButtonsHoverEffectMode, *isPressed, *isHovered, false, nullptr);
             } catch (...) {
 
             }
@@ -3569,81 +3795,85 @@ static Grid BuildPlayerGrid() {
                 artContainer.Children().Append(pauseBorder);
             }
 
-            artContainer.PointerPressed([](auto const& sender, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e) mutable {
-                if (auto elem = sender.template try_as<UIElement>()) {
-                    elem.CapturePointer(e.Pointer());
-                }
-                e.Handled(true);
-            });
-
-            artContainer.PointerReleased([](auto const& sender, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e) mutable {
-                bool actuallyHovered = false;
-                if (auto elem = sender.template try_as<UIElement>()) {
-                    elem.ReleasePointerCapture(e.Pointer());
-                    try {
-                        auto pointerPoint = e.GetCurrentPoint(elem);
-                        auto bounds = elem.RenderSize();
-                        auto pos = pointerPoint.Position();
-                        actuallyHovered = (pos.X >= 0 && pos.X <= bounds.Width && pos.Y >= 0 && pos.Y <= bounds.Height);
-                    } catch (...) { actuallyHovered = false; }
-                }
-
-                if (g_unloading) return;
-
-                if (actuallyHovered) {
-                    auto kind = e.GetCurrentPoint(nullptr).Properties().PointerUpdateKind();
-                    if (kind == winrt::Windows::UI::Input::PointerUpdateKind::LeftButtonReleased) {
-                        ExecuteMediaAction(g_settings.albumArtLeftClick);
-                    } else if (kind == winrt::Windows::UI::Input::PointerUpdateKind::RightButtonReleased) {
-                        ExecuteMediaAction(g_settings.albumArtRightClick);
-                    } else if (kind == winrt::Windows::UI::Input::PointerUpdateKind::MiddleButtonReleased) {
-                        ExecuteMediaAction(g_settings.albumArtMiddleClick);
+            if (g_settings.disableAlbumArtClick) {
+                artContainer.IsHitTestVisible(false);
+            } else {
+                artContainer.PointerPressed([](auto const& sender, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e) mutable {
+                    if (auto elem = sender.template try_as<UIElement>()) {
+                        elem.CapturePointer(e.Pointer());
                     }
-                }
-                e.Handled(true);
-            });
+                    e.Handled(true);
+                });
 
-            artContainer.DoubleTapped([](auto const&, winrt::Windows::UI::Xaml::Input::DoubleTappedRoutedEventArgs const& e) mutable {
-                if (g_unloading) return;
-                ExecuteMediaAction(g_settings.albumArtLeftDoubleClick);
-                e.Handled(true);
-            });
+                artContainer.PointerReleased([](auto const& sender, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e) mutable {
+                    bool actuallyHovered = false;
+                    if (auto elem = sender.template try_as<UIElement>()) {
+                        elem.ReleasePointerCapture(e.Pointer());
+                        try {
+                            auto pointerPoint = e.GetCurrentPoint(elem);
+                            auto bounds = elem.RenderSize();
+                            auto pos = pointerPoint.Position();
+                            actuallyHovered = (pos.X >= 0 && pos.X <= bounds.Width && pos.Y >= 0 && pos.Y <= bounds.Height);
+                        } catch (...) { actuallyHovered = false; }
+                    }
 
-            artContainer.PointerWheelChanged([](winrt::Windows::Foundation::IInspectable const&, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e) {
-                if (g_unloading) return;
-                auto action = g_settings.albumArtWheelAction;
-                if (action == L"none") return;
+                    if (g_unloading) return;
 
-                auto props = e.GetCurrentPoint(nullptr).Properties();
-                int delta = props.MouseWheelDelta();
+                    if (actuallyHovered) {
+                        auto kind = e.GetCurrentPoint(nullptr).Properties().PointerUpdateKind();
+                        if (kind == winrt::Windows::UI::Input::PointerUpdateKind::LeftButtonReleased) {
+                            ExecuteMediaAction(g_settings.albumArtLeftClick);
+                        } else if (kind == winrt::Windows::UI::Input::PointerUpdateKind::RightButtonReleased) {
+                            ExecuteMediaAction(g_settings.albumArtRightClick);
+                        } else if (kind == winrt::Windows::UI::Input::PointerUpdateKind::MiddleButtonReleased) {
+                            ExecuteMediaAction(g_settings.albumArtMiddleClick);
+                        }
+                    }
+                    e.Handled(true);
+                });
 
-                if (action == L"switch_tracks") {
-                    if (delta > 0) SendMediaCommandAsync(1);
-                    else if (delta < 0) SendMediaCommandAsync(3);
-                    DispatchMediaUpdate();
-                } else if (action == L"switch_sessions") {
-                    if (delta != 0) SwitchMediaSession();
-                } else if (action == L"system_sound") {
-                    ChangeSystemVolume(delta > 0);
-                } else if (action == L"app_sound") {
-                    std::thread([delta]() {
-                        std::wstring aumid;
-                        {
-                            std::lock_guard<std::mutex> lk(g_sessionMtx);
-                            if (g_currentSession) {
-                                try {
-                                    aumid = std::wstring(g_currentSession.SourceAppUserModelId());
-                                } catch (...) {}
+                artContainer.DoubleTapped([](auto const&, winrt::Windows::UI::Xaml::Input::DoubleTappedRoutedEventArgs const& e) mutable {
+                    if (g_unloading) return;
+                    ExecuteMediaAction(g_settings.albumArtLeftDoubleClick);
+                    e.Handled(true);
+                });
+
+                artContainer.PointerWheelChanged([](winrt::Windows::Foundation::IInspectable const&, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e) {
+                    if (g_unloading) return;
+                    auto action = g_settings.albumArtWheelAction;
+                    if (action == L"none") return;
+
+                    auto props = e.GetCurrentPoint(nullptr).Properties();
+                    int delta = props.MouseWheelDelta();
+
+                    if (action == L"switch_tracks") {
+                        if (delta > 0) SendMediaCommandAsync(1);
+                        else if (delta < 0) SendMediaCommandAsync(3);
+                        DispatchMediaUpdate();
+                    } else if (action == L"switch_sessions") {
+                        if (delta != 0) SwitchMediaSession();
+                    } else if (action == L"system_sound") {
+                        ChangeSystemVolume(delta > 0);
+                    } else if (action == L"app_sound") {
+                        std::thread([delta]() {
+                            std::wstring aumid;
+                            {
+                                std::lock_guard<std::mutex> lk(g_sessionMtx);
+                                if (g_currentSession) {
+                                    try {
+                                        aumid = std::wstring(g_currentSession.SourceAppUserModelId());
+                                    } catch (...) {}
+                                }
                             }
-                        }
-                        if (!aumid.empty()) {
-                            float volumeDelta = (delta > 0) ? 0.02f : -0.02f;
-                            AdjustAppVolumeByAUMID(aumid, volumeDelta);
-                        }
-                    }).detach();
-                }
-                e.Handled(true);
-            });
+                            if (!aumid.empty()) {
+                                float volumeDelta = (delta > 0) ? 0.02f : -0.02f;
+                                AdjustAppVolumeByAUMID(aumid, volumeDelta);
+                            }
+                        }).detach();
+                    }
+                    e.Handled(true);
+                });
+            }
 
             artContainer.Tag(winrt::box_value(winrt::hstring(L"FluentMediaArtContainer")));
 
@@ -3694,28 +3924,113 @@ static Grid BuildPlayerGrid() {
             textStack.HorizontalAlignment(g_settings.mirrorLayout ? HorizontalAlignment::Right : HorizontalAlignment::Left);
             textStack.Spacing((double)g_settings.textSpacing);
 
-            if (g_settings.showTrackTitle) {
-                TextBlock titleBlock;
-                titleBlock.Name(kTitleBlockName);
-                titleBlock.FontSize((double)g_settings.titleFontSize);
-                titleBlock.FontFamily(Media::FontFamily(g_settings.titleFont));
-                titleBlock.Foreground(MakeBrush(textClr));
-                titleBlock.TextWrapping(TextWrapping::NoWrap);
-                titleBlock.TextTrimming(TextTrimming::CharacterEllipsis);
-                titleBlock.TextAlignment(g_settings.mirrorLayout ? TextAlignment::Right : TextAlignment::Left);
-                textStack.Children().Append(titleBlock);
-            }
+            if (g_settings.showTrackTitle || g_settings.showTrackArtist) {
+                TextBlock titleBlock{nullptr};
+                TextBlock artistBlock{nullptr};
 
-            if (g_settings.showTrackArtist) {
-                TextBlock artistBlock;
-                artistBlock.Name(kArtistBlockName);
-                artistBlock.FontSize((double)g_settings.artistFontSize);
-                artistBlock.FontFamily(Media::FontFamily(g_settings.artistFont));
-                artistBlock.Foreground(MakeBrush(artistClr));
-                artistBlock.TextWrapping(TextWrapping::NoWrap);
-                artistBlock.TextTrimming(TextTrimming::CharacterEllipsis);
-                artistBlock.TextAlignment(g_settings.mirrorLayout ? TextAlignment::Right : TextAlignment::Left);
-                textStack.Children().Append(artistBlock);
+                if (g_settings.showTrackTitle) {
+                    titleBlock = TextBlock();
+                    titleBlock.Name(kTitleBlockName);
+                    titleBlock.FontSize((double)g_settings.titleFontSize);
+
+                    std::wstring titleFontName = g_settings.titleFont.empty() ? g_settings.titleFontFamily : g_settings.titleFont;
+                    if (!titleFontName.empty()) {
+                        try {
+                            titleBlock.FontFamily(Media::FontFamily(titleFontName));
+                        } catch (...) {}
+                    }
+
+                    if (!g_settings.titleFontWeight.empty()) {
+                        try {
+                            auto fontWeight = Markup::XamlBindingHelper::ConvertValue(
+                                winrt::Windows::UI::Xaml::Interop::TypeName{
+                                    winrt::hstring{L"Windows.UI.Text.FontWeight"},
+                                    winrt::Windows::UI::Xaml::Interop::TypeKind::Metadata
+                                },
+                                winrt::box_value(g_settings.titleFontWeight))
+                                .as<winrt::Windows::UI::Text::FontWeight>();
+                            titleBlock.FontWeight(fontWeight);
+                        } catch (...) {}
+                    }
+
+                    if (!g_settings.titleFontStyle.empty()) {
+                        try {
+                            auto fontStyle = Markup::XamlBindingHelper::ConvertValue(
+                                winrt::Windows::UI::Xaml::Interop::TypeName{
+                                    winrt::hstring{L"Windows.UI.Text.FontStyle"},
+                                    winrt::Windows::UI::Xaml::Interop::TypeKind::Metadata
+                                },
+                                winrt::box_value(g_settings.titleFontStyle))
+                                .as<winrt::Windows::UI::Text::FontStyle>();
+                            titleBlock.FontStyle(fontStyle);
+                        } catch (...) {}
+                    }
+
+                    if (g_settings.titleCharacterSpacing != 0) {
+                        titleBlock.CharacterSpacing(g_settings.titleCharacterSpacing);
+                    }
+
+                    titleBlock.Foreground(MakeBrush(textClr));
+                    titleBlock.TextWrapping(TextWrapping::NoWrap);
+                    titleBlock.TextTrimming(TextTrimming::CharacterEllipsis);
+                    titleBlock.TextAlignment(g_settings.mirrorLayout ? TextAlignment::Right : TextAlignment::Left);
+                }
+
+                if (g_settings.showTrackArtist) {
+                    artistBlock = TextBlock();
+                    artistBlock.Name(kArtistBlockName);
+                    artistBlock.FontSize((double)g_settings.artistFontSize);
+
+                    std::wstring artistFontName = g_settings.artistFont.empty() ? g_settings.artistFontFamily : g_settings.artistFont;
+                    if (!artistFontName.empty()) {
+                        try {
+                            artistBlock.FontFamily(Media::FontFamily(artistFontName));
+                        } catch (...) {}
+                    }
+
+                    if (!g_settings.artistFontWeight.empty()) {
+                        try {
+                            auto fontWeight = Markup::XamlBindingHelper::ConvertValue(
+                                winrt::Windows::UI::Xaml::Interop::TypeName{
+                                    winrt::hstring{L"Windows.UI.Text.FontWeight"},
+                                    winrt::Windows::UI::Xaml::Interop::TypeKind::Metadata
+                                },
+                                winrt::box_value(g_settings.artistFontWeight))
+                                .as<winrt::Windows::UI::Text::FontWeight>();
+                            artistBlock.FontWeight(fontWeight);
+                        } catch (...) {}
+                    }
+
+                    if (!g_settings.artistFontStyle.empty()) {
+                        try {
+                            auto fontStyle = Markup::XamlBindingHelper::ConvertValue(
+                                winrt::Windows::UI::Xaml::Interop::TypeName{
+                                    winrt::hstring{L"Windows.UI.Text.FontStyle"},
+                                    winrt::Windows::UI::Xaml::Interop::TypeKind::Metadata
+                                },
+                                winrt::box_value(g_settings.artistFontStyle))
+                                .as<winrt::Windows::UI::Text::FontStyle>();
+                            artistBlock.FontStyle(fontStyle);
+                        } catch (...) {}
+                    }
+
+                    if (g_settings.artistCharacterSpacing != 0) {
+                        artistBlock.CharacterSpacing(g_settings.artistCharacterSpacing);
+                    }
+
+                    artistBlock.Foreground(MakeBrush(artistClr));
+                    artistBlock.TextWrapping(TextWrapping::NoWrap);
+                    artistBlock.TextTrimming(TextTrimming::CharacterEllipsis);
+                    artistBlock.TextAlignment(g_settings.mirrorLayout ? TextAlignment::Right : TextAlignment::Left);
+                }
+
+                if (g_settings.swapTitleArtist) {
+                    if (artistBlock) textStack.Children().Append(artistBlock);
+                    if (titleBlock)  textStack.Children().Append(titleBlock);
+                } else {
+                    if (titleBlock)  textStack.Children().Append(titleBlock);
+                    if (artistBlock) textStack.Children().Append(artistBlock);
+                }
             }
 
             textContainer.Child(textStack);
@@ -3890,7 +4205,7 @@ static Grid BuildPlayerGrid() {
         auto playerNormalBg = MakeBackgroundBrush();
 
         auto updatePlayerVisualState = [playerButton, isPressed, isHovered]() {
-            GoToCommonState(playerButton, g_settings.enablePlayerHoverEffect, *isPressed, *isHovered);
+            ApplyCommonStateDirect(playerButton, g_settings.playerHoverEffectMode, *isPressed, *isHovered, true, MakeBackgroundBrush());
         };
 
         RunWhenButtonReady(playerButton, [playerButton, playerNormalBg, updatePlayerVisualState]() {
@@ -4968,6 +5283,8 @@ static void RefreshPlayerContents() {
     bool              isPlaying = false, hasMedia = false;
     std::vector<BYTE> thumbBytes;
     std::vector<BYTE> appIconBytes;
+    bool              canSkipPrevious = true, canSkipNext = true;
+    bool              canShuffle = true, canRepeat = true, canSeek = true;
     {
         std::lock_guard<std::mutex> lk(g_mediaMtx);
         title        = g_media.title;
@@ -4976,6 +5293,11 @@ static void RefreshPlayerContents() {
         hasMedia     = g_media.hasMedia;
         thumbBytes   = g_media.thumbnailBytes;
         appIconBytes = g_media.appIconBytes;
+        canSkipPrevious = g_media.canSkipPrevious;
+        canSkipNext     = g_media.canSkipNext;
+        canShuffle      = g_media.canShuffle;
+        canRepeat       = g_media.canRepeat;
+        canSeek         = g_media.canSeek;
     }
     Wh_Log(L"RefreshPlayerContents: title='%s', artist='%s', isPlaying=%d, hasMedia=%d",
            title.c_str(), artist.c_str(), isPlaying, hasMedia);
@@ -4986,12 +5308,18 @@ static void RefreshPlayerContents() {
     if (auto fe = FindChildByName(g_playerGrid, kTitleBlockName))
         if (auto tb = fe.try_as<TextBlock>())
             try {
-                tb.Text(winrt::hstring(title));
+                std::wstring displayTitle = title;
+                if (!hasSession) {
+                    displayTitle = L"Not Playing";
+                } else if (hasSession && title.empty()) {
+                    displayTitle = L"No name";
+                }
+                tb.Text(winrt::hstring(displayTitle));
                 tb.Foreground(MakeBrush(TextColor()));
-                bool visible = g_settings.showTrackTitle && (!title.empty() || hasSession);
+                bool visible = g_settings.showTrackTitle;
                 tb.Visibility(visible ? Visibility::Visible : Visibility::Collapsed);
 
-                if (g_settings.showFullTitleOnHover && !title.empty()) {
+                if (g_settings.showFullTitleOnHover && !title.empty() && hasSession) {
                     ToolTipService::SetToolTip(tb, winrt::box_value(winrt::hstring(title)));
                     ToolTipService::SetPlacement(tb, Controls::Primitives::PlacementMode::Top);
                 } else {
@@ -5002,12 +5330,16 @@ static void RefreshPlayerContents() {
     if (auto fe = FindChildByName(g_playerGrid, kArtistBlockName))
         if (auto ab = fe.try_as<TextBlock>())
             try {
-                ab.Text(winrt::hstring(artist));
-                bool visible = g_settings.showTrackArtist && !artist.empty();
+                std::wstring displayArtist = artist;
+                if (!hasSession || artist.empty()) {
+                    displayArtist = L"";
+                }
+                ab.Text(winrt::hstring(displayArtist));
+                bool visible = g_settings.showTrackArtist && hasSession && !artist.empty();
                 ab.Visibility(visible ? Visibility::Visible : Visibility::Collapsed);
                 ab.Foreground(MakeBrush(ArtistColor()));
 
-                if (g_settings.showFullTitleOnHover && !artist.empty()) {
+                if (g_settings.showFullTitleOnHover && !artist.empty() && hasSession) {
                     ToolTipService::SetToolTip(ab, winrt::box_value(winrt::hstring(artist)));
                     ToolTipService::SetPlacement(ab, Controls::Primitives::PlacementMode::Top);
                 } else {
@@ -5028,19 +5360,42 @@ static void RefreshPlayerContents() {
     if (auto fe = FindChildByName(g_playerGrid, kPrevBtnName))
         if (auto btn = fe.try_as<Button>())
             try {
+                bool supported = canSkipPrevious;
+                if (g_settings.hideUnsupportedButtons) {
+                    btn.Visibility(supported ? Visibility::Visible : Visibility::Collapsed);
+                } else {
+                    btn.IsEnabled(supported);
+                    btn.Visibility(Visibility::Visible);
+                }
                 if (auto ct = btn.Content().try_as<TextBlock>()) {
                     const wchar_t* glyph = GetGlyph(1);
                     ct.Text(winrt::hstring(glyph));
-                    ct.Foreground(MakeBrush(ButtonColor()));
+                    if (!supported && !g_settings.hideUnsupportedButtons) {
+                        ct.Foreground(MakeBrush({0x00, 0, 0, 0}));
+                        btn.Background(MakeBrush({0x00, 0, 0, 0}));
+                        ct.Opacity(0.35);
+                        ct.Foreground(MakeBrush(ButtonColor()));
+                    } else {
+                        ct.Opacity(1.0);
+                        ct.Foreground(MakeBrush(ButtonColor()));
+                    }
                 }
             } catch (...) {}
 
     if (auto fe = FindChildByName(g_playerGrid, kNextBtnName))
         if (auto btn = fe.try_as<Button>())
             try {
+                bool supported = canSkipNext;
+                if (g_settings.hideUnsupportedButtons) {
+                    btn.Visibility(supported ? Visibility::Visible : Visibility::Collapsed);
+                } else {
+                    btn.IsEnabled(supported);
+                    btn.Visibility(Visibility::Visible);
+                }
                 if (auto ct = btn.Content().try_as<TextBlock>()) {
                     const wchar_t* glyph = GetGlyph(3);
                     ct.Text(winrt::hstring(glyph));
+                    ct.Opacity(supported ? 1.0 : 0.35);
                     ct.Foreground(MakeBrush(ButtonColor()));
                 }
             } catch (...) {}
@@ -5048,9 +5403,17 @@ static void RefreshPlayerContents() {
     if (auto fe = FindChildByName(g_playerGrid, kRewindBtnName))
         if (auto btn = fe.try_as<Button>())
             try {
+                bool supported = canSeek;
+                if (g_settings.hideUnsupportedButtons) {
+                    btn.Visibility(supported ? Visibility::Visible : Visibility::Collapsed);
+                } else {
+                    btn.IsEnabled(supported);
+                    btn.Visibility(Visibility::Visible);
+                }
                 if (auto ct = btn.Content().try_as<TextBlock>()) {
                     const wchar_t* glyph = GetGlyph(5);
                     ct.Text(winrt::hstring(glyph));
+                    ct.Opacity(supported ? 1.0 : 0.35);
                     ct.Foreground(MakeBrush(ButtonColor()));
                 }
             } catch (...) {}
@@ -5058,9 +5421,17 @@ static void RefreshPlayerContents() {
     if (auto fe = FindChildByName(g_playerGrid, kForwardBtnName))
         if (auto btn = fe.try_as<Button>())
             try {
+                bool supported = canSeek;
+                if (g_settings.hideUnsupportedButtons) {
+                    btn.Visibility(supported ? Visibility::Visible : Visibility::Collapsed);
+                } else {
+                    btn.IsEnabled(supported);
+                    btn.Visibility(Visibility::Visible);
+                }
                 if (auto ct = btn.Content().try_as<TextBlock>()) {
                     const wchar_t* glyph = GetGlyph(6);
                     ct.Text(winrt::hstring(glyph));
+                    ct.Opacity(supported ? 1.0 : 0.35);
                     ct.Foreground(MakeBrush(ButtonColor()));
                 }
             } catch (...) {}
@@ -5068,18 +5439,36 @@ static void RefreshPlayerContents() {
     if (auto fe = FindChildByName(g_playerGrid, kShuffleBtnName))
         if (auto btn = fe.try_as<Button>())
             try {
+                bool supported = canShuffle;
+                if (g_settings.hideUnsupportedButtons) {
+                    btn.Visibility(supported ? Visibility::Visible : Visibility::Collapsed);
+                } else {
+                    btn.IsEnabled(supported);
+                    btn.Visibility(Visibility::Visible);
+                }
                 if (auto ct = btn.Content().try_as<TextBlock>()) {
                     bool isEnabled = g_shuffleEnabled.load();
                     const wchar_t* glyph = L"";
                     ct.Text(winrt::hstring(glyph));
+                    if (!supported && !g_settings.hideUnsupportedButtons) {
+                        ct.Opacity(0.35);
+                    } else {
+                        ct.Opacity(isEnabled ? 1.0 : 0.4);
+                    }
                     ct.Foreground(MakeBrush(ButtonColor()));
-                    ct.Opacity(isEnabled ? 1.0 : 0.4);
                 }
             } catch (...) {}
 
     if (auto fe = FindChildByName(g_playerGrid, kRepeatBtnName))
         if (auto btn = fe.try_as<Button>())
             try {
+                bool supported = canRepeat;
+                if (g_settings.hideUnsupportedButtons) {
+                    btn.Visibility(supported ? Visibility::Visible : Visibility::Collapsed);
+                } else {
+                    btn.IsEnabled(supported);
+                    btn.Visibility(Visibility::Visible);
+                }
                 if (auto ct = btn.Content().try_as<TextBlock>()) {
                     RepeatMode mode = g_repeatMode.load();
                     const wchar_t* glyph;
@@ -5096,7 +5485,11 @@ static void RefreshPlayerContents() {
                     }
                     ct.Text(winrt::hstring(glyph));
                     ct.Foreground(MakeBrush(ButtonColor()));
-                    ct.Opacity(1.0);
+                    if (!supported && !g_settings.hideUnsupportedButtons) {
+                        ct.Opacity(0.35);
+                    } else {
+                        ct.Opacity(1.0);
+                    }
                 }
             } catch (...) {}
 
@@ -5172,7 +5565,7 @@ static void RefreshPlayerContents() {
                             if (g_settings.albumArtQuality == L"low") {
                                 int baseHeight = g_settings.albumArtMaxHeight > 0 ? g_settings.albumArtMaxHeight : 64;
                                 int decodeHeight = baseHeight / 2;
-                                if (decodeHeight < 16) decodeHeight = 16;
+                                if (decodeHeight < 16) decodeHeight = 16; 
                                 bmp.DecodePixelHeight(decodeHeight);
                             } else if (g_settings.albumArtQuality == L"medium") {
                                 if (g_settings.albumArtMaxHeight > 0) {
@@ -5787,7 +6180,7 @@ void Wh_ModAfterInit() {
     Wh_Log(L"Wh_ModAfterInit: Timer thread started");
 
     StartIdleTimer();
-    StartThemeWatcher();
+    // StartThemeWatcher();
 
     if (g_taskbarWnd) {
         RunFromWindowThread(g_taskbarWnd, [](void*) {
@@ -5828,6 +6221,13 @@ void Wh_ModUninit() {
         RunFromWindowThread(g_taskbarWnd, [](void*) { RemovePlayerGrid(); }, nullptr);
 
     CleanupAudioDeviceEnumerator();
+
+    g_mediaHoverBrush   = nullptr;
+    g_mediaPressedBrush = nullptr;
+    g_playerHoverBrush  = nullptr;
+    g_playerPressedBrush = nullptr;
+    g_playerBorderBrush  = nullptr;
+    g_themeRefreshPending = false;
 }
 
 void Wh_ModSettingsChanged() {
