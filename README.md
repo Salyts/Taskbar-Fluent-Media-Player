@@ -8,6 +8,7 @@
 
 ![img](https://i.imgur.com/Md5CvZB.png)
 
+![video](https://i.imgur.com/pGFnmiG.gif)
 ## Installation
 
 1. Install [Windhawk](https://windhawk.net/).
