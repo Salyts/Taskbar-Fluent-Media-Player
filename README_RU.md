@@ -4,10 +4,7 @@
 
 ### [> Документация на английском языке <](https://github.com/Salyts/Taskbar-Fluent-Media-Player)
 
-![img](https://i.imgur.com/9xXlVyq.png)
-
-![img](https://i.imgur.com/Md5CvZB.png)
-
+![video](https://i.imgur.com/pGFnmiG.gif)
 ## Установка
 
 1. Установите [Windhawk](https://windhawk.net/).
