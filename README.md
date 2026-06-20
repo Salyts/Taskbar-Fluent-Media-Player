@@ -4,10 +4,6 @@
 
 ### [> Russian documentation <](https://github.com/Salyts/Taskbar-Fluent-Media-Player/blob/main/README_RU.md)
 
-![img](https://i.imgur.com/9xXlVyq.png)
-
-![img](https://i.imgur.com/Md5CvZB.png)
-
 ![video](https://i.imgur.com/pGFnmiG.gif)
 ## Installation
 
@@ -24,6 +20,7 @@
 * **Adaptive Design —** The player can automatically adapt its colors based on the album art or follow the system accent color.
 * **Full Media Control —** Buttons for Play/Pause, Skip, 5-second Seek, Shuffle, and Repeat modes.
 * **Smart Behavior —** Automatically hides the player when no media is playing, when entering full-screen mode, or after a period of inactivity (idle).
+* **Audio Visualizer —** A real-time spectrum visualizer (WASAPI loopback + FFT) with multiple bar shapes (Stereo, Mountain, Mirror, Wave, Breathe), color modes (Solid, Dynamic Album, Gradient, Acrylic, Accent), EQ presets, vertical anchoring, and per-side placement.
 
 ### Advanced Customization
 
