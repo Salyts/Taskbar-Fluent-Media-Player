@@ -4249,6 +4249,55 @@ static std::atomic<bool> g_CaptureRunning{false};
 static bool g_vizCurrentlyVisible = false;
 static std::thread* g_CaptureThread = nullptr;
 static HANDLE g_hCaptureEvent = nullptr;
+static std::atomic<bool> g_VizDeviceChanged{false};
+
+class VizEndpointNotificationClient : public IMMNotificationClient {
+   public:
+    ULONG STDMETHODCALLTYPE AddRef() override {
+        return InterlockedIncrement(&m_ref);
+    }
+    ULONG STDMETHODCALLTYPE Release() override {
+        ULONG ref = InterlockedDecrement(&m_ref);
+        if (ref == 0)
+            delete this;
+        return ref;
+    }
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override {
+        if (riid == __uuidof(IUnknown) || riid == __uuidof(IMMNotificationClient)) {
+            *ppv = static_cast<IMMNotificationClient*>(this);
+            AddRef();
+            return S_OK;
+        }
+        *ppv = nullptr;
+        return E_NOINTERFACE;
+    }
+
+    HRESULT STDMETHODCALLTYPE OnDefaultDeviceChanged(EDataFlow flow, ERole,
+                                                      LPCWSTR) override {
+        if (flow == eRender)
+            g_VizDeviceChanged.store(true, std::memory_order_relaxed);
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE OnDeviceAdded(LPCWSTR) override {
+        g_VizDeviceChanged.store(true, std::memory_order_relaxed);
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE OnDeviceRemoved(LPCWSTR) override {
+        g_VizDeviceChanged.store(true, std::memory_order_relaxed);
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE OnDeviceStateChanged(LPCWSTR, DWORD) override {
+        g_VizDeviceChanged.store(true, std::memory_order_relaxed);
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE OnPropertyValueChanged(LPCWSTR,
+                                                      const PROPERTYKEY) override {
+        return S_OK;
+    }
+
+   private:
+    LONG m_ref = 1;
+};
 
 static float g_HannWindow[VIZ_FFT_SIZE] = {};
 static float g_TwiddleRe[VIZ_FFT_SIZE / 2] = {};
@@ -4320,6 +4369,63 @@ static VizEQMul GetVizEQMultipliers(VizEQ eq) {
     }
 }
 
+// Re-acquires the current default render endpoint and (re)initializes the
+// loopback capture client. Called both at thread startup and whenever the
+// notification client / a device-invalidated error tells us the previously
+// captured device is no longer the right one (default device switched,
+// or it was unplugged/disabled).
+static bool VizInitAudioClient(IMMDeviceEnumerator* pEnum,
+                                winrt::com_ptr<IAudioClient>& pClient,
+                                winrt::com_ptr<IAudioCaptureClient>& pCapture,
+                                UINT32& sampleRate, UINT32& channels,
+                                bool& isFloat, HANDLE hEvent) {
+    pClient = nullptr;
+    pCapture = nullptr;
+
+    winrt::com_ptr<IMMDevice> pDev;
+    if (FAILED(pEnum->GetDefaultAudioEndpoint(eRender, eConsole, pDev.put())))
+        return false;
+
+    winrt::com_ptr<IAudioClient> pC;
+    if (FAILED(pDev->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr,
+                              pC.put_void())))
+        return false;
+
+    WAVEFORMATEX* pwfx = nullptr;
+    pC->GetMixFormat(&pwfx);
+    if (!pwfx)
+        return false;
+
+    sampleRate = pwfx->nSamplesPerSec;
+    channels = pwfx->nChannels;
+    isFloat = (pwfx->wFormatTag == WAVE_FORMAT_IEEE_FLOAT) ||
+              (pwfx->wFormatTag == WAVE_FORMAT_EXTENSIBLE &&
+               reinterpret_cast<WAVEFORMATEXTENSIBLE*>(pwfx)->SubFormat ==
+                   KSDATAFORMAT_SUBTYPE_IEEE_FLOAT);
+
+    HRESULT hr = pC->Initialize(
+        AUDCLNT_SHAREMODE_SHARED,
+        AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+        200000, 0, pwfx, nullptr);
+    CoTaskMemFree(pwfx);
+    if (FAILED(hr))
+        return false;
+
+    if (hEvent)
+        pC->SetEventHandle(hEvent);
+
+    winrt::com_ptr<IAudioCaptureClient> pCap;
+    if (FAILED(pC->GetService(__uuidof(IAudioCaptureClient), pCap.put_void())))
+        return false;
+
+    if (FAILED(pC->Start()))
+        return false;
+
+    pClient = pC;
+    pCapture = pCap;
+    return true;
+}
+
 static void VizCaptureThreadProc() {
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     BuildHannWindow();
@@ -4333,52 +4439,19 @@ static void VizCaptureThreadProc() {
         return;
     }
 
-    winrt::com_ptr<IMMDevice> pDev;
-    if (FAILED(pEnum->GetDefaultAudioEndpoint(eRender, eConsole, pDev.put()))) {
-        g_CaptureRunning.store(false);
-        CoUninitialize();
-        return;
-    }
+    auto* notifyClient = new VizEndpointNotificationClient();
+    bool notifyRegistered =
+        SUCCEEDED(pEnum->RegisterEndpointNotificationCallback(notifyClient));
 
     winrt::com_ptr<IAudioClient> pClient;
     winrt::com_ptr<IAudioCaptureClient> pCapture;
     UINT32 sampleRate = 48000, channels = 2;
     bool isFloat = true;
 
-    {
-        winrt::com_ptr<IAudioClient> pC;
-        if (SUCCEEDED(pDev->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr,
-                                     pC.put_void()))) {
-            WAVEFORMATEX* pwfx = nullptr;
-            pC->GetMixFormat(&pwfx);
-            if (pwfx) {
-                sampleRate = pwfx->nSamplesPerSec;
-                channels = pwfx->nChannels;
-                isFloat =
-                    (pwfx->wFormatTag == WAVE_FORMAT_IEEE_FLOAT) ||
-                    (pwfx->wFormatTag == WAVE_FORMAT_EXTENSIBLE &&
-                     reinterpret_cast<WAVEFORMATEXTENSIBLE*>(pwfx)->SubFormat ==
-                         KSDATAFORMAT_SUBTYPE_IEEE_FLOAT);
-                if (SUCCEEDED(pC->Initialize(
-                        AUDCLNT_SHAREMODE_SHARED,
-                        AUDCLNT_STREAMFLAGS_LOOPBACK |
-                            AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
-                        200000, 0, pwfx, nullptr))) {
-                    if (g_hCaptureEvent)
-                        pC->SetEventHandle(g_hCaptureEvent);
-                    winrt::com_ptr<IAudioCaptureClient> pCap;
-                    if (SUCCEEDED(pC->GetService(__uuidof(IAudioCaptureClient),
-                                                 pCap.put_void()))) {
-                        pClient = pC;
-                        pCapture = pCap;
-                    }
-                }
-                CoTaskMemFree(pwfx);
-            }
-        }
-    }
-
-    BuildLogBins(sampleRate);
+    g_VizDeviceChanged.store(false, std::memory_order_relaxed);
+    if (VizInitAudioClient(pEnum.get(), pClient, pCapture, sampleRate, channels,
+                           isFloat, g_hCaptureEvent))
+        BuildLogBins(sampleRate);
 
     static constexpr int RING_CAP = VIZ_FFT_SIZE * 4;
     std::vector<float> ringBuf(RING_CAP, 0.f);
@@ -4389,8 +4462,10 @@ static void VizCaptureThreadProc() {
     static constexpr float GRAVITY[VIZ_NUM_BANDS] = {0.018f, 0.020f, 0.022f, 0.025f,
                                                      0.030f, 0.036f, 0.042f};
 
-    if (pClient)
-        pClient->Start();
+    // Throttles re-init attempts so a device that's still missing at boot
+    // (audio service not ready yet) gets retried periodically instead of
+    // being given up on for the rest of the session.
+    ULONGLONG lastReinitAttempt = GetTickCount64() - 1000;
 
     while (g_CaptureRunning.load(std::memory_order_relaxed)) {
         if (g_hCaptureEvent)
@@ -4398,11 +4473,36 @@ static void VizCaptureThreadProc() {
         else
             Sleep(8);
 
+        bool needsReinit = g_VizDeviceChanged.exchange(false, std::memory_order_relaxed) ||
+                            !pClient;
+        if (needsReinit) {
+            ULONGLONG now = GetTickCount64();
+            if (now - lastReinitAttempt >= 500) {
+                lastReinitAttempt = now;
+                if (pClient)
+                    pClient->Stop();
+                ringHead = 0;
+                ringCount = 0;
+                for (int b = 0; b < VIZ_NUM_BANDS; b++) {
+                    bandEnv[b] = 0.f;
+                    g_VizBands[b].store(0.f, std::memory_order_relaxed);
+                }
+                if (VizInitAudioClient(pEnum.get(), pClient, pCapture, sampleRate,
+                                       channels, isFloat, g_hCaptureEvent))
+                    BuildLogBins(sampleRate);
+            }
+        }
+
         if (!pCapture)
             continue;
 
         UINT32 packetSize = 0;
-        if (FAILED(pCapture->GetNextPacketSize(&packetSize)) || packetSize == 0) {
+        HRESULT hr = pCapture->GetNextPacketSize(&packetSize);
+        if (hr == AUDCLNT_E_DEVICE_INVALIDATED) {
+            g_VizDeviceChanged.store(true, std::memory_order_relaxed);
+            continue;
+        }
+        if (FAILED(hr) || packetSize == 0) {
             for (int b = 0; b < VIZ_NUM_BANDS; b++) {
                 bandEnv[b] = std::max(0.f, bandEnv[b] - GRAVITY[b]);
                 g_VizBands[b].store(bandEnv[b], std::memory_order_relaxed);
@@ -4414,8 +4514,13 @@ static void VizCaptureThreadProc() {
             BYTE* pData = nullptr;
             UINT32 numFrames = 0;
             DWORD flags = 0;
-            if (FAILED(pCapture->GetBuffer(&pData, &numFrames, &flags, nullptr,
-                                           nullptr)))
+            HRESULT hrBuf =
+                pCapture->GetBuffer(&pData, &numFrames, &flags, nullptr, nullptr);
+            if (hrBuf == AUDCLNT_E_DEVICE_INVALIDATED) {
+                g_VizDeviceChanged.store(true, std::memory_order_relaxed);
+                break;
+            }
+            if (FAILED(hrBuf))
                 break;
 
             if (!(flags & AUDCLNT_BUFFERFLAGS_SILENT) && pData && numFrames > 0) {
@@ -4444,7 +4549,12 @@ static void VizCaptureThreadProc() {
                 }
             }
             pCapture->ReleaseBuffer(numFrames);
-            if (FAILED(pCapture->GetNextPacketSize(&packetSize)))
+            hr = pCapture->GetNextPacketSize(&packetSize);
+            if (hr == AUDCLNT_E_DEVICE_INVALIDATED) {
+                g_VizDeviceChanged.store(true, std::memory_order_relaxed);
+                break;
+            }
+            if (FAILED(hr))
                 break;
         }
 
@@ -4497,6 +4607,9 @@ static void VizCaptureThreadProc() {
 
     if (pClient)
         pClient->Stop();
+    if (notifyRegistered)
+        pEnum->UnregisterEndpointNotificationCallback(notifyClient);
+    notifyClient->Release();
     CoUninitialize();
 }
 
