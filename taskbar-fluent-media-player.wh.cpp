@@ -319,11 +319,11 @@ If you encounter any issues, bugs, or have suggestions for new features, please 
       $name:ru-RU: Столбики (количество промежуток)
       $description: Two values "count gap" — number of bars (1-20) and spacing between them in px.
       $description:ru-RU: Два значения "количество промежуток" — количество столбиков (1-20) и расстояние между ними в пикселях.
-    - vizBarSize: "5 15"
+    - vizBarSize: "5 3"
       $name: Bar size (width height)
       $name:ru-RU: Размер столбика (ширина высота)
-      $description: Two values "width height" — bar width in px and idle (resting) height in %.
-      $description:ru-RU: Два значения "ширина высота" — ширина столбика в пикселях и высота покоя в %.
+      $description: Two values "width height" — bar width in px (0-40) and idle (resting) height in px (0-15). Width 0 hides the bars.
+      $description:ru-RU: Два значения "ширина высота" — ширина столбика в пикселях (0-40) и высота покоя в пикселях (0-15). Ширина 0 скрывает столбики.
     - vizPadding: "0 0"
       $name: Padding (left right)
       $name:ru-RU: Отступы (слева справа)
@@ -1171,7 +1171,7 @@ struct ModSettings {
     int          vizBars         = 7;
     int          vizBarWidth     = 5;
     int          vizBarGap       = 5;
-    int          vizIdleBarSize  = 15;
+    int          vizIdleBarSize  = 3;
     int          vizSensitivity  = 150;
     int          vizPadLeft      = 0;
     int          vizPadRight     = 0;
@@ -1432,10 +1432,10 @@ static void LoadSettings() {
         ParseTwoInts(Str(L"MainSettings.VisualizerFunctionsSettings.vizBarCountGap", L"7 5"), n, gap);
         g_settings.vizBars   = std::clamp(n, 1, 20);
         g_settings.vizBarGap = std::clamp(gap, 0, 40);
-        int w = 5, h = 15;
-        ParseTwoInts(Str(L"MainSettings.VisualizerFunctionsSettings.vizBarSize", L"5 15"), w, h);
-        g_settings.vizBarWidth    = std::clamp(w, 1, 40);
-        g_settings.vizIdleBarSize = std::clamp(h, 0, 100);
+        int w = 5, h = 3;
+        ParseTwoInts(Str(L"MainSettings.VisualizerFunctionsSettings.vizBarSize", L"5 3"), w, h);
+        g_settings.vizBarWidth    = std::clamp(w, 0, 40);
+        g_settings.vizIdleBarSize = std::clamp(h, 0, 15);
         int l = 0, r = 0;
         ParseTwoInts(Str(L"MainSettings.VisualizerFunctionsSettings.vizPadding", L"0 0"), l, r);
         g_settings.vizPadLeft  = std::clamp(l, 0, 200);
@@ -2337,37 +2337,18 @@ static AlbumPalette ExtractAlbumPalette(const std::vector<BYTE>& thumbBytes) {
         return {fallbackPrimary, fallbackSecondary};
 
     try {
-        auto stream = winrt::Windows::Storage::Streams::InMemoryRandomAccessStream();
-        auto writer = winrt::Windows::Storage::Streams::DataWriter(stream);
-        writer.WriteBytes(thumbBytes);
-        writer.StoreAsync().get();
-        writer.DetachStream();
-        stream.Seek(0);
-
-        auto decoder = winrt::Windows::Graphics::Imaging::BitmapDecoder::CreateAsync(stream).get();
-
-        auto transform = winrt::Windows::Graphics::Imaging::BitmapTransform();
-        auto pixelData = decoder.GetPixelDataAsync(
-            winrt::Windows::Graphics::Imaging::BitmapPixelFormat::Bgra8,
-            winrt::Windows::Graphics::Imaging::BitmapAlphaMode::Premultiplied,
-            transform,
-            winrt::Windows::Graphics::Imaging::ExifOrientationMode::RespectExifOrientation,
-            winrt::Windows::Graphics::Imaging::ColorManagementMode::DoNotColorManage
-        ).get();
-
-        auto pixels = pixelData.DetachPixelData();
-        uint32_t w = decoder.PixelWidth();
-        uint32_t h = decoder.PixelHeight();
-
-        if (w == 0 || h == 0 || pixels.size() < w * h * 4)
+        std::vector<BYTE> pixels;
+        int w = 0, h = 0;
+        if (!DecodeImageToBGRA(thumbBytes, pixels, w, h) || w <= 0 || h <= 0 ||
+            pixels.size() < (size_t)w * h * 4)
             return {fallbackPrimary, fallbackSecondary};
 
         struct Bucket { uint32_t r=0, g=0, b=0, n=0; };
         Bucket buckets[16][16][16]{};
 
-        for (uint32_t y = 0; y < h; y += 4) {
-            for (uint32_t x = 0; x < w; x += 4) {
-                uint32_t idx = (y * w + x) * 4;
+        for (int y = 0; y < h; y += 4) {
+            for (int x = 0; x < w; x += 4) {
+                size_t idx = ((size_t)y * w + x) * 4;
                 if (idx + 4 > pixels.size()) continue;
 
                 BYTE pb = pixels[idx];
@@ -4680,7 +4661,6 @@ static void UpdateVisualizerPeaks() {
 
     float t = (float)GetTickCount64() * 0.001f;
     float center = (vizBars - 1) * 0.5f;
-    float idleFloor = g_settings.vizIdleBarSize / 100.0f;
 
     for (int i = 0; i < vizBars; i++) {
         float freqT = (vizBars > 1) ? (float)i / (float)(vizBars - 1) : 0.5f;
@@ -4732,7 +4712,7 @@ static void UpdateVisualizerPeaks() {
             }
         }
 
-        g_VizTarget[i] = std::max(idleFloor, std::min(1.f, target));
+        g_VizTarget[i] = std::max(0.f, std::min(1.f, target));
     }
 }
 
@@ -4780,8 +4760,9 @@ static void VizApplyFrame() {
     int barCount = std::min((int)g_vizBars.size(), std::max(1, g_settings.vizBars));
     double zoneH = VizZoneHeight();
     double maxBH = std::max(4.0, zoneH - 6.0);
-    double minBH = std::max((double)g_settings.vizBarWidth, 3.0);
-    float  idleH = g_settings.vizIdleBarSize / 100.f;
+    double minBH = (double)g_settings.vizBarWidth;
+    double idlePx = std::min((double)g_settings.vizIdleBarSize, std::max(0.0, maxBH - minBH));
+    double range = std::max(0.0, maxBH - minBH - idlePx);
 
     winrt::Windows::UI::Color baseCol{255, 255, 255, 255};
     if (g_settings.vizColorMode == VizColorMode::DynamicAlbum) {
@@ -4815,8 +4796,8 @@ static void VizApplyFrame() {
         float next = cur + (tgt - cur) * ((tgt > cur) ? a : d);
         g_VizPeak[i] = (fabsf(next - cur) > 0.0005f) ? next : tgt;
 
-        float  fac = std::max(idleH, g_VizPeak[i]);
-        double bh = minBH + fac * (maxBH - minBH);
+        float fac = std::max(0.f, g_VizPeak[i]);
+        double bh = minBH + idlePx + fac * range;
 
         winrt::Windows::UI::Color c = baseCol;
         if (g_settings.vizColorMode == VizColorMode::DynamicGradient) {
@@ -4912,13 +4893,15 @@ static FrameworkElement BuildVisualizerElement() {
                          : (g_settings.vizAnchor == VizAnchor::Bottom) ? VerticalAlignment::Bottom
                                                                : VerticalAlignment::Center;
 
-    double minBH   = std::max((double)g_settings.vizBarWidth, 3.0);
-    double corner  = std::max(1.0, g_settings.vizBarWidth * 0.5);
+    double minBH = (double)g_settings.vizBarWidth;
+    double maxBH = std::max(4.0, zoneH - 6.0);
+    double idlePx = std::min((double)g_settings.vizIdleBarSize, std::max(0.0, maxBH - minBH));
+    double corner = g_settings.vizBarWidth * 0.5;
 
     for (int i = 0; i < barCount; i++) {
         VizRect r;
         r.Width((double)g_settings.vizBarWidth);
-        r.Height(minBH);
+        r.Height(minBH + idlePx);
         r.RadiusX(corner);
         r.RadiusY(corner);
         r.VerticalAlignment(va);
