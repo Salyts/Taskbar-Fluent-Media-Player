@@ -342,8 +342,14 @@ If you encounter any issues, bugs, or have suggestions for new features, please 
       $name: Lyric margin (left right)
       $description: Margin around the lyric text, left and right spacing in pixels.
     - lyricColor: "255 255 255"
-      $name: Lyric text color (RGB)
-      $description: Text color as R G B values. Use "-1 -1 -1" for system accent color.
+      $name: Lyric base color (RGB)
+      $description: Base text color as R G B values. Use "-1 -1 -1" for system accent color.
+    - enableLyricKaraoke: true
+      $name: Enable lyric karaoke effect
+      $description: Highlight the current lyric progress with a smooth karaoke-style sweep.
+    - lyricHighlightColor: "30 215 96"
+      $name: Lyric highlight color (RGB)
+      $description: Karaoke highlight color as R G B values. Use "-1 -1 -1" for system accent color.
     - lyricMaxWidth: "256"
       $name: Lyric max width (px)
       $description: Maximum width of the lyric text area. Set to 0 for no limit. When text exceeds this width, it scrolls.
@@ -1208,6 +1214,8 @@ struct ModSettings {
     int          lyricMarginLeft        = 4;
     int          lyricMarginRight       = 4;
     std::wstring lyricColor             = L"255 255 255";
+    bool         enableLyricKaraoke     = true;
+    std::wstring lyricHighlightColor    = L"30 215 96";
     int          lyricMaxWidth          = 256;
     int          lyricTimeOffset        = 0;
     bool         hideLyricWhenNoLyrics  = false;
@@ -1617,6 +1625,8 @@ static void LoadSettings() {
 
     g_settings.showLyric                = Wh_GetIntSetting(L"MainSettings.LyricSettings.showLyric") != 0;
     g_settings.lyricColor               = Str(L"MainSettings.LyricSettings.lyricColor", L"255 255 255");
+    g_settings.enableLyricKaraoke       = Wh_GetIntSetting(L"MainSettings.LyricSettings.enableLyricKaraoke") != 0;
+    g_settings.lyricHighlightColor      = Str(L"MainSettings.LyricSettings.lyricHighlightColor", L"30 215 96");
     g_settings.lyricMaxWidth            = Wh_GetIntSetting(L"MainSettings.LyricSettings.lyricMaxWidth");
     g_settings.lyricTimeOffset          = Wh_GetIntSetting(L"MainSettings.LyricSettings.lyricTimeOffset");
     g_settings.hideLyricWhenNoLyrics    = Wh_GetIntSetting(L"MainSettings.LyricSettings.hideLyricWhenNoLyrics") != 0;
@@ -4133,12 +4143,17 @@ static void TickScrollState(TextScrollState& s, int stepPx, int pauseMs, const s
 }
 
 static void UpdateScrollTransforms();
+static void UpdateLyricKaraokeFromCurrentPosition();
 
 static void ScrollTimerTick(winrt::Windows::Foundation::IInspectable const&,
                              winrt::Windows::Foundation::IInspectable const&) {
     if (g_unloading || g_applyingSettings) return;
 
+    bool needsKaraoke = (g_settings.showLyric && g_settings.enableLyricKaraoke);
     bool needsScroll = (g_titleScroll.active || g_artistScroll.active || g_lyricScroll.active);
+    if (needsKaraoke) {
+        UpdateLyricKaraokeFromCurrentPosition();
+    }
     if (!needsScroll) return;
 
     int stepPx = std::max(1, g_settings.scrollSpeed);
@@ -4215,6 +4230,9 @@ static constexpr wchar_t kTitleCloneName[]       = L"FluentMedia_TitleClone";
 static constexpr wchar_t kArtistCloneName[]      = L"FluentMedia_ArtistClone";
 static constexpr wchar_t kLyricScrollViewName[]  = L"FluentMedia_LyricScrollView";
 static constexpr wchar_t kLyricCloneName[]       = L"FluentMedia_LyricClone";
+static constexpr wchar_t kLyricRootName[]        = L"FluentMedia_LyricRoot";
+static constexpr wchar_t kLyricBaseName[]        = L"FluentMedia_Lyric";
+static constexpr wchar_t kLyricHighlightName[]   = L"FluentMedia_LyricHighlight";
 static constexpr wchar_t kPanelGridName[]        = L"FluentMedia_PanelGrid";
 
 static double GetAvailableScrollTextAreaWidth() {
@@ -4250,7 +4268,7 @@ static double GetAvailableScrollTextAreaWidth() {
 
 
 static void UpdateScrollTransforms() {
-    if (!g_playerGrid || (!g_settings.enableTitleScrolling && !g_settings.enableArtistScrolling)) return;
+    if (!g_playerGrid) return;
     bool isLoop = (g_settings.scrollMode == L"loop");
 
     if (g_settings.enableTitleScrolling) {
@@ -4305,7 +4323,7 @@ static void UpdateScrollTransforms() {
                     for (int i = 0; i < n; i++) {
                         auto child = VisualTreeHelper::GetChild(cv, i);
                         if (auto tb = child.try_as<TextBlock>()) {
-                            if (tb.Name() == L"FluentMedia_Lyric") {
+                            if (tb.Name() == kLyricBaseName || tb.Name() == kLyricHighlightName) {
                                 Canvas::SetLeft(tb, -g_lyricScroll.offset);
                             }
                         }
@@ -4314,6 +4332,134 @@ static void UpdateScrollTransforms() {
             }
         } catch (...) {}
     }
+}
+
+static void UpdateLyricHighlightClip(double progress) {
+    if (!g_playerGrid) return;
+
+    progress = std::clamp(progress, 0.0, 1.0);
+
+    try {
+        if (auto fe = FindChildByName(g_playerGrid, kLyricHighlightName)) {
+            if (auto highlightBlock = fe.try_as<TextBlock>()) {
+                double width = highlightBlock.ActualWidth();
+                double height = highlightBlock.ActualHeight();
+                if (height < 1.0) height = 16.0;
+
+                auto geo = highlightBlock.Clip().try_as<winrt::Windows::UI::Xaml::Media::RectangleGeometry>();
+                if (!geo) {
+                    geo = winrt::Windows::UI::Xaml::Media::RectangleGeometry();
+                    highlightBlock.Clip(geo);
+                }
+                geo.Rect({0, 0, (float)(width * progress), (float)height});
+            }
+        }
+    } catch (...) {}
+}
+
+static double GetLyricProgress(const LyricLine& line, long long currentMs) {
+    long duration = std::max(1L, line.durationMs);
+    double lineProgress = (double)(currentMs - line.startTimeMs) / (double)duration;
+    lineProgress = std::clamp(lineProgress, 0.0, 1.0);
+
+    if (line.words.empty() || line.text.empty()) {
+        return lineProgress;
+    }
+
+    size_t totalChars = line.text.size();
+    if (totalChars == 0) {
+        return lineProgress;
+    }
+
+    size_t charsBefore = 0;
+    for (const auto& word : line.words) {
+        size_t wordChars = word.text.size();
+        long wordStart = word.startTimeMs;
+        long wordDuration = std::max(1L, word.durationMs);
+        long wordEnd = wordStart + wordDuration;
+
+        if (currentMs < wordStart) {
+            return std::clamp((double)charsBefore / (double)totalChars, 0.0, 1.0);
+        }
+
+        if (currentMs < wordEnd) {
+            double wordProgress = (double)(currentMs - wordStart) / (double)wordDuration;
+            double charsDone = (double)charsBefore + (double)wordChars * std::clamp(wordProgress, 0.0, 1.0);
+            return std::clamp(charsDone / (double)totalChars, 0.0, 1.0);
+        }
+
+        charsBefore += wordChars;
+    }
+
+    return 1.0;
+}
+
+static void UpdateLyricKaraokeFromCurrentPosition() {
+    if (!g_playerGrid || !g_settings.showLyric || !g_settings.enableLyricKaraoke) return;
+
+    std::wstring text;
+    double progress = 0.0;
+    long long currentMs = 0;
+    long long durationMs = 0;
+    bool isPlaying = false;
+    std::wstring trackKey;
+
+    try {
+        {
+            std::lock_guard<std::mutex> lk(g_mediaMtx);
+            currentMs = g_media.currentPositionMs + g_settings.lyricTimeOffset;
+            durationMs = g_media.durationMs;
+            isPlaying = g_media.isPlaying;
+            trackKey = g_media.title + L"\n" + g_media.artist;
+        }
+        {
+            static long long anchorPositionMs = -1;
+            static std::wstring anchorTrackKey;
+            static auto anchorTime = std::chrono::steady_clock::now();
+            auto now = std::chrono::steady_clock::now();
+            long long rawPositionMs = currentMs - g_settings.lyricTimeOffset;
+            if (rawPositionMs != anchorPositionMs || trackKey != anchorTrackKey) {
+                anchorPositionMs = rawPositionMs;
+                anchorTrackKey = trackKey;
+                anchorTime = now;
+            } else if (isPlaying && anchorPositionMs >= 0) {
+                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - anchorTime).count();
+                long long estimated = anchorPositionMs + elapsed;
+                if (durationMs > 0) estimated = std::min<long long>(estimated, durationMs);
+                currentMs = estimated + g_settings.lyricTimeOffset;
+            }
+        }
+        {
+            std::lock_guard<std::mutex> lk(g_lyricLinesMtx);
+            for (const auto& line : g_lyricLines) {
+                if (currentMs >= line.startTimeMs && currentMs < line.startTimeMs + line.durationMs) {
+                    text = line.text;
+                    progress = GetLyricProgress(line, currentMs);
+                    break;
+                }
+            }
+        }
+
+        if (!text.empty()) {
+            if (auto baseFe = FindChildByName(g_playerGrid, kLyricBaseName)) {
+                if (auto baseBlock = baseFe.try_as<TextBlock>()) {
+                    if (text != baseBlock.Text().c_str()) {
+                        baseBlock.Text(text);
+                    }
+                }
+            }
+            if (auto hiFe = FindChildByName(g_playerGrid, kLyricHighlightName)) {
+                if (auto hiBlock = hiFe.try_as<TextBlock>()) {
+                    hiBlock.Visibility(Visibility::Visible);
+                    if (text != hiBlock.Text().c_str()) {
+                        hiBlock.Text(text);
+                    }
+                }
+            }
+        }
+
+        UpdateLyricHighlightClip(progress);
+    } catch (...) {}
 }
 
 static void DispatchMediaUpdate() {
@@ -5405,7 +5551,9 @@ static void StartTimerThread() {
         g_timerUpdateEvent = nullptr;
     }
 
-    if (g_settings.enableTitleScrolling || g_settings.enableArtistScrolling || g_settings.lyricMaxWidth > 0) {
+    if (g_settings.enableTitleScrolling || g_settings.enableArtistScrolling ||
+        g_settings.lyricMaxWidth > 0 ||
+        (g_settings.showLyric && g_settings.enableLyricKaraoke)) {
         StartScrollTimer();
     }
 }
@@ -6730,15 +6878,39 @@ static Grid BuildPlayerGrid() {
 
         if (g_settings.showLyric) {
             try {
-                TextBlock lyricBlock;
-                lyricBlock.Name(L"FluentMedia_Lyric");
+                auto makeLyricBlock = [](const wchar_t* name, winrt::Windows::UI::Color color) {
+                    TextBlock block;
+                    block.Name(name);
+                    block.Text(L"...");
+                    block.VerticalAlignment(VerticalAlignment::Center);
+                    block.Foreground(MakeBrush(color));
+                    block.FontSize(12);
+                    block.TextTrimming(TextTrimming::None);
+                    block.TextWrapping(TextWrapping::NoWrap);
+                    return block;
+                };
+
+                TextBlock lyricBlock = makeLyricBlock(
+                    kLyricBaseName,
+                    ParseColorWithThemeSupport(g_settings.lyricColor, 255));
+                TextBlock lyricHighlightBlock = makeLyricBlock(
+                    kLyricHighlightName,
+                    ParseColorWithThemeSupport(g_settings.lyricHighlightColor, 255));
+                lyricHighlightBlock.Visibility(g_settings.enableLyricKaraoke ? Visibility::Visible : Visibility::Collapsed);
+                {
+                    auto geo = winrt::Windows::UI::Xaml::Media::RectangleGeometry();
+                    geo.Rect({0, 0, 0, 16});
+                    lyricHighlightBlock.Clip(geo);
+                }
                 lyricBlock.Text(L"🎵🎵🎵");
                 lyricBlock.VerticalAlignment(VerticalAlignment::Center);
                 lyricBlock.Foreground(MakeBrush(ParseColorWithThemeSupport(g_settings.lyricColor, 255)));
                 lyricBlock.FontSize(12);
+                lyricHighlightBlock.Text(lyricBlock.Text());
 
                 if (g_settings.lyricMaxWidth > 0) {
                     lyricBlock.Margin({0, 0, 0, 0});
+                    lyricHighlightBlock.Margin({0, 0, 0, 0});
                     Canvas lyricScrollView;
                     lyricScrollView.Name(kLyricScrollViewName);
                     lyricScrollView.VerticalAlignment(VerticalAlignment::Center);
@@ -6749,7 +6921,10 @@ static Grid BuildPlayerGrid() {
                     lyricBlock.TextWrapping(TextWrapping::NoWrap);
                     Canvas::SetLeft(lyricBlock, 0.0);
                     Canvas::SetTop(lyricBlock, 0.0);
+                    Canvas::SetLeft(lyricHighlightBlock, 0.0);
+                    Canvas::SetTop(lyricHighlightBlock, 0.0);
                     lyricScrollView.Children().Append(lyricBlock);
+                    lyricScrollView.Children().Append(lyricHighlightBlock);
 
                     {
                         auto geo = winrt::Windows::UI::Xaml::Media::RectangleGeometry();
@@ -6771,12 +6946,20 @@ static Grid BuildPlayerGrid() {
                     Grid::SetColumn(lyricScrollView, (int)panel.ColumnDefinitions().Size() - 1);
                     panel.Children().Append(lyricScrollView);
                 } else {
-                    lyricBlock.Margin({(double)g_settings.lyricMarginLeft, 0, (double)g_settings.lyricMarginRight, 0});
+                    Grid lyricRoot;
+                    lyricRoot.Name(kLyricRootName);
+                    lyricRoot.VerticalAlignment(VerticalAlignment::Center);
+                    lyricRoot.Margin({(double)g_settings.lyricMarginLeft, 0, (double)g_settings.lyricMarginRight, 0});
+                    lyricBlock.Margin({0, 0, 0, 0});
+                    lyricHighlightBlock.Margin({0, 0, 0, 0});
+                    lyricRoot.Children().Append(lyricBlock);
+                    lyricRoot.Children().Append(lyricHighlightBlock);
+
                     auto lyricCol = ColumnDefinition();
                     lyricCol.Width({1.0, GridUnitType::Auto});
                     panel.ColumnDefinitions().Append(lyricCol);
-                    Grid::SetColumn(lyricBlock, (int)panel.ColumnDefinitions().Size() - 1);
-                    panel.Children().Append(lyricBlock);
+                    Grid::SetColumn(lyricRoot, (int)panel.ColumnDefinitions().Size() - 1);
+                    panel.Children().Append(lyricRoot);
                 }
             } catch (...) {
                 Wh_Log(L"BuildPlayerGrid: Exception adding lyric text");
@@ -8575,8 +8758,9 @@ static void RefreshPlayerContents() {
 
     if (g_settings.showLyric) {
         try {
-            if (auto lyricFe = FindChildByName(g_playerGrid, L"FluentMedia_Lyric")) {
+            if (auto lyricFe = FindChildByName(g_playerGrid, kLyricBaseName)) {
                 if (auto lyricBlock = lyricFe.try_as<TextBlock>()) {
+                    double lyricProgress = 0.0;
                     std::wstring timeText = L"🎵🎵🎵";
                     long long currentMs = 0;
                     {
@@ -8590,6 +8774,7 @@ static void RefreshPlayerContents() {
                                 if (!line.text.empty()) {
                                     timeText = line.text;
                                 }
+                                lyricProgress = GetLyricProgress(line, currentMs);
                                 break;
                             }
                         }
@@ -8601,8 +8786,10 @@ static void RefreshPlayerContents() {
                                     cv.Visibility(Visibility::Collapsed);
                             }
                         } else {
-                            if (lyricBlock.Visibility() != Visibility::Collapsed)
-                                lyricBlock.Visibility(Visibility::Collapsed);
+                            if (auto root = FindChildByName(g_playerGrid, kLyricRootName)) {
+                                if (root.Visibility() != Visibility::Collapsed)
+                                    root.Visibility(Visibility::Collapsed);
+                            }
                         }
                     } else {
                         if (g_settings.lyricMaxWidth > 0) {
@@ -8611,12 +8798,23 @@ static void RefreshPlayerContents() {
                                     cv.Visibility(Visibility::Visible);
                             }
                         } else {
-                            if (lyricBlock.Visibility() != Visibility::Visible)
-                                lyricBlock.Visibility(Visibility::Visible);
+                            if (auto root = FindChildByName(g_playerGrid, kLyricRootName)) {
+                                if (root.Visibility() != Visibility::Visible)
+                                    root.Visibility(Visibility::Visible);
+                            }
                         }
                         if (timeText != lyricBlock.Text().c_str()) {
                             lyricBlock.Text(timeText);
                         }
+                        if (auto hiFe = FindChildByName(g_playerGrid, kLyricHighlightName)) {
+                            if (auto hiBlock = hiFe.try_as<TextBlock>()) {
+                                hiBlock.Visibility(g_settings.enableLyricKaraoke ? Visibility::Visible : Visibility::Collapsed);
+                                if (timeText != hiBlock.Text().c_str()) {
+                                    hiBlock.Text(timeText);
+                                }
+                            }
+                        }
+                        UpdateLyricHighlightClip(g_settings.enableLyricKaraoke ? lyricProgress : 0.0);
                     }
                     // Update lyric scroll state
                     if (g_settings.lyricMaxWidth > 0) {
@@ -8929,7 +9127,9 @@ static void WINAPI TrayUI_StartTaskbar_Hook(void* pThis) {
         StartVizCaptureThread();
         StartVizTimer();
     }
-    if (g_settings.enableTitleScrolling || g_settings.enableArtistScrolling || g_settings.lyricMaxWidth > 0) {
+    if (g_settings.enableTitleScrolling || g_settings.enableArtistScrolling ||
+        g_settings.lyricMaxWidth > 0 ||
+        (g_settings.showLyric && g_settings.enableLyricKaraoke)) {
         StartScrollTimer();
     }
 
