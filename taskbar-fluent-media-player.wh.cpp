@@ -7,7 +7,7 @@
 // @author          Salyts
 // @github          https://github.com/Salyts
 // @include         explorer.exe
-// @compilerOptions -lole32 -loleaut32 -lruntimeobject -lversion -luuid -luser32 -lwindowsapp -lshell32 -lgdi32 -lshlwapi -lwindowscodecs -ldwmapi -lshcore -lksuser
+// @compilerOptions -lole32 -loleaut32 -lruntimeobject -lversion -luuid -luser32 -lwindowsapp -lshell32 -lgdi32 -lshlwapi -lwindowscodecs -ldwmapi -lshcore -lksuser -lwinhttp
 // ==/WindhawkMod==
 
 // ==WindhawkModReadme==
@@ -334,6 +334,32 @@ If you encounter any issues, bugs, or have suggestions for new features, please 
       $name:ru-RU: Чувствительность (0-300)
     $name: Visualizer
     $name:ru-RU: Визуализатор
+  - LyricSettings:
+    - showLyric: false
+      $name: Show lyric
+      $description: Display lyric text next to the media player controls.
+    - lyricMargin: "4 4"
+      $name: Lyric margin (left right)
+      $description: Margin around the lyric text, left and right spacing in pixels.
+    - lyricColor: "255 255 255"
+      $name: Lyric base color (RGB)
+      $description: Base text color as R G B values. Use "-1 -1 -1" for system accent color.
+    - enableLyricKaraoke: true
+      $name: Enable lyric karaoke effect
+      $description: Highlight the current lyric progress with a smooth karaoke-style sweep.
+    - lyricHighlightColor: "30 215 96"
+      $name: Lyric highlight color (RGB)
+      $description: Karaoke highlight color as R G B values. Use "-1 -1 -1" for system accent color.
+    - lyricMaxWidth: "256"
+      $name: Lyric max width (px)
+      $description: Maximum width of the lyric text area. Set to 0 for no limit. When text exceeds this width, it scrolls.
+    - lyricTimeOffset: "0"
+      $name: Lyric time offset (ms)
+      $description: Adjust lyric timing. Positive = show lyrics earlier (e.g. 1000 = 1s earlier), negative = show later.
+    - hideLyricWhenNoLyrics: false
+      $name: Hide lyric when no lyrics available
+      $description: When enabled, the lyric text is hidden when no lyrics are found for the current track.
+    $name: Lyric
   $name: Main Settings
   $name:ru-RU: Основные настройки
 
@@ -987,10 +1013,13 @@ If you encounter any issues, bugs, or have suggestions for new features, please 
 #include <winrt/Windows.Media.Control.h>
 #include <winrt/Windows.Storage.Streams.h>
 #include <winrt/Windows.Graphics.Imaging.h>
+#include <winrt/Windows.Web.Http.h>
+#include <winrt/Windows.Data.Json.h>
 #include <robuffer.h>
 #include <shcore.h>
 
 #include <windows.h>
+#include <winhttp.h>
 #include <shellapi.h>
 #include <shlobj.h>
 #include <shlwapi.h>
@@ -1011,6 +1040,7 @@ If you encounter any issues, bugs, or have suggestions for new features, please 
 #include <functional>
 #include <memory>
 #include <utility>
+#include <iomanip>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -1019,6 +1049,7 @@ If you encounter any issues, bugs, or have suggestions for new features, please 
 #include <thread>
 #include <cmath>
 #include <chrono>
+#include <sstream>
 
 using namespace winrt::Windows::UI::Xaml;
 using namespace winrt::Windows::UI::Xaml::Controls;
@@ -1028,11 +1059,15 @@ using namespace winrt::Windows::UI::Xaml::Media::Animation;
 using namespace winrt::Windows::UI::Xaml::Input;
 using namespace winrt::Windows::Media::Control;
 using namespace winrt::Windows::Storage::Streams;
+using namespace winrt::Windows::Data::Json;
 
 enum class VizShape { Stereo, Mountain, Mirror, Wave, Breathe };
 enum class VizColorMode { Solid, DynamicAlbum, DynamicGradient, CustomGradient, Acrylic };
 enum class VizEQ { Default, Bass, Rock, Pop, Jazz, Electronic };
 enum class VizAnchor { Top, Middle, Bottom };
+
+const WCHAR *LRCLIB_API_URL = L"lrclib.net";
+const int HTTPS_PORT = INTERNET_DEFAULT_HTTPS_PORT;
 
 struct ModSettings {
     std::wstring position             = L"tray_left";
@@ -1175,6 +1210,15 @@ struct ModSettings {
     int          vizSensitivity  = 150;
     int          vizPadLeft      = 0;
     int          vizPadRight     = 0;
+    bool         showLyric              = false;
+    int          lyricMarginLeft        = 4;
+    int          lyricMarginRight       = 4;
+    std::wstring lyricColor             = L"255 255 255";
+    bool         enableLyricKaraoke     = true;
+    std::wstring lyricHighlightColor    = L"30 215 96";
+    int          lyricMaxWidth          = 256;
+    int          lyricTimeOffset        = 0;
+    bool         hideLyricWhenNoLyrics  = false;
 };
 static ModSettings g_settings;
 
@@ -1222,6 +1266,115 @@ struct MediaButtonConfig {
 
 static std::vector<MediaButtonConfig> g_mediaButtons;
 static std::mutex g_mediaButtonsMutex;
+
+struct LyricWord {
+    std::wstring    text;
+    long            startTimeMs;
+    long            durationMs;
+};
+
+struct LyricLine {
+    std::wstring            text;
+    long                    startTimeMs;
+    long                    durationMs;
+    std::vector<LyricWord>  words;
+};
+
+struct LRCParser {
+    static long ParseTime(const std::wstring& timeStr) {
+        size_t colon = timeStr.find(L':');
+        if (colon != std::wstring::npos) {
+            std::wstring minStr = timeStr.substr(0, colon);
+            std::wstring secStr = timeStr.substr(colon + 1);
+            float m = (float)_wtof(minStr.c_str());
+            float s = (float)_wtof(secStr.c_str());
+            return (long)((m * 60.0f + s) * 1000.0f);
+        }
+        return 0;
+    }
+
+    static std::vector<LyricLine> Parse(const std::wstring& lrc, long songDuration) {
+        std::vector<LyricLine> lines;
+        std::wstringstream ss(lrc);
+        std::wstring line;
+        while (std::getline(ss, line)) {
+            if (line.empty())
+                continue;
+
+            size_t lastEnd = 0;
+            std::vector<long> timestamps;
+            while (true) {
+                size_t start = line.find(L'[', lastEnd);
+                size_t end = line.find(L']', start);
+                if (start != std::wstring::npos && end != std::wstring::npos && end > start + 1) {
+                    std::wstring timePart = line.substr(start + 1, end - start - 1);
+                    timestamps.push_back(ParseTime(timePart));
+                    lastEnd = end + 1;
+                } else
+                    break;
+            }
+
+            if (timestamps.empty())
+                continue;
+            std::wstring textPart = line.substr(lastEnd);
+
+            for (long startTime : timestamps) {
+                LyricLine l;
+                l.startTimeMs = startTime;
+
+                size_t wStart = 0;
+                while ((wStart = textPart.find(L'<', wStart)) != std::wstring::npos) {
+                    size_t wEnd = textPart.find(L'>', wStart);
+                    if (wEnd != std::wstring::npos) {
+                        LyricWord w;
+                        w.startTimeMs = ParseTime(textPart.substr(wStart + 1, wEnd - wStart - 1));
+                        size_t nextW = textPart.find(L'<', wEnd);
+                        w.text = textPart.substr(wEnd + 1, nextW - wEnd - 1);
+                        l.words.push_back(w);
+                        wStart = wEnd + 1;
+                    } else
+                        break;
+                }
+
+                if (l.words.empty()) {
+                    l.text = textPart;
+                } else {
+                    for (auto& w : l.words)
+                        l.text += w.text;
+                }
+                lines.push_back(l);
+            }
+        }
+
+        std::sort(lines.begin(), lines.end(),
+             [](const LyricLine& a, const LyricLine& b) {
+                 return a.startTimeMs < b.startTimeMs;
+             });
+
+        for (size_t i = 0; i < lines.size(); i++) {
+            if (i + 1 < lines.size()) {
+                long gap = lines[i + 1].startTimeMs - lines[i].startTimeMs;
+                lines[i].durationMs = (gap < 8000) ? gap : 5000;
+            } else {
+                lines[i].durationMs = 5000;
+            }
+
+            if (!lines[i].words.empty()) {
+                for (size_t j = 0; j < lines[i].words.size(); j++) {
+                    if (j + 1 < lines[i].words.size()) {
+                        lines[i].words[j].durationMs = lines[i].words[j + 1].startTimeMs -
+                                                       lines[i].words[j].startTimeMs;
+                    } else {
+                        lines[i].words[j].durationMs =
+                            lines[i].durationMs -
+                            (lines[i].words[j].startTimeMs - lines[i].startTimeMs);
+                    }
+                }
+            }
+        }
+        return lines;
+    }
+};
 
 static std::wstring MapFontName(const std::wstring& key) {
     if (key == L"custom") return L"";
@@ -1469,6 +1622,15 @@ static void LoadSettings() {
                      : (anchor == L"bottom") ? VizAnchor::Bottom
                                              : VizAnchor::Middle;
     }
+
+    g_settings.showLyric                = Wh_GetIntSetting(L"MainSettings.LyricSettings.showLyric") != 0;
+    g_settings.lyricColor               = Str(L"MainSettings.LyricSettings.lyricColor", L"255 255 255");
+    g_settings.enableLyricKaraoke       = Wh_GetIntSetting(L"MainSettings.LyricSettings.enableLyricKaraoke") != 0;
+    g_settings.lyricHighlightColor      = Str(L"MainSettings.LyricSettings.lyricHighlightColor", L"30 215 96");
+    g_settings.lyricMaxWidth            = Wh_GetIntSetting(L"MainSettings.LyricSettings.lyricMaxWidth");
+    g_settings.lyricTimeOffset          = Wh_GetIntSetting(L"MainSettings.LyricSettings.lyricTimeOffset");
+    g_settings.hideLyricWhenNoLyrics    = Wh_GetIntSetting(L"MainSettings.LyricSettings.hideLyricWhenNoLyrics") != 0;
+    ParseMargin(L"MainSettings.LyricSettings.lyricMargin", L"4 4", g_settings.lyricMarginLeft, g_settings.lyricMarginRight);
 
     g_settings.albumArtLeftClick        = L"none";
     g_settings.albumArtRightClick       = L"none";
@@ -1726,9 +1888,12 @@ static bool RunFromWindowThread(HWND hWnd, WindowThreadProc proc, void* param) {
 struct MediaState {
     std::wstring      title;
     std::wstring      artist;
+    std::wstring      album;
     std::wstring      appUserModelId;
     bool              isPlaying     = false;
     bool              hasMedia      = false;
+    long              durationMs        = 0;
+    long              currentPositionMs = 0;
     std::vector<BYTE> thumbnailBytes;
     uint64_t          thumbnailHash = 0;
     std::vector<BYTE> appIconBytes;
@@ -1759,6 +1924,10 @@ static int g_cachedAppIconSize = -1;
 
 static std::wstring g_scrollCachedTitle;
 static std::wstring g_scrollCachedArtist;
+static std::wstring g_lyricFetchedTitle;
+static std::wstring g_lyricFetchedArtist;
+static std::vector<LyricLine> g_lyricLines;
+static std::mutex g_lyricLinesMtx;
 
 struct BlurBgCache {
     std::vector<BYTE>  blurredPixels;
@@ -2755,6 +2924,7 @@ struct TextScrollState {
 
 static TextScrollState g_titleScroll;
 static TextScrollState g_artistScroll;
+static TextScrollState g_lyricScroll;
 
 static void ResetScrollState(TextScrollState& s);
 
@@ -3954,12 +4124,17 @@ static void TickScrollState(TextScrollState& s, int stepPx, int pauseMs, const s
 }
 
 static void UpdateScrollTransforms();
+static void UpdateLyricKaraokeFromCurrentPosition();
 
 static void ScrollTimerTick(winrt::Windows::Foundation::IInspectable const&,
                              winrt::Windows::Foundation::IInspectable const&) {
     if (g_unloading || g_applyingSettings) return;
 
-    bool needsScroll = (g_titleScroll.active || g_artistScroll.active);
+    bool needsKaraoke = (g_settings.showLyric && g_settings.enableLyricKaraoke);
+    bool needsScroll = (g_titleScroll.active || g_artistScroll.active || g_lyricScroll.active);
+    if (needsKaraoke) {
+        UpdateLyricKaraokeFromCurrentPosition();
+    }
     if (!needsScroll) return;
 
     int stepPx = std::max(1, g_settings.scrollSpeed);
@@ -3967,6 +4142,7 @@ static void ScrollTimerTick(winrt::Windows::Foundation::IInspectable const&,
 
     TickScrollState(g_titleScroll, stepPx, pauseMs, g_settings.scrollMode);
     TickScrollState(g_artistScroll, stepPx, pauseMs, g_settings.scrollMode);
+    TickScrollState(g_lyricScroll, stepPx, pauseMs, g_settings.scrollMode);
 
     UpdateScrollTransforms();
 }
@@ -4033,6 +4209,11 @@ static constexpr wchar_t kTitleScrollViewName[]  = L"FluentMedia_TitleScrollView
 static constexpr wchar_t kArtistScrollViewName[] = L"FluentMedia_ArtistScrollView";
 static constexpr wchar_t kTitleCloneName[]       = L"FluentMedia_TitleClone";
 static constexpr wchar_t kArtistCloneName[]      = L"FluentMedia_ArtistClone";
+static constexpr wchar_t kLyricScrollViewName[]  = L"FluentMedia_LyricScrollView";
+static constexpr wchar_t kLyricCloneName[]       = L"FluentMedia_LyricClone";
+static constexpr wchar_t kLyricRootName[]        = L"FluentMedia_LyricRoot";
+static constexpr wchar_t kLyricBaseName[]        = L"FluentMedia_Lyric";
+static constexpr wchar_t kLyricHighlightName[]   = L"FluentMedia_LyricHighlight";
 static constexpr wchar_t kPanelGridName[]        = L"FluentMedia_PanelGrid";
 
 static double GetAvailableScrollTextAreaWidth() {
@@ -4068,7 +4249,7 @@ static double GetAvailableScrollTextAreaWidth() {
 
 
 static void UpdateScrollTransforms() {
-    if (!g_playerGrid || (!g_settings.enableTitleScrolling && !g_settings.enableArtistScrolling)) return;
+    if (!g_playerGrid) return;
     bool isLoop = (g_settings.scrollMode == L"loop");
 
     if (g_settings.enableTitleScrolling) {
@@ -4114,6 +4295,152 @@ static void UpdateScrollTransforms() {
             }
         } catch (...) {}
     }
+
+    if (g_settings.lyricMaxWidth > 0) {
+        try {
+            if (auto fe = FindChildByName(g_playerGrid, kLyricScrollViewName)) {
+                if (auto cv = fe.try_as<Canvas>()) {
+                    int n = VisualTreeHelper::GetChildrenCount(cv);
+                    for (int i = 0; i < n; i++) {
+                        auto child = VisualTreeHelper::GetChild(cv, i);
+                        if (auto tb = child.try_as<TextBlock>()) {
+                            if (tb.Name() == kLyricBaseName || tb.Name() == kLyricHighlightName) {
+                                Canvas::SetLeft(tb, -g_lyricScroll.offset);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (...) {}
+    }
+}
+
+static void UpdateLyricHighlightClip(double progress) {
+    if (!g_playerGrid) return;
+
+    progress = std::clamp(progress, 0.0, 1.0);
+
+    try {
+        if (auto fe = FindChildByName(g_playerGrid, kLyricHighlightName)) {
+            if (auto highlightBlock = fe.try_as<TextBlock>()) {
+                double width = highlightBlock.ActualWidth();
+                double height = highlightBlock.ActualHeight();
+                if (height < 1.0) height = 16.0;
+
+                auto geo = highlightBlock.Clip().try_as<winrt::Windows::UI::Xaml::Media::RectangleGeometry>();
+                if (!geo) {
+                    geo = winrt::Windows::UI::Xaml::Media::RectangleGeometry();
+                    highlightBlock.Clip(geo);
+                }
+                geo.Rect({0, 0, (float)(width * progress), (float)height});
+            }
+        }
+    } catch (...) {}
+}
+
+static double GetLyricProgress(const LyricLine& line, long long currentMs) {
+    long duration = std::max(1L, line.durationMs);
+    double lineProgress = (double)(currentMs - line.startTimeMs) / (double)duration;
+    lineProgress = std::clamp(lineProgress, 0.0, 1.0);
+
+    if (line.words.empty() || line.text.empty()) {
+        return lineProgress;
+    }
+
+    size_t totalChars = line.text.size();
+    if (totalChars == 0) {
+        return lineProgress;
+    }
+
+    size_t charsBefore = 0;
+    for (const auto& word : line.words) {
+        size_t wordChars = word.text.size();
+        long wordStart = word.startTimeMs;
+        long wordDuration = std::max(1L, word.durationMs);
+        long wordEnd = wordStart + wordDuration;
+
+        if (currentMs < wordStart) {
+            return std::clamp((double)charsBefore / (double)totalChars, 0.0, 1.0);
+        }
+
+        if (currentMs < wordEnd) {
+            double wordProgress = (double)(currentMs - wordStart) / (double)wordDuration;
+            double charsDone = (double)charsBefore + (double)wordChars * std::clamp(wordProgress, 0.0, 1.0);
+            return std::clamp(charsDone / (double)totalChars, 0.0, 1.0);
+        }
+
+        charsBefore += wordChars;
+    }
+
+    return 1.0;
+}
+
+static void UpdateLyricKaraokeFromCurrentPosition() {
+    if (!g_playerGrid || !g_settings.showLyric || !g_settings.enableLyricKaraoke) return;
+
+    std::wstring text;
+    double progress = 0.0;
+    long long currentMs = 0;
+    long long durationMs = 0;
+    bool isPlaying = false;
+    std::wstring trackKey;
+
+    try {
+        {
+            std::lock_guard<std::mutex> lk(g_mediaMtx);
+            currentMs = g_media.currentPositionMs + g_settings.lyricTimeOffset;
+            durationMs = g_media.durationMs;
+            isPlaying = g_media.isPlaying;
+            trackKey = g_media.title + L"\n" + g_media.artist;
+        }
+        {
+            static long long anchorPositionMs = -1;
+            static std::wstring anchorTrackKey;
+            static auto anchorTime = std::chrono::steady_clock::now();
+            auto now = std::chrono::steady_clock::now();
+            long long rawPositionMs = currentMs - g_settings.lyricTimeOffset;
+            if (rawPositionMs != anchorPositionMs || trackKey != anchorTrackKey) {
+                anchorPositionMs = rawPositionMs;
+                anchorTrackKey = trackKey;
+                anchorTime = now;
+            } else if (isPlaying && anchorPositionMs >= 0) {
+                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - anchorTime).count();
+                long long estimated = anchorPositionMs + elapsed;
+                if (durationMs > 0) estimated = std::min<long long>(estimated, durationMs);
+                currentMs = estimated + g_settings.lyricTimeOffset;
+            }
+        }
+        {
+            std::lock_guard<std::mutex> lk(g_lyricLinesMtx);
+            for (const auto& line : g_lyricLines) {
+                if (currentMs >= line.startTimeMs && currentMs < line.startTimeMs + line.durationMs) {
+                    text = line.text;
+                    progress = GetLyricProgress(line, currentMs);
+                    break;
+                }
+            }
+        }
+
+        if (!text.empty()) {
+            if (auto baseFe = FindChildByName(g_playerGrid, kLyricBaseName)) {
+                if (auto baseBlock = baseFe.try_as<TextBlock>()) {
+                    if (text != baseBlock.Text().c_str()) {
+                        baseBlock.Text(text);
+                    }
+                }
+            }
+            if (auto hiFe = FindChildByName(g_playerGrid, kLyricHighlightName)) {
+                if (auto hiBlock = hiFe.try_as<TextBlock>()) {
+                    hiBlock.Visibility(Visibility::Visible);
+                    if (text != hiBlock.Text().c_str()) {
+                        hiBlock.Text(text);
+                    }
+                }
+            }
+        }
+
+        UpdateLyricHighlightClip(progress);
+    } catch (...) {}
 }
 
 static void DispatchMediaUpdate() {
@@ -4199,6 +4526,30 @@ static DWORD WINAPI TimerThreadProc(void*) {
                         RefreshThemeColors();
                     }
                 }, nullptr);
+            }
+        }
+
+        if (g_settings.showLyric && g_playerGrid) {
+            static auto lastLyricUpdate = std::chrono::steady_clock::now();
+            auto now = std::chrono::steady_clock::now();
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastLyricUpdate).count();
+            if (elapsed >= 1000) {
+                lastLyricUpdate = now;
+                std::thread([]() {
+                    winrt::init_apartment(winrt::apartment_type::multi_threaded);
+                    try {
+                        GlobalSystemMediaTransportControlsSession session{nullptr};
+                        { std::lock_guard<std::mutex> lk(g_sessionMtx); session = g_currentSession; }
+                        if (session) {
+                            auto timeline = session.GetTimelineProperties();
+                            auto pos = timeline.Position();
+                            long ms = static_cast<long>(pos.count() / 10000);
+                            { std::lock_guard<std::mutex> lk(g_mediaMtx); g_media.currentPositionMs = ms; }
+                        }
+                    } catch (...) {}
+                    winrt::uninit_apartment();
+                }).detach();
+                g_needsUiUpdate = true;
             }
         }
 
@@ -4948,6 +5299,342 @@ static FrameworkElement BuildVisualizerElement() {
     return vizContainer;
 }
 
+// From https://github.com/narroveseacan/windhawk-floatinglyricbar/blob/228291ed03b439567d275b9a09a51743847467fe/mods/floatinglyricbar.wh.cpp
+std::wstring URLEncode(std::wstring str) {
+    int size_needed = WideCharToMultiByte(CP_UTF8, 0, str.c_str(),
+                                          (int)str.length(), NULL, 0, NULL, NULL);
+    std::string utf8_str(size_needed, 0);
+    WideCharToMultiByte(CP_UTF8, 0, str.c_str(), (int)str.length(), &utf8_str[0],
+                        size_needed, NULL, NULL);
+
+    std::wstringstream ss;
+    for (unsigned char c : utf8_str) {
+        if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+            ss << (wchar_t)c;
+        } else if (c == ' ') {
+            ss << L"+";
+        } else {
+            ss << L"%" << std::hex << std::uppercase << std::setw(2) << std::setfill(L'0') << (int)c;
+        }
+    }
+    return ss.str();
+}
+
+static std::wstring HttpGet(const WCHAR* host, int port, const std::wstring& path) {
+    HINTERNET hSession = WinHttpOpen(L"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36", 
+                                     WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    if (!hSession) return L"";
+
+    HINTERNET hConnect = WinHttpConnect(hSession, host, port, 0);
+    if (!hConnect) { WinHttpCloseHandle(hSession); return L""; }
+
+    HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"GET", path.c_str(), NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE);
+    if (!hRequest) { WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return L""; }
+
+    std::wstring headers = 
+        L"Origin: https://music.youtube.com\r\n"
+        L"Referer: https://music.youtube.com/\r\n"
+        L"sec-ch-ua: \"Chromium\";v=\"146\", \"Not-A.Brand\";v=\"24\", \"Google Chrome\";v=\"146\"\r\n"
+        L"sec-ch-ua-mobile: ?0\r\n"
+        L"sec-ch-ua-platform: \"Windows\"\r\n"
+        L"sec-fetch-dest: empty\r\n"
+        L"sec-fetch-mode: cors\r\n"
+        L"sec-fetch-site: cross-site\r\n";
+
+    WinHttpAddRequestHeaders(hRequest, headers.c_str(), (ULONG)-1, WINHTTP_ADDREQ_FLAG_ADD);
+
+    std::wstring result;
+    if (WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0)) {
+        if (WinHttpReceiveResponse(hRequest, NULL)) {
+            DWORD dwStatusCode = 0;
+            DWORD dwSize = sizeof(dwStatusCode);
+            WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX, &dwStatusCode, &dwSize, WINHTTP_NO_HEADER_INDEX);
+
+            if (dwStatusCode == 200) {
+                std::string rawResponse;
+                DWORD dwSizeAvail = 0;
+                do {
+                    if (!WinHttpQueryDataAvailable(hRequest, &dwSizeAvail)) break;
+                    if (dwSizeAvail == 0) break;
+                    std::vector<char> buffer(dwSizeAvail);
+                    DWORD dwDownloaded = 0;
+                    if (WinHttpReadData(hRequest, buffer.data(), dwSizeAvail, &dwDownloaded)) {
+                        rawResponse.append(buffer.data(), dwDownloaded);
+                    }
+                } while (dwSizeAvail > 0);
+
+                if (!rawResponse.empty()) {
+                    int wlen = MultiByteToWideChar(CP_UTF8, 0, rawResponse.c_str(), (int)rawResponse.length(), NULL, 0);
+                    if (wlen > 0) {
+                        std::vector<wchar_t> wbuf(wlen);
+                        MultiByteToWideChar(CP_UTF8, 0, rawResponse.c_str(), (int)rawResponse.length(), wbuf.data(), wlen);
+                        result.assign(wbuf.data(), wlen);
+                    }
+                }
+            } else {
+                Wh_Log(L"HTTP GET returned error: %d", dwStatusCode);
+            }
+        }
+    }
+    WinHttpCloseHandle(hRequest);
+    WinHttpCloseHandle(hConnect);
+    WinHttpCloseHandle(hSession);
+    return result;
+}
+
+static std::wstring HttpGetNetEase(const WCHAR* host, int port, const std::wstring& path) {
+    HINTERNET hSession = WinHttpOpen(L"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36", 
+                                     WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    if (!hSession) return L"";
+
+    HINTERNET hConnect = WinHttpConnect(hSession, host, port, 0);
+    if (!hConnect) { WinHttpCloseHandle(hSession); return L""; }
+
+    HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"GET", path.c_str(), NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE);
+    if (!hRequest) { WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return L""; }
+
+    std::wstring headers = 
+        L"Referer: https://music.163.com/\r\n"
+        L"Cookie: appver=1.5.0.75771; os=pc;\r\n"
+        L"Origin: https://music.163.com\r\n"
+        L"sec-ch-ua: \"Chromium\";v=\"146\", \"Not-A.Brand\";v=\"24\", \"Google Chrome\";v=\"146\"\r\n"
+        L"sec-ch-ua-mobile: ?0\r\n"
+        L"sec-ch-ua-platform: \"Windows\"\r\n";
+
+    WinHttpAddRequestHeaders(hRequest, headers.c_str(), (ULONG)-1, WINHTTP_ADDREQ_FLAG_ADD);
+
+    std::wstring result;
+    if (WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0)) {
+        if (WinHttpReceiveResponse(hRequest, NULL)) {
+            DWORD dwStatusCode = 0;
+            DWORD dwSize = sizeof(dwStatusCode);
+            WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX, &dwStatusCode, &dwSize, WINHTTP_NO_HEADER_INDEX);
+
+            if (dwStatusCode == 200) {
+                std::string rawResponse;
+                DWORD dwSizeAvail = 0;
+                do {
+                    if (!WinHttpQueryDataAvailable(hRequest, &dwSizeAvail)) break;
+                    if (dwSizeAvail == 0) break;
+                    std::vector<char> buffer(dwSizeAvail);
+                    DWORD dwDownloaded = 0;
+                    if (WinHttpReadData(hRequest, buffer.data(), dwSizeAvail, &dwDownloaded)) {
+                        rawResponse.append(buffer.data(), dwDownloaded);
+                    }
+                } while (dwSizeAvail > 0);
+
+                if (!rawResponse.empty()) {
+                    int wlen = MultiByteToWideChar(CP_UTF8, 0, rawResponse.c_str(), (int)rawResponse.length(), NULL, 0);
+                    if (wlen > 0) {
+                        std::vector<wchar_t> wbuf(wlen);
+                        MultiByteToWideChar(CP_UTF8, 0, rawResponse.c_str(), (int)rawResponse.length(), wbuf.data(), wlen);
+                        result.assign(wbuf.data(), wlen);
+                    }
+                }
+            } else {
+                Wh_Log(L"NetEase API returned error: %d", dwStatusCode);
+            }
+        }
+    }
+    WinHttpCloseHandle(hRequest);
+    WinHttpCloseHandle(hConnect);
+    WinHttpCloseHandle(hSession);
+    return result;
+}
+
+static std::wstring CleanMediaString(std::wstring str) {
+    size_t pOpen = str.find(L'(');
+    if (pOpen != std::wstring::npos) str = str.substr(0, pOpen);
+
+    size_t bOpen = str.find(L'[');
+    if (bOpen != std::wstring::npos) str = str.substr(0, bOpen);
+
+    std::wstring lowerStr = str;
+    std::transform(lowerStr.begin(), lowerStr.end(), lowerStr.begin(), ::towlower);
+
+    const wchar_t* tags[] = {
+        L" feat", L" ft.", L" ft ", L" featuring", L" - remastered", 
+        L" - single", L" - radio edit", L" - stereo"
+    };
+
+    for (const wchar_t* tag : tags) {
+        size_t pos = lowerStr.find(tag);
+        if (pos != std::wstring::npos) {
+            str = str.substr(0, pos);
+            lowerStr = lowerStr.substr(0, pos);
+        }
+    }
+
+    size_t last = str.find_last_not_of(L" \t\r\n");
+    if (last != std::wstring::npos) {
+        str = str.substr(0, last + 1);
+    }
+    return str;
+}
+
+static bool FetchFromNetEase(const std::wstring& title, const std::wstring& artist,
+                             const std::wstring& album, long durationMs,
+                             std::vector<LyricLine>& outLyrics) {
+    std::wstring searchPath = L"/api/search/get/web?s=" + URLEncode(title + L" " + artist) +
+                         L"&type=1&offset=0&total=true&limit=1";
+    std::wstring searchJson = HttpGetNetEase(L"music.163.com", INTERNET_DEFAULT_HTTPS_PORT, searchPath);
+    if (searchJson.empty())
+        return false;
+
+    try {
+        winrt::Windows::Data::Json::JsonObject obj = winrt::Windows::Data::Json::JsonObject::Parse(searchJson);
+        if (!obj.HasKey(L"result")) return false;
+        winrt::Windows::Data::Json::JsonObject resultObj = obj.GetNamedObject(L"result");
+
+        if (!resultObj.HasKey(L"songs")) return false;
+        winrt::Windows::Data::Json::JsonArray songsArr = resultObj.GetNamedArray(L"songs");
+
+        if (songsArr.Size() == 0) return false;
+        winrt::Windows::Data::Json::JsonObject firstSong = songsArr.GetAt(0).GetObject();
+        double songId = firstSong.GetNamedNumber(L"id");
+
+        std::wstring lyricPath = L"/api/song/lyric?id=" + std::to_wstring((long long)songId) + L"&lv=1&kv=1&tv=-1";
+        std::wstring lyricJson = HttpGetNetEase(L"music.163.com", INTERNET_DEFAULT_HTTPS_PORT, lyricPath);
+        if (lyricJson.empty())
+            return false;
+
+        winrt::Windows::Data::Json::JsonObject lObj = winrt::Windows::Data::Json::JsonObject::Parse(lyricJson);
+        if (lObj.HasKey(L"lrc")) {
+            winrt::Windows::Data::Json::JsonObject lrcObj = lObj.GetNamedObject(L"lrc");
+            std::wstring lrc = lrcObj.GetNamedString(L"lyric").c_str();
+
+            auto ReplaceAll = [](std::wstring& s, const std::wstring& from, const std::wstring& to) {
+                size_t pos = 0;
+                while ((pos = s.find(from, pos)) != std::wstring::npos) {
+                    s.replace(pos, from.length(), to);
+                    pos += to.length();
+                }
+            };
+            ReplaceAll(lrc, L"\\n", L"\n");
+            ReplaceAll(lrc, L"\\\"", L"\"");
+            ReplaceAll(lrc, L"\\r", L"");
+
+            outLyrics = LRCParser::Parse(lrc, durationMs);
+
+            for (auto& line : outLyrics) {
+                if (line.text.size() > 4 && line.text[0] == L'[') {
+                    size_t br = line.text.find(L']');
+                    if (br != std::wstring::npos && br < 15) {
+                        line.text.erase(0, br + 1);
+                    }
+                }
+            }
+
+            return !outLyrics.empty();
+        }
+    } catch (...) {
+    }
+    return false;
+}
+
+bool FetchFromLRCLib(std::wstring title, std::wstring artist, std::wstring album,
+                     long durationMs, std::vector<LyricLine> &outLyrics) {
+    std::wstring path = L"/api/get?track_name=" + URLEncode(title) + L"&artist_name=" +
+                        URLEncode(artist);
+    if (!album.empty())
+        path += L"&album_name=" + URLEncode(album);
+    if (durationMs > 0)
+        path += L"&duration=" + std::to_wstring(durationMs / 1000);
+
+    std::wstring json = HttpGet(LRCLIB_API_URL, HTTPS_PORT, path); // No JWT for LRCLib
+
+    // Helper function to safely extract LRC from a JSON object
+    auto ExtractLRC = [&](JsonObject obj) -> bool {
+        if (obj.HasKey(L"syncedLyrics") && obj.GetNamedValue(L"syncedLyrics").ValueType() == JsonValueType::String) {
+            std::wstring lrc = obj.GetNamedString(L"syncedLyrics").c_str();
+            if (!lrc.empty()) {
+                auto ReplaceAll = [](std::wstring &s, const std::wstring &from, const std::wstring &to) {
+                    size_t pos = 0;
+                    while ((pos = s.find(from, pos)) != std::wstring::npos) {
+                        s.replace(pos, from.length(), to);
+                        pos += to.length();
+                    }
+                };
+                ReplaceAll(lrc, L"\\n", L"\n");
+                ReplaceAll(lrc, L"\\\"", L"\"");
+                ReplaceAll(lrc, L"\\r", L"");
+
+                outLyrics = LRCParser::Parse(lrc, durationMs);
+                return !outLyrics.empty();
+            }
+        }
+        return false;
+    };
+
+    // 1. Try Exact Match First
+    try {
+        if (!json.empty()) {
+            JsonObject obj = JsonObject::Parse(json);
+            if (ExtractLRC(obj))
+                return true;
+        }
+    }
+    catch (...) {}
+
+    // 2. Fallback to Broad Search Array
+    std::wstring searchPath = L"/api/search?q=" + URLEncode(artist + L" " + title);
+    json = HttpGet(LRCLIB_API_URL, HTTPS_PORT, searchPath);
+    if (json.empty() || json.length() < 10)
+        return false;
+
+    try {
+        JsonArray arr = JsonArray::Parse(json);
+        // Iterate through search results and grab the first one that actually contains synced lyrics
+        for (uint32_t i = 0; i < arr.Size(); i++) {
+            JsonObject obj = arr.GetAt(i).GetObject();
+            if (ExtractLRC(obj)) {
+                Wh_Log(L"LRCLib search fallback succeeded on array index %d", i);
+                return true;
+            }
+        }
+    }
+    catch (...) {}
+
+    return false;
+}
+
+static void FetchLyrics(const std::wstring& title, const std::wstring& artist,
+                        const std::wstring& album, long durationMs) {
+    std::vector<LyricLine> lines;
+    bool found = false;
+
+    std::wstring cleanTitle = CleanMediaString(title);
+    std::wstring cleanAlbum = CleanMediaString(album);
+
+    if (FetchFromNetEase(cleanTitle, artist, cleanAlbum, durationMs, lines)) {
+        Wh_Log(L"Lyrics found from NetEase");
+        found = true;
+    }
+    else if (FetchFromLRCLib(cleanTitle, artist,cleanAlbum, durationMs, lines)) {
+        Wh_Log(L"Lyrics found from LRCLib");
+        found = true;
+    }
+
+    if (!found) {
+        Wh_Log(L"No lyrics found for %s", title.c_str());
+        return;
+    }
+
+    Wh_Log(L"===== Lyrics for %s - %s (%d lines) =====", title.c_str(), artist.c_str(), (int)lines.size());
+    for (size_t i = 0; i < lines.size(); i++) {
+        auto& line = lines[i];
+        long mins = line.startTimeMs / 60000;
+        long secs = (line.startTimeMs % 60000) / 1000;
+        Wh_Log(L"[%02ld:%02ld] %s", mins, secs, line.text.c_str());
+    }
+    Wh_Log(L"===== End Lyrics =====");
+    
+    {
+        std::lock_guard<std::mutex> lk(g_lyricLinesMtx);
+        g_lyricLines = std::move(lines);
+    }
+}
+
 static void StartTimerThread() {
     if (g_timerThread) return;
     g_timerStopEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
@@ -4960,7 +5647,9 @@ static void StartTimerThread() {
         g_timerUpdateEvent = nullptr;
     }
 
-    if (g_settings.enableTitleScrolling || g_settings.enableArtistScrolling) {
+    if (g_settings.enableTitleScrolling || g_settings.enableArtistScrolling ||
+        g_settings.lyricMaxWidth > 0 ||
+        (g_settings.showLyric && g_settings.enableLyricKaraoke)) {
         StartScrollTimer();
     }
 }
@@ -5926,7 +6615,7 @@ static Grid BuildPlayerGrid() {
             textStack.Orientation(Orientation::Vertical);
             textStack.VerticalAlignment(VerticalAlignment::Center);
 
-            if (g_settings.enableTitleScrolling || g_settings.enableArtistScrolling) {
+            if (g_settings.enableTitleScrolling || g_settings.enableArtistScrolling || g_settings.lyricMaxWidth > 0) {
                 textStack.HorizontalAlignment(HorizontalAlignment::Stretch);
             } else {
                 textStack.HorizontalAlignment(g_settings.mirrorLayout ? HorizontalAlignment::Right : HorizontalAlignment::Left);
@@ -6280,6 +6969,96 @@ static Grid BuildPlayerGrid() {
                 }
             } catch (...) {
                 Wh_Log(L"BuildPlayerGrid: Exception adding inline visualizer");
+            }
+        }
+
+        if (g_settings.showLyric) {
+            try {
+                auto makeLyricBlock = [](const wchar_t* name, winrt::Windows::UI::Color color) {
+                    TextBlock block;
+                    block.Name(name);
+                    block.Text(L"...");
+                    block.VerticalAlignment(VerticalAlignment::Center);
+                    block.Foreground(MakeBrush(color));
+                    block.FontSize(12);
+                    block.TextTrimming(TextTrimming::None);
+                    block.TextWrapping(TextWrapping::NoWrap);
+                    return block;
+                };
+
+                TextBlock lyricBlock = makeLyricBlock(
+                    kLyricBaseName,
+                    ParseColorWithThemeSupport(g_settings.lyricColor, 255));
+                TextBlock lyricHighlightBlock = makeLyricBlock(
+                    kLyricHighlightName,
+                    ParseColorWithThemeSupport(g_settings.lyricHighlightColor, 255));
+                lyricHighlightBlock.Visibility(g_settings.enableLyricKaraoke ? Visibility::Visible : Visibility::Collapsed);
+                {
+                    auto geo = winrt::Windows::UI::Xaml::Media::RectangleGeometry();
+                    geo.Rect({0, 0, 0, 16});
+                    lyricHighlightBlock.Clip(geo);
+                }
+                lyricBlock.Text(L"🎵🎵🎵");
+                lyricBlock.VerticalAlignment(VerticalAlignment::Center);
+                lyricBlock.Foreground(MakeBrush(ParseColorWithThemeSupport(g_settings.lyricColor, 255)));
+                lyricBlock.FontSize(12);
+                lyricHighlightBlock.Text(lyricBlock.Text());
+
+                if (g_settings.lyricMaxWidth > 0) {
+                    lyricBlock.Margin({0, 0, 0, 0});
+                    lyricHighlightBlock.Margin({0, 0, 0, 0});
+                    Canvas lyricScrollView;
+                    lyricScrollView.Name(kLyricScrollViewName);
+                    lyricScrollView.VerticalAlignment(VerticalAlignment::Center);
+                    lyricScrollView.Margin({(double)g_settings.lyricMarginLeft, 0, (double)g_settings.lyricMarginRight, 0});
+                    lyricScrollView.Width((double)g_settings.lyricMaxWidth);
+
+                    lyricBlock.TextTrimming(TextTrimming::None);
+                    lyricBlock.TextWrapping(TextWrapping::NoWrap);
+                    Canvas::SetLeft(lyricBlock, 0.0);
+                    Canvas::SetTop(lyricBlock, 0.0);
+                    Canvas::SetLeft(lyricHighlightBlock, 0.0);
+                    Canvas::SetTop(lyricHighlightBlock, 0.0);
+                    lyricScrollView.Children().Append(lyricBlock);
+                    lyricScrollView.Children().Append(lyricHighlightBlock);
+
+                    {
+                        auto geo = winrt::Windows::UI::Xaml::Media::RectangleGeometry();
+                        lyricScrollView.Clip(geo);
+                        lyricBlock.SizeChanged([lyricScrollView, geo](winrt::Windows::Foundation::IInspectable const&, winrt::Windows::UI::Xaml::SizeChangedEventArgs const& e) mutable {
+                            try {
+                                double h = e.NewSize().Height;
+                                if (h < 1.0) h = 16.0;
+                                double w = lyricScrollView.Width();
+                                lyricScrollView.Height(h);
+                                geo.Rect({0, 0, (float)w, (float)h});
+                            } catch (...) {}
+                        });
+                    }
+
+                    auto lyricCol = ColumnDefinition();
+                    lyricCol.Width({1.0, GridUnitType::Auto});
+                    panel.ColumnDefinitions().Append(lyricCol);
+                    Grid::SetColumn(lyricScrollView, (int)panel.ColumnDefinitions().Size() - 1);
+                    panel.Children().Append(lyricScrollView);
+                } else {
+                    Grid lyricRoot;
+                    lyricRoot.Name(kLyricRootName);
+                    lyricRoot.VerticalAlignment(VerticalAlignment::Center);
+                    lyricRoot.Margin({(double)g_settings.lyricMarginLeft, 0, (double)g_settings.lyricMarginRight, 0});
+                    lyricBlock.Margin({0, 0, 0, 0});
+                    lyricHighlightBlock.Margin({0, 0, 0, 0});
+                    lyricRoot.Children().Append(lyricBlock);
+                    lyricRoot.Children().Append(lyricHighlightBlock);
+
+                    auto lyricCol = ColumnDefinition();
+                    lyricCol.Width({1.0, GridUnitType::Auto});
+                    panel.ColumnDefinitions().Append(lyricCol);
+                    Grid::SetColumn(lyricRoot, (int)panel.ColumnDefinitions().Size() - 1);
+                    panel.Children().Append(lyricRoot);
+                }
+            } catch (...) {
+                Wh_Log(L"BuildPlayerGrid: Exception adding lyric text");
             }
         }
 
@@ -8072,6 +8851,107 @@ static void RefreshPlayerContents() {
                 }
             }
     }
+
+    if (g_settings.showLyric) {
+        try {
+            if (auto lyricFe = FindChildByName(g_playerGrid, kLyricBaseName)) {
+                if (auto lyricBlock = lyricFe.try_as<TextBlock>()) {
+                    double lyricProgress = 0.0;
+                    std::wstring timeText = L"🎵🎵🎵";
+                    long long currentMs = 0;
+                    {
+                        std::lock_guard<std::mutex> lk(g_mediaMtx);
+                        currentMs = g_media.currentPositionMs + g_settings.lyricTimeOffset;
+                    }
+                    {
+                        std::lock_guard<std::mutex> lk(g_lyricLinesMtx);
+                        for (const auto& line : g_lyricLines) {
+                            if (currentMs >= line.startTimeMs && currentMs < line.startTimeMs + line.durationMs) {
+                                if (!line.text.empty()) {
+                                    timeText = line.text;
+                                }
+                                lyricProgress = GetLyricProgress(line, currentMs);
+                                break;
+                            }
+                        }
+                    }
+                    if (timeText == L"🎵🎵🎵" && g_settings.hideLyricWhenNoLyrics) {
+                        if (g_settings.lyricMaxWidth > 0) {
+                            if (auto cv = FindChildByName(g_playerGrid, kLyricScrollViewName)) {
+                                if (cv.Visibility() != Visibility::Collapsed)
+                                    cv.Visibility(Visibility::Collapsed);
+                            }
+                        } else {
+                            if (auto root = FindChildByName(g_playerGrid, kLyricRootName)) {
+                                if (root.Visibility() != Visibility::Collapsed)
+                                    root.Visibility(Visibility::Collapsed);
+                            }
+                        }
+                    } else {
+                        if (g_settings.lyricMaxWidth > 0) {
+                            if (auto cv = FindChildByName(g_playerGrid, kLyricScrollViewName)) {
+                                if (cv.Visibility() != Visibility::Visible)
+                                    cv.Visibility(Visibility::Visible);
+                            }
+                        } else {
+                            if (auto root = FindChildByName(g_playerGrid, kLyricRootName)) {
+                                if (root.Visibility() != Visibility::Visible)
+                                    root.Visibility(Visibility::Visible);
+                            }
+                        }
+                        if (timeText != lyricBlock.Text().c_str()) {
+                            lyricBlock.Text(timeText);
+                        }
+                        if (auto hiFe = FindChildByName(g_playerGrid, kLyricHighlightName)) {
+                            if (auto hiBlock = hiFe.try_as<TextBlock>()) {
+                                hiBlock.Visibility(g_settings.enableLyricKaraoke ? Visibility::Visible : Visibility::Collapsed);
+                                if (timeText != hiBlock.Text().c_str()) {
+                                    hiBlock.Text(timeText);
+                                }
+                            }
+                        }
+                        UpdateLyricHighlightClip(g_settings.enableLyricKaraoke ? lyricProgress : 0.0);
+                    }
+                    // Update lyric scroll state
+                    if (g_settings.lyricMaxWidth > 0) {
+                        try {
+                            g_lyricScroll.textWidth = lyricBlock.ActualWidth();
+                            g_lyricScroll.viewWidth = (double)g_settings.lyricMaxWidth;
+                            g_lyricScroll.active = (g_lyricScroll.textWidth > g_lyricScroll.viewWidth && g_lyricScroll.viewWidth > 0);
+                            if (!g_lyricScroll.active) {
+                                g_lyricScroll.offset = 0;
+                            }
+                        } catch (...) {}
+                    }
+                }
+            }
+        } catch (...) {
+            Wh_Log(L"RefreshPlayerContents: Exception updating lyric text");
+        }
+    }
+    if (g_settings.showLyric && !g_cachedAlbumTitle.empty()) {
+        std::wstring fetchTitle = g_cachedAlbumTitle;
+        std::wstring fetchArtist = g_cachedAlbumArtist;
+        std::wstring fetchAlbum;
+        long fetchDuration = 0;
+        {
+            std::lock_guard<std::mutex> lk(g_mediaMtx);
+            fetchAlbum = g_media.album;
+            fetchDuration = g_media.durationMs;
+        }
+        if (fetchTitle != g_lyricFetchedTitle || fetchArtist != g_lyricFetchedArtist) {
+            g_lyricFetchedTitle = fetchTitle;
+            g_lyricFetchedArtist = fetchArtist;
+            {
+                std::lock_guard<std::mutex> lk(g_lyricLinesMtx);
+                g_lyricLines.clear();
+            }
+            Wh_Log(L"RefreshPlayerContents: Fetching lyrics for '%s' - '%s'", fetchTitle.c_str(), fetchArtist.c_str());
+            std::thread([fetchTitle, fetchArtist, fetchAlbum, fetchDuration]() {
+                FetchLyrics(fetchTitle, fetchArtist, fetchAlbum, fetchDuration);
+            }).detach();
+        }
+    }
 }
 
 static bool IsFullscreenActive() {
@@ -8343,7 +9223,9 @@ static void WINAPI TrayUI_StartTaskbar_Hook(void* pThis) {
         StartVizCaptureThread();
         StartVizTimer();
     }
-    if (g_settings.enableTitleScrolling || g_settings.enableArtistScrolling) {
+    if (g_settings.enableTitleScrolling || g_settings.enableArtistScrolling ||
+        g_settings.lyricMaxWidth > 0 ||
+        (g_settings.showLyric && g_settings.enableLyricKaraoke)) {
         StartScrollTimer();
     }
 
