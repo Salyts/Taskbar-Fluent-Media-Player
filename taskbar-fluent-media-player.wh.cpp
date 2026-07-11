@@ -904,17 +904,19 @@ If you encounter any issues or have a feature suggestion, please open a report o
           $name: Action
           $name:ru-RU: Действие
           $options:
-          - none:              Nothing
-          - "switch_tracks":   "Switch tracks"
-          - "switch_sessions": "Switch sessions"
-          - "system_sound":    "Change system sound volume"
-          - "app_sound":       "Change app sound volume"
+          - none:                      Nothing
+          - "switch_tracks":           "Switch tracks"
+          - "switch_tracks_inverted":  "Switch tracks (inverted)"
+          - "switch_sessions":         "Switch sessions"
+          - "system_sound":            "Change system sound volume"
+          - "app_sound":               "Change app sound volume"
           $options:ru-RU:
-          - none:              Ничего
-          - "switch_tracks":   "Переключить треки"
-          - "switch_sessions": "Переключить сессии"
-          - "system_sound":    "Изменить громкость системы"
-          - "app_sound":       "Изменить громкость приложения"
+          - none:                      Ничего
+          - "switch_tracks":           "Переключить треки"
+          - "switch_tracks_inverted":  "Переключить треки (инверсия)"
+          - "switch_sessions":         "Переключить сессии"
+          - "system_sound":            "Изменить громкость системы"
+          - "app_sound":               "Изменить громкость приложения"
       - - object: album_art
         - click: mouse_wheel
         - action: switch_sessions
@@ -4908,6 +4910,24 @@ static winrt::Windows::UI::Color VizLerpColor(winrt::Windows::UI::Color a,
     return winrt::Windows::UI::Color{255, L(a.R, b.R, t), L(a.G, b.G, t), L(a.B, b.B, t)};
 }
 
+// Blends the color with white (on dark theme) or black (on light theme) 
+// if it lacks sufficient contrast against the taskbar background.
+static winrt::Windows::UI::Color VizEnsureContrast(winrt::Windows::UI::Color c) {
+    const int kLumaThreshold = 90;
+    bool light = IsSystemLightTheme();
+    int luma = (c.R * 299 + c.G * 587 + c.B * 114) / 1000;
+    int edgeDist = light ? (255 - luma) : luma;
+    if (edgeDist >= kLumaThreshold) return c;
+
+    winrt::Windows::UI::Color base = light
+        ? winrt::Windows::UI::Color{255, 0, 0, 0}
+        : winrt::Windows::UI::Color{255, 255, 255, 255};
+
+    float t = edgeDist / (float)kLumaThreshold;
+    float tintAmount = 0.65f + t * 0.35f;
+    return VizLerpColor(base, c, tintAmount);
+}
+
 static double VizZoneHeight() {
     double h = 0.0;
     if (g_settings.showAlbumArt && g_settings.albumArtMaxHeight > 0)
@@ -4946,7 +4966,7 @@ static void VizApplyFrame() {
 
     winrt::Windows::UI::Color baseCol{255, 255, 255, 255};
     if (g_settings.vizColorMode == VizColorMode::DynamicAlbum) {
-        baseCol = g_cachedAlbumPalette.primary;
+        baseCol = VizEnsureContrast(g_cachedAlbumPalette.primary);
         baseCol.A = 255;
     } else {
         if (g_vizBaseColorDirty) {
@@ -4956,8 +4976,8 @@ static void VizApplyFrame() {
         baseCol = g_cachedVizBaseColor;
     }
 
-    auto pal0   = g_cachedAlbumPalette.primary;
-    auto pal1   = g_cachedAlbumPalette.secondary;
+    auto pal0   = VizEnsureContrast(g_cachedAlbumPalette.primary);
+    auto pal1   = VizEnsureContrast(g_cachedAlbumPalette.secondary);
     auto cg0    = ParseColorWithSpecialValues(g_settings.vizColor1, 255);
     auto cg1    = ParseColorWithSpecialValues(g_settings.vizColor2, 255);
     auto acrCol = ParseColorWithThemeSupport(g_settings.vizColor, 255);
@@ -6225,6 +6245,10 @@ static Grid BuildPlayerGrid() {
                         if (delta > 0) SendMediaCommandAsync(1);
                         else if (delta < 0) SendMediaCommandAsync(3);
                         DispatchMediaUpdate();
+                    } else if (action == L"switch_tracks_inverted") {
+                        if (delta > 0) SendMediaCommandAsync(3);
+                        else if (delta < 0) SendMediaCommandAsync(1);
+                        DispatchMediaUpdate();
                     } else if (action == L"switch_sessions") {
                         if (delta != 0) SwitchMediaSession();
                     } else if (action == L"system_sound") {
@@ -6830,6 +6854,10 @@ static Grid BuildPlayerGrid() {
             if (action == L"switch_tracks") {
                 if (delta > 0) SendMediaCommandAsync(1);
                 else if (delta < 0) SendMediaCommandAsync(3);
+                DispatchMediaUpdate();
+            } else if (action == L"switch_tracks_inverted") {
+                if (delta > 0) SendMediaCommandAsync(3);
+                else if (delta < 0) SendMediaCommandAsync(1);
                 DispatchMediaUpdate();
             } else if (action == L"switch_sessions") {
                 if (delta != 0) SwitchMediaSession();
@@ -7560,7 +7588,7 @@ static void RemovePlayerGrid() {
             }
             g_layoutUpdateToken = {};
         }
-        
+
         if (g_trackedElement) {
             try {
                 if (g_hasTrackedElementOriginalMargin) {
