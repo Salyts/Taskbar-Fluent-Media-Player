@@ -4923,6 +4923,8 @@ static winrt::Windows::UI::Color VizEnsureContrast(winrt::Windows::UI::Color c) 
         ? winrt::Windows::UI::Color{255, 0, 0, 0}
         : winrt::Windows::UI::Color{255, 255, 255, 255};
 
+    if (g_cachedThumbnailBytes.empty()) return base;
+
     float t = edgeDist / (float)kLumaThreshold;
     float tintAmount = 0.65f + t * 0.35f;
     return VizLerpColor(base, c, tintAmount);
