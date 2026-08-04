@@ -49,8 +49,6 @@
 <img src="https://i.imgur.com/ZiZh9gh.png" width="48%" alt="Light Theme 2">
 </p>
 
----
-
 ## Dark Theme
 
 <p align="center">
