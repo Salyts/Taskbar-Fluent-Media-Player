@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge">
 </p>
 
-### [English Documentation](https://github.com/Salyts/Taskbar-Fluent-Media-Player/blob/main/README.md) | [Russian Documentation](https://github.com/Salyts/Taskbar-Fluent-Media-Player/blob/main/README_RU.md)
+### ***[English Documentation](https://github.com/Salyts/Taskbar-Fluent-Media-Player/blob/main/README.md)*** | [Русская документация](https://github.com/Salyts/Taskbar-Fluent-Media-Player/blob/main/README_RU.md)
 
 <img src="https://i.imgur.com/pGFnmiG.gif" alt="Taskbar Fluent Media Player Preview" width="40%">
 
