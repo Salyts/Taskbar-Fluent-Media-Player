@@ -13,6 +13,9 @@
   </a>
   <img src="https://img.shields.io/badge/Windows-11-0078D4?style=for-the-badge">
   <img src="https://img.shields.io/badge/Лицензия-MIT-blue?style=for-the-badge">
+<a href="https://buymeacoffee.com/tfmp">
+  <img src="https://img.shields.io/badge/Поддержка-Купить%20мне%20кофе-80B3D2?style=for-the-badge">
+</a>
 </p>
 
 ### [English Documentation](https://github.com/Salyts/Taskbar-Fluent-Media-Player/blob/main/README.md) | ***Russian documentation***
@@ -76,9 +79,9 @@
 
 👉 **[Сообщить об ошибке на GitHub](https://github.com/Salyts/Taskbar-Fluent-Media-Player/issues)**
 
-**Авторы:** [@Salyts](https://github.com/Salyts) и [@GR0UD](https://github.com/GR0UD).
+**Авторы:** [@Salyts](https://github.com/Salyts) и [@GR0UD](https://github.com/GR0UD)
 
-**Участвовали в разработке:** [@Eliasilyz](https://github.com/Eliasilyz), [@SpacEagle17](https://github.com/SpacEagle17).
+**Участвовали в разработке:** [@Eliasilyz](https://github.com/Eliasilyz), [@SpacEagle17](https://github.com/SpacEagle17)
 
 ## Лицензия
 
