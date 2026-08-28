@@ -13,6 +13,9 @@
   </a>
   <img src="https://img.shields.io/badge/Windows-11-0078D4?style=for-the-badge">
   <img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge">
+  <a href="https://buymeacoffee.com/tfmp">
+    <img src="https://img.shields.io/badge/Suppot-Buy me a coffee-80B3D2?style=for-the-badge">
+  </a>
 </p>
 
 ### ***English Documentation*** | [Russian documentation](https://github.com/Salyts/Taskbar-Fluent-Media-Player/blob/main/README_RU.md)
