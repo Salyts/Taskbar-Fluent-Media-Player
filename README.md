@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/Windows-11-0078D4?style=for-the-badge">
   <img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge">
   <a href="https://buymeacoffee.com/tfmp">
-    <img src="https://img.shields.io/badge/Suppot-Buy me a coffee-80B3D2?style=for-the-badge">
+    <img src="https://img.shields.io/badge/Support-Buy me a coffee-80B3D2?style=for-the-badge">
   </a>
 </p>
 
@@ -76,9 +76,9 @@
 If you encounter any issues or have a feature suggestion, please open a report on the project's GitHub page:
 👉 **[Report an Issue on GitHub](https://github.com/Salyts/Taskbar-Fluent-Media-Player/issues)**
 
-Authors - [@Salyts](https://github.com/Salyts) & [@GR0UD](https://github.com/GR0UD).
+Authors - [@Salyts](https://github.com/Salyts) & [@GR0UD](https://github.com/GR0UD)
 
-Participated in the project - [@Eliasilyz](https://github.com/Eliasilyz), [@SpacEagle17](https://github.com/SpacEagle17).
+Contributors - [@Eliasilyz](https://github.com/Eliasilyz), [@SpacEagle17](https://github.com/SpacEagle17)
 
 ## License
 
