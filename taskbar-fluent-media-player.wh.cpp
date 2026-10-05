@@ -8438,10 +8438,10 @@ static Grid BuildPlayerGrid() {
     }
 }
 struct InjectionTarget {
-    Grid grid;
+    Panel panel{nullptr};
     int  insertCol = 0;
 };
-static int RemovePlayerGridChildren(Grid const& targetGrid) {
+static int RemovePlayerGridChildren(Panel const& targetGrid) {
     if (!targetGrid) return -1;
     int firstCol = -1;
     for (int i = (int)targetGrid.Children().Size() - 1; i >= 0; --i) {
@@ -8453,7 +8453,7 @@ static int RemovePlayerGridChildren(Grid const& targetGrid) {
     }
     return firstCol;
 }
-static void RemoveAnchorDebugOverlays(Grid const& targetGrid) {
+static void RemoveAnchorDebugOverlays(Panel const& targetGrid) {
     if (!targetGrid) return;
     for (int i = (int)targetGrid.Children().Size() - 1; i >= 0; --i) {
         auto fe = targetGrid.Children().GetAt(i).try_as<FrameworkElement>();
@@ -8606,10 +8606,29 @@ static double FindLeftmostVisibleChildX(FrameworkElement const& parent, UIElemen
     }
     return leftmost;
 }
-static FrameworkElement FindTrayElement(FrameworkElement const& trayGrid, FrameworkElement const& root, const wchar_t* name) {
-    auto elem = FindChildByName(trayGrid, name);
-    if (!elem) elem = FindChildByName(root, name);
-    return elem;
+// Grid.Column belongs to the direct child of the layout panel. New Windows
+// builds use a horizontal StackPanel with the same SystemTrayFrameGrid name.
+static FrameworkElement FindTrayElement(FrameworkElement const& trayPanel, const wchar_t* name) {
+    auto elem = FindChildByName(trayPanel, name);
+    while (elem) {
+        auto parent = VisualTreeHelper::GetParent(elem);
+        if (parent == trayPanel) return elem;
+        elem = parent.try_as<FrameworkElement>();
+    }
+    return nullptr;
+}
+static int TrayInsertionSlot(Panel const& panel, FrameworkElement const& anchor, bool after) {
+    if (!anchor) return -1;
+    if (panel.try_as<StackPanel>()) {
+        uint32_t index = 0;
+        if (panel.Children().IndexOf(anchor, index)) return (int)index + (after ? 1 : 0);
+        return -1;
+    }
+    return Grid::GetColumn(anchor) + (after ? Grid::GetColumnSpan(anchor) : 0);
+}
+static int TrayEndSlot(Panel const& panel) {
+    if (auto grid = panel.try_as<Grid>()) return (int)grid.ColumnDefinitions().Size();
+    return (int)panel.Children().Size();
 }
 static bool IsStartButtonModActive(FrameworkElement const& root) {
     try {
@@ -8645,70 +8664,38 @@ static InjectionTarget ResolveInjectionTarget(
     std::wstring_view position)
 {
     auto trayFrame = FindChildByName(root, L"SystemTrayFrameGrid");
-    if (auto trayGrid = trayFrame ? trayFrame.try_as<Grid>() : nullptr) {
-        int col = -1;
-        if      (position == L"tray_right")
-            col = (int)trayGrid.ColumnDefinitions().Size();
-        else if (position == L"tray_left")
-            col = 0;
-        else if (position == L"tray_before_clock") {
-            auto clockBtn = FindChildByName(trayGrid, L"NotificationCenterButton");
-            if (!clockBtn) clockBtn = FindChildByName(root, L"NotificationCenterButton");
-            col = clockBtn ? Grid::GetColumn(clockBtn) : -1;
+    auto trayPanel = trayFrame ? trayFrame.try_as<Panel>() : nullptr;
+    if (trayPanel && (trayPanel.try_as<Grid>() || trayPanel.try_as<StackPanel>())) {
+        if (position == L"tray_left") return {trayPanel, 0};
+        if (position == L"tray_right") return {trayPanel, TrayEndSlot(trayPanel)};
+        const wchar_t* anchorName = nullptr;
+        bool after = false;
+        if (position == L"tray_before_clock" || position == L"tray_after_clock") {
+            anchorName = L"NotificationCenterButton";
+            after = position == L"tray_after_clock";
+        } else if (position == L"tray_before_omni_left" || position == L"tray_before_omni_right") {
+            anchorName = L"ControlCenterButton";
+            after = position == L"tray_before_omni_right";
+        } else if (position == L"tray_language_left" || position == L"tray_language_right") {
+            anchorName = L"NonActivatableStack";
+            after = position == L"tray_language_right";
+        } else if (position == L"tray_hidden_icons_left" || position == L"tray_hidden_icons_right") {
+            anchorName = L"NotifyIconStack";
+            after = position == L"tray_hidden_icons_right";
+        } else if (position == L"tray_icons_left" || position == L"tray_icons_right") {
+            anchorName = L"NotificationAreaIcons";
+            after = position == L"tray_icons_right";
+        } else if (position == L"tray_after_showdesktop_left" || position == L"tray_after_showdesktop_right") {
+            anchorName = L"ShowDesktopStack";
+            after = position == L"tray_after_showdesktop_right";
         }
-        else if (position == L"tray_after_clock") {
-            auto showDesktop = FindChildByName(trayGrid, L"ShowDesktopStack");
-            if (!showDesktop) showDesktop = FindChildByName(root, L"ShowDesktopStack");
-            col = showDesktop ? Grid::GetColumn(showDesktop) : -1;
-        }
-        else if (position == L"tray_before_omni_left") {
-            auto omniBtn = FindChildByName(trayGrid, L"ControlCenterButton");
-            if (!omniBtn) omniBtn = FindChildByName(root, L"ControlCenterButton");
-            col = omniBtn ? Grid::GetColumn(omniBtn) : -1;
-        }
-        else if (position == L"tray_before_omni_right") {
-            auto omniBtn = FindChildByName(trayGrid, L"ControlCenterButton");
-            if (!omniBtn) omniBtn = FindChildByName(root, L"ControlCenterButton");
-            if (omniBtn) col = Grid::GetColumn(omniBtn) + 1;
-            else col = -1;
-        }
-        else if (position == L"tray_language_left") {
-            auto languageBtn = FindTrayElement(trayGrid, root, L"NonActivatableStack");
-            col = languageBtn ? Grid::GetColumn(languageBtn) : -1;
-        }
-        else if (position == L"tray_language_right") {
-            auto languageBtn = FindTrayElement(trayGrid, root, L"NonActivatableStack");
-            col = languageBtn ? Grid::GetColumn(languageBtn) + 1 : -1;
-        }
-        else if (position == L"tray_hidden_icons_left") {
-            auto hiddenIconsBtn = FindTrayElement(trayGrid, root, L"NotifyIconStack");
-            col = hiddenIconsBtn ? Grid::GetColumn(hiddenIconsBtn) : -1;
-        }
-        else if (position == L"tray_hidden_icons_right") {
-            auto hiddenIconsBtn = FindTrayElement(trayGrid, root, L"NotifyIconStack");
-            col = hiddenIconsBtn ? Grid::GetColumn(hiddenIconsBtn) + 1 : -1;
-        }
-        else if (position == L"tray_icons_left") {
-            auto trayIcons = FindTrayElement(trayGrid, root, L"NotificationAreaIcons");
-            col = trayIcons ? Grid::GetColumn(trayIcons) : -1;
-        }
-        else if (position == L"tray_icons_right") {
-            auto trayIcons = FindTrayElement(trayGrid, root, L"NotificationAreaIcons");
-            col = trayIcons ? Grid::GetColumn(trayIcons) + 1 : -1;
-        }
-        else if (position == L"tray_after_showdesktop_left") {
-            auto showDesktop = FindChildByName(trayGrid, L"ShowDesktopStack");
-            if (!showDesktop) showDesktop = FindChildByName(root, L"ShowDesktopStack");
-            col = showDesktop ? Grid::GetColumn(showDesktop) : -1;
-        }
-        else if (position == L"tray_after_showdesktop_right") {
-            auto showDesktop = FindChildByName(trayGrid, L"ShowDesktopStack");
-            if (!showDesktop) showDesktop = FindChildByName(root, L"ShowDesktopStack");
-            if (showDesktop) col = Grid::GetColumn(showDesktop) + 1;
-            else col = (int)trayGrid.ColumnDefinitions().Size();
-        }
-        if (col >= 0) {
-            return {trayGrid, col};
+        if (anchorName) {
+            auto anchor = FindTrayElement(trayPanel, anchorName);
+            if (!anchor && (position == L"tray_before_clock" || position == L"tray_after_clock"))
+                anchor = FindTrayElement(trayPanel, L"ClockButton");
+            int slot = TrayInsertionSlot(trayPanel, anchor, after);
+            if (slot >= 0) return {trayPanel, slot};
+            Wh_Log(L"ResolveInjectionTarget: tray anchor %s not found for %s", anchorName, std::wstring(position).c_str());
         }
     }
     if (position == L"taskbar_left_start"  ||
@@ -8762,8 +8749,9 @@ static bool InjectPlayerGrid() {
                 }
             }
         }
-        auto [targetGrid, insertCol] = ResolveInjectionTarget(root, g_settings.position);
-        if (!targetGrid) {
+        auto [targetPanel, insertCol] = ResolveInjectionTarget(root, g_settings.position);
+        auto targetGrid = targetPanel ? targetPanel.try_as<Grid>() : nullptr;
+        if (!targetPanel) {
             if (g_settings.enableTreeDump) {
                 DumpXamlTree(root, 0, 8);
             }
@@ -8773,10 +8761,18 @@ static bool InjectPlayerGrid() {
         if (!playerGrid) return false;
         bool startButtonModActive = IsStartButtonModActive(root);
         (void)startButtonModActive;
-        bool isTrayGrid = (targetGrid.Name() == L"SystemTrayFrameGrid");
-        RemovePlayerGridChildren(targetGrid);
-        RemoveAnchorDebugOverlays(targetGrid);
-        if (isTrayGrid) {
+        bool isTrayGrid = (targetPanel.Name() == L"SystemTrayFrameGrid");
+        RemovePlayerGridChildren(targetPanel);
+        RemoveAnchorDebugOverlays(targetPanel);
+        if (auto stackPanel = targetPanel.try_as<StackPanel>()) {
+            if (insertCol < 0 || insertCol > (int)stackPanel.Children().Size()) return false;
+            playerGrid.Margin({(double)g_settings.playerMarginLeft, 0,
+                               (double)g_settings.playerMarginRight, 0});
+            stackPanel.Children().InsertAt(insertCol, playerGrid);
+            // StackPanel reserves space through child visibility, not columns.
+            g_playerColumn = -1;
+        }
+        else if (isTrayGrid) {
             ColumnDefinition newCol;
             newCol.Width({1.0, GridUnitType::Auto});
             if (insertCol >= (int)targetGrid.ColumnDefinitions().Size()) {
@@ -8973,7 +8969,7 @@ static bool InjectPlayerGrid() {
             }
         }
         g_playerGrid      = playerGrid;
-        g_injectionParent = targetGrid;
+        g_injectionParent = targetPanel;
         RefreshPlayerContents();
         g_playerGrid.Visibility(Visibility::Visible);
         g_playerGrid.UpdateLayout();
@@ -9037,22 +9033,12 @@ static void RemovePlayerGrid() {
         }
         g_hasTrackedElementOriginalMargin = false;
         g_trackPosition = L"";
+        auto targetPanel = g_injectionParent.try_as<Panel>();
         auto targetGrid = g_injectionParent.try_as<Grid>();
-        int playerCol = -1;
-        RemoveAnchorDebugOverlays(targetGrid);
-        playerCol = RemovePlayerGridChildren(targetGrid);
-        bool isTrackingPosition = (g_settings.position == L"taskbar_left_edge" ||
-                                g_settings.position == L"taskbar_center_edge" ||
-                                g_settings.position == L"taskbar_right_edge" ||
-                                g_settings.position == L"taskbar_left_start" ||
-                                g_settings.position == L"taskbar_right_start" ||
-                                g_settings.position == L"taskbar_after_search_left" ||
-                                g_settings.position == L"taskbar_after_search_right" ||
-                                g_settings.position == L"taskbar_after_taskview_left" ||
-                                g_settings.position == L"taskbar_after_taskview_right" ||
-                                g_settings.position == L"taskbar_after_widgets_left" ||
-                                g_settings.position == L"taskbar_after_widgets_right");
-        if (!isTrackingPosition && playerCol >= 0 && playerCol < (int)targetGrid.ColumnDefinitions().Size()) {
+        int playerCol = g_playerColumn;
+        RemoveAnchorDebugOverlays(targetPanel);
+        RemovePlayerGridChildren(targetPanel);
+        if (targetGrid && playerCol >= 0 && playerCol < (int)targetGrid.ColumnDefinitions().Size()) {
             for (uint32_t i = 0; i < targetGrid.Children().Size(); ++i) {
                 auto child = targetGrid.Children().GetAt(i).try_as<FrameworkElement>();
                 if (child) {
