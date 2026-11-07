@@ -8,6 +8,7 @@ A media player built into the Windows 11 taskbar, styled to fit in with the rest
 [![GitHub issues](https://img.shields.io/github/issues/Salyts/Taskbar-Fluent-Media-Player?style=for-the-badge)](https://github.com/Salyts/Taskbar-Fluent-Media-Player/issues)
 ![Windows 11](https://img.shields.io/badge/Windows-11-0078D4?style=for-the-badge)
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)
+[![Support: Buy me a coffee](https://img.shields.io/badge/Support-Buy%20me%20a%20coffee-80B3D2?style=for-the-badge)](https://buymeacoffee.com/tfmp)
 
 **English** | [Русский](README_RU.md)
 
