@@ -2,84 +2,99 @@
 
 # Taskbar Fluent Media Player
 
-**Taskbar Fluent Media Player** is a Windhawk mod that embeds a **fully functional media player directly into the Windows 11 taskbar**. No popups, no separate windows — just your music, always one glance away.
+A media player built into the Windows 11 taskbar, styled to fit in with the rest of Windows.
+
+[![Install on Windhawk](https://img.shields.io/badge/Install-Windhawk-2ea043?style=for-the-badge)](https://windhawk.net/mods/taskbar-fluent-media-player)
+[![GitHub issues](https://img.shields.io/github/issues/Salyts/Taskbar-Fluent-Media-Player?style=for-the-badge)](https://github.com/Salyts/Taskbar-Fluent-Media-Player/issues)
+![Windows 11](https://img.shields.io/badge/Windows-11-0078D4?style=for-the-badge)
+![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)
+[![Support: Buy me a coffee](https://img.shields.io/badge/Support-Buy%20me%20a%20coffee-80B3D2?style=for-the-badge)](https://buymeacoffee.com/tfmp)
+
+**English** | [Русский](README_RU.md)
 
 <p align="center">
-  <a href="https://windhawk.net/mods/taskbar-fluent-media-player">
-    <img src="https://img.shields.io/badge/Install-Windhawk-2ea043?style=for-the-badge">
-  </a>
-  <a href="https://github.com/Salyts/Taskbar-Fluent-Media-Player/issues">
-    <img src="https://img.shields.io/github/issues/Salyts/Taskbar-Fluent-Media-Player?style=for-the-badge">
-  </a>
-  <img src="https://img.shields.io/badge/Windows-11-0078D4?style=for-the-badge">
-  <img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge">
-  <a href="https://buymeacoffee.com/tfmp">
-    <img src="https://img.shields.io/badge/Support-Buy me a coffee-80B3D2?style=for-the-badge">
-  </a>
+	<img src="https://i.imgur.com/pGFnmiG.gif" alt="The player on the taskbar" width="40%">
 </p>
-
-### ***English Documentation*** | [Russian documentation](https://github.com/Salyts/Taskbar-Fluent-Media-Player/blob/main/README_RU.md)
-
-<img src="https://i.imgur.com/pGFnmiG.gif" alt="Taskbar Fluent Media Player Preview" width="40%">
 
 </div>
 
-### Key Features:
-* **Deep Integration —** Place the player anywhere on the taskbar or tray — left/right of the clock, next to system icons, near the Start button, or overlaid on the taskbar edge. 20+ positions to choose from.
-* **Fluent UI Effects —** Native Windows 11 materials: **Acrylic**, **Mica**, **Mica Alt**, blurred album art background, solid color, and gradient — all with per-theme light/dark color support.
-* **Adaptive Colors —** Every color field accepts a `light$dark` pair. Use the album art dominant color or the system accent color as a value for any element.
-* **Full Media Control —** Play/Pause, Previous, Next, Rewind/Forward 5s, Shuffle, and Repeat. Button order is fully configurable — show only what you need.
-* **Right-Click Context Menu —** Repeat and Shuffle each have their own submenu or single-button toggle mode. All items are optional, reorderable.
-* **Session Switching —** Multiple apps playing at once? Switch between media sessions with a dedicated button, a click, or by scrolling the mouse wheel over the album art — no need to open anything.
-* **Mini Player Popup —** Bind the new "Open player menu" click action to any click type to pop open a compact popup showing album art, title/artist, and Play/Pause, Previous, Next, and Switch Session buttons. Choose in **Player Menu Settings** whether it opens directly above the media player, or at a fixed position on the screen (any corner/edge, with distance offsets and slide-in animation direction — like the Notifications placement mod).
-* **Audio Visualizer —** Real-time spectrum bars (WASAPI loopback + FFT) with 5 shapes (Stereo, Mountain, Mirror, Wave, Breathe), 5 color modes, 6 EQ presets, and full size/position/sensitivity control.
-* **Smart Behavior —** Auto-hides when there is no media, in full-screen, or after a configurable idle timeout. Shows again the moment playback resumes.
+## Install
 
-### Advanced Customization:
-* **Layout —** Mirror the entire player layout, set min/max width and height, control margins for each element independently.
-* **Backgrounds —** Gradient angle, color balance, acrylic tint opacity, Mica opacity, and blur strength are all tunable. Corner radius can be set per-corner for the player, buttons, and album art.
-* **Text —** Scrolling titles and artist names in Bounce or Loop mode — with adjustable speed, pause duration at edges, and gap between repeats. Full font control: family, size, weight, style, and character spacing. Custom placeholder text for every state (no title, no artist, no session).
-* **Album Art —** Adjustable size, per-corner radius, source app icon overlay with configurable size and position, pause overlay with adjustable opacity. Custom placeholder glyph (any icon font character) with its own font, size, color, and opacity when no art is available.
-* **Buttons —** Icon style (Segoe Fluent Icons or MDL2 Assets, Outline or Filled), size, spacing, corner radius, color, and opacity — all independent from the context menu icons.
-* **Mouse Interactions —** Bind volume control, track seeking, session switching, opening the context menu, and more to scroll wheel, single click, double click, or middle click — configured separately for the album art area and the rest of the player.
+1. Install [Windhawk](https://windhawk.net/).
+2. Open **Explore** in Windhawk and search for [Taskbar Fluent Media Player](https://windhawk.net/mods/taskbar-fluent-media-player).
+3. Open the mod's page and click **Install**.
 
----
+## Change its settings
 
-## Light Theme
+**Right-click the player on your taskbar and pick Settings.** The mod has its own window, so skip the Settings tab in Windhawk.
 
-<p align="center">
-<img src="https://i.imgur.com/hlH82zF.png" width="48%" alt="Light Theme 1">
-<img src="https://i.imgur.com/ZiZh9gh.png" width="48%" alt="Light Theme 2">
-</p>
+<img src="https://i.imgur.com/uocaroF.gif" alt="Opening the settings window: right-click the player, then Settings" width="60%">
 
-## Dark Theme
+Every option is in there, sorted into pages. Changes show up on the player while you make them, and **Save** keeps them. The window comes in 15 languages and follows your Windows language by default. Its background can be Mica or Acrylic, with adjustable transparency and blur, and Acrylic shows what's behind the window, live wallpapers included.
 
-<p align="center">
-<img src="https://i.imgur.com/w9cle3h.png" width="48%" alt="Dark Theme 1">
-<img src="https://i.imgur.com/Ni16pNo.png" width="48%" alt="Dark Theme 2">
-</p>
+## Features
 
----
+### The player
 
-## Installation
+- Album art, title and artist, playback buttons, an audio visualizer and a progress bar you can click or drag to seek.
+- Buttons for play/pause, previous, next, 5 second rewind and skip, shuffle and repeat. Show only the ones you want, in any order.
+- When more than one app is playing, switch between them with a button, a click, or by scrolling over the album art.
+- The player hides when nothing is playing, in fullscreen, or after a delay you choose, and comes back when something plays.
+- Ignore specific apps, or only show the ones you pick.
 
-1. Install **[Windhawk](https://windhawk.net/)**.
-2. Open **Windhawk** → **Explore**.
-3. Search for **[Taskbar Fluent Media Player](https://windhawk.net/mods/taskbar-fluent-media-player)**.
-4. Open the mod page.
-5. Click **Install**.
+### Placement
 
----
+- 25 positions: either side of the clock, next to the tray icons, by the Start button, over the taskbar edges and more.
+- Pick a monitor with a button, numbered like Windows. Click the selected one again to hide the player.
+- Pull the album art, track info, buttons or visualizer out of the player and put each one somewhere else, with its own background and monitor.
+- Works on vertical taskbars: the text and album art turn to read along them and the buttons stack up.
 
-### Report a Bug
+### Appearance
 
-If you encounter any issues or have a feature suggestion, please open a report on the project's GitHub page:
-👉 **[Report an Issue on GitHub](https://github.com/Salyts/Taskbar-Fluent-Media-Player/issues)**
+- Backgrounds: Acrylic, Mica, Mica Alt, a blurred album cover, a solid color or a gradient.
+- Colors can be `R G B` or hex, can differ between light and dark theme, and can follow the album art or your accent color.
+- Mirror the layout, change the order of the parts, and set sizes, margins and corner radius.
+- Scrolling titles, full font control, and your own text for when there's no title, artist or session.
 
-Authors - [@Salyts](https://github.com/Salyts) & [@GR0UD](https://github.com/GR0UD)
+### Visualizer
 
-Contributors - [@Eliasilyz](https://github.com/Eliasilyz), [@SpacEagle17](https://github.com/SpacEagle17)
+- Listens to what your PC is playing, or only to the app in the player (Windows 11).
+- Bars or a thin line, in 5 shapes, with 6 color modes and 6 EQ presets.
+- Sits in the player, next to the artist name, or behind the whole player.
+- Tune each of its 7 frequency bands, or pick which audio device it listens to.
+
+### Mini player
+
+- Album art, title and artist, a seek bar, playback buttons and the list of what's playing.
+- Opens right above the player or at a fixed spot on screen.
+- Acrylic, solid, album gradient or blurred cover background.
+
+### Mouse and right-click menu
+
+- Bind volume, seeking, switching apps, opening the menu and more to the wheel and to single, double and middle clicks, separately for the album art and the rest of the player.
+- The right-click menu shows repeat and shuffle as submenus or single toggles. Every item is optional and can be reordered.
+
+## Screenshots
+
+| Light theme                                     | Dark theme                                     |
+| ----------------------------------------------- | ---------------------------------------------- |
+| ![Light theme](https://i.imgur.com/hlH82zF.png) | ![Dark theme](https://i.imgur.com/w9cle3h.png) |
+| ![Light theme](https://i.imgur.com/ZiZh9gh.png) | ![Dark theme](https://i.imgur.com/Ni16pNo.png) |
+
+## Changelog
+
+See what's new in [CHANGELOG.md](CHANGELOG.md).
+
+## Help and feedback
+
+- [Report a bug or suggest a feature](https://github.com/Salyts/Taskbar-Fluent-Media-Player/issues), or use the bug button in the settings window.
+- [Talk about it on the Windhawk Discord](https://discord.com/channels/923944342991818753/1508829079187619840).
+
+## Credits
+
+- Authors: [@Salyts](https://github.com/Salyts) and [@GR0UD](https://github.com/GR0UD)
+- Contributors: [@Eliasilyz](https://github.com/Eliasilyz) and [@SpacEagle17](https://github.com/SpacEagle17)
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+[MIT](LICENSE)
