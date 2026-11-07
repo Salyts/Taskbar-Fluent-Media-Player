@@ -18,20 +18,6 @@ A media player built into the Windows 11 taskbar, styled to fit in with the rest
 
 </div>
 
-## Install
-
-1. Install [Windhawk](https://windhawk.net/).
-2. Open **Explore** in Windhawk and search for [Taskbar Fluent Media Player](https://windhawk.net/mods/taskbar-fluent-media-player).
-3. Open the mod's page and click **Install**.
-
-## Change its settings
-
-**Right-click the player on your taskbar and pick Settings.** The mod has its own window, so skip the Settings tab in Windhawk.
-
-<img src="https://i.imgur.com/uocaroF.gif" alt="Opening the settings window: right-click the player, then Settings" width="60%">
-
-Every option is in there, sorted into pages. Changes show up on the player while you make them, and **Save** keeps them. The window comes in 15 languages and follows your Windows language by default. Its background can be Mica or Acrylic, with adjustable transparency and blur, and Acrylic shows what's behind the window, live wallpapers included.
-
 ## Features
 
 ### The player
@@ -74,12 +60,24 @@ Every option is in there, sorted into pages. Changes show up on the player while
 - Bind volume, seeking, switching apps, opening the menu and more to the wheel and to single, double and middle clicks, separately for the album art and the rest of the player.
 - The right-click menu shows repeat and shuffle as submenus or single toggles. Every item is optional and can be reordered.
 
+### Settings window
+
+- Right-click the player and pick Settings. Every option is sorted into pages, and changes show up on the player while you make them.
+- Comes in 15 languages and follows your Windows language by default.
+- Mica or Acrylic background, with adjustable transparency and blur. Acrylic shows what's behind the window, live wallpapers included.
+
 ## Screenshots
 
 | Light theme                                     | Dark theme                                     |
 | ----------------------------------------------- | ---------------------------------------------- |
 | ![Light theme](https://i.imgur.com/hlH82zF.png) | ![Dark theme](https://i.imgur.com/w9cle3h.png) |
 | ![Light theme](https://i.imgur.com/ZiZh9gh.png) | ![Dark theme](https://i.imgur.com/Ni16pNo.png) |
+
+## Install
+
+1. Install [Windhawk](https://windhawk.net/).
+2. Open **Explore** in Windhawk and search for [Taskbar Fluent Media Player](https://windhawk.net/mods/taskbar-fluent-media-player).
+3. Open the mod's page and click **Install**.
 
 ## Changelog
 
