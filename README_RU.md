@@ -8,6 +8,7 @@
 [![Issues на GitHub](https://img.shields.io/github/issues/Salyts/Taskbar-Fluent-Media-Player?style=for-the-badge)](https://github.com/Salyts/Taskbar-Fluent-Media-Player/issues)
 ![Windows 11](https://img.shields.io/badge/Windows-11-0078D4?style=for-the-badge)
 ![Лицензия: MIT](https://img.shields.io/badge/Лицензия-MIT-blue?style=for-the-badge)
+[![Поддержка: купить мне кофе](https://img.shields.io/badge/Поддержка-Купить%20мне%20кофе-80B3D2?style=for-the-badge)](https://buymeacoffee.com/tfmp)
 
 [English](README.md) | **Русский**
 
