@@ -69,6 +69,9 @@
 - Media keys keep working after an Explorer restart. (#52)
 - The player corrects itself if it ends up on the wrong side of its tray button.
 - Security report: fixes for callback handling, the shell32 and windhawk.exe lookups, image handling and unloading. (#71)
+- Turning the mod off or updating it waits for everything it started, so Explorer no longer crashes or hangs then, or when signing out.
+- Moving the player to another spot no longer leaves a gap or an extra tray column behind.
+- Scrolling text stops using CPU when the title and artist fit.
 
 **Which app it follows**
 - The player stays on the app that's playing instead of a paused one. (#22)
