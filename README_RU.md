@@ -66,10 +66,10 @@
 
 ## Снимки экрана
 
-| Светлая тема | Тёмная тема |
-| --- | --- |
-| ![Светлая тема](https://i.imgur.com/hlH82zF.png) | ![Тёмная тема](https://i.imgur.com/w9cle3h.png) |
-| ![Светлая тема](https://i.imgur.com/ZiZh9gh.png) | ![Тёмная тема](https://i.imgur.com/Ni16pNo.png) |
+| Тёмная тема | Светлая тема |
+|---|---|
+| ![Тёмная тема](https://i.imgur.com/mhqfRNn.png) | ![Светлая тема](https://i.imgur.com/iplchN5.png) |
+| ![Тёмная тема](https://i.imgur.com/d73md9J.png) | ![Светлая тема](https://i.imgur.com/ZD02C2V.png) |
 
 ## Установка
 
