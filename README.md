@@ -13,7 +13,7 @@ A media player built into the Windows 11 taskbar, styled to fit in with the rest
 **English** | [Русский](README_RU.md)
 
 <p align="center">
-	<img src="https://i.imgur.com/pGFnmiG.gif" alt="The player on the taskbar" width="40%">
+	<img src="https://i.imgur.com/EBms83g.gif" alt="The player on the taskbar" width="40%">
 </p>
 
 </div>
