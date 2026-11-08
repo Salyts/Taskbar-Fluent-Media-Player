@@ -27,8 +27,8 @@ A full media player on your Windows 11 taskbar, styled to fit in with the rest o
 
 | Dark theme | Light theme |
 |---|---|
-| ![Dark theme](https://i.imgur.com/w9cle3h.png) | ![Light theme](https://i.imgur.com/hlH82zF.png) |
-| ![Dark theme](https://i.imgur.com/Ni16pNo.png) | ![Light theme](https://i.imgur.com/ZiZh9gh.png) |
+| ![Dark theme](https://i.imgur.com/mhqfRNn.png) | ![Light theme](https://i.imgur.com/iplchN5.png) |
+| ![Dark theme](https://i.imgur.com/d73md9J.png) | ![Light theme](https://i.imgur.com/ZD02C2V.png) |
 
 ## Change settings in the mod's own window
 
@@ -127,7 +127,7 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       $description: >-
         Which monitor the player appears on (1, 2, 3...), counted the way Windows
         lists them. -1 hides it. The settings window shows these as buttons.
-    - position: "taskbar_after_widgets_left"
+    - position: "tray_left"
       $name: Media player position
       $options:
       - "taskbar_left_edge": "Taskbar - Left edge (Overlay)"
@@ -870,7 +870,7 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       $name: Band 7 sensitivity (14-20 kHz, 0-300)
     $name: Visualizer
   - NativeWidgetsSetting:
-    - hideNativeWidgetsButton: true
+    - hideNativeWidgetsButton: false
       $name: Hide native Widgets button
       $description: "Shrinks the real Windows Widgets/Weather taskbar button to nothing and disables it (no click, no hover, no tooltip) instead of putting player content inside it — frees up that spot for the main player's own position setting to use."
     - hideNativeWidgetsScope: "both"
@@ -1359,7 +1359,7 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
     - "color": "Custom color"
   - windowTitleBarColor: "32 32 32"
     $name: Settings window title bar color (R G B)
-  - accentColor: "102 207 253"
+  - accentColor: "-1 -1 -1"
     #! $showIf: {settingsView: full}
     $name: Accent color (R G B)
     $description: Colour of the sliders and toggles inside this settings window. Leave blank to use the system accent colour.
@@ -1374,7 +1374,7 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
   $name: Settings Window
 
 - ContextMenuSettings:
-  - contextMenuItems: [repeat, shuffle, forward, rewind, next, prev, switch_sessions, open_app]
+  - contextMenuItems: [repeat, shuffle, switch_sessions, open_app]
     $name: Context menu items
     $description: Select which items to show in the context menu and their order. Duplicates are ignored.
     $options:
@@ -1427,7 +1427,7 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
   - miniPlayerEnabled: true
     $name: Mini player menu
     $description: 'Off turns the mini player off: clicks set to "Open mini player menu" do nothing. Pick another action for them in Behaviour & Clicks.'
-  - placementMode: near
+  - placementMode: screen
     $name: Placement mode
     $description: Choose whether the mini player menu opens near the media player, or at a fixed position on the screen.
     $options:
@@ -1485,14 +1485,14 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
   - miniPlayerSeekBarGradient: false
     $name: Album gradient seek bar
     $description: Color the seek bar with two colors from the album cover, the first on the left end and the second on the right. Overrides the seek bar color while there's album art.
-  - miniPlayerSeekBarHoverEffect: true
+  - miniPlayerSeekBarHoverEffect: false
     $name: Seek bar hover effect
     $description: Lighten the seek bar (darken on a light theme) while it's hovered or dragged. Off keeps it exactly the chosen color.
-  - miniPlayerSeekBarColor: "-2 -2 -2"
+  - miniPlayerSeekBarColor: "-1 -1 -3"
     $name: Seek bar color (R G B; -1 -1 -1 = Windows accent color; -2 -2 -2 = album color; -3 -3 -3 = settings accent color)
   - miniPlayerSeekBarOpacity: 100
     $name: Seek bar opacity (%)
-  - miniPlayerIconStyle: "as_media_buttons"
+  - miniPlayerIconStyle: "fluent_filled"
     #! $showIf: {settingsView: full}
     $name: Icon style
     $description: Icon style for the mini player menu's own transport buttons (Prev/Play/Next/Shuffle/Repeat), independent of the main taskbar buttons' Icon style.
@@ -2448,16 +2448,16 @@ struct ModSettings {
     bool         hideMediaSessionsList = false;
     bool         hideMiniPlayerIconTray = false;
     bool         miniPlayerSeekBarGradient = false;
-    bool         miniPlayerSeekBarHoverEffect = true;
+    bool         miniPlayerSeekBarHoverEffect = false;
     int          miniPlayerCornerRadius = 6;
     MiniPlayerBackground miniPlayerBackground = MiniPlayerBackground::Acrylic;
     std::wstring miniPlayerBackgroundColor   = L"242 242 242$36 36 36";
     int          miniPlayerBackgroundOpacity = 100;
-    std::wstring miniPlayerSeekBarColor = L"-2 -2 -2";
+    std::wstring miniPlayerSeekBarColor = L"-1 -1 -3";
     int          miniPlayerSeekBarOpacity = 100;
-    IconStyle    miniPlayerIconStyle   = IconStyle::AsMediaButtons;
+    IconStyle    miniPlayerIconStyle   = IconStyle::FluentFilled;
     bool         showMiniPlayerBorder = false;
-    MiniPlayerPlacementMode miniPlayerPlacementMode = MiniPlayerPlacementMode::Near;
+    MiniPlayerPlacementMode miniPlayerPlacementMode = MiniPlayerPlacementMode::Screen;
     int          miniPlayerHorizontalOffsetAbove = 0;
     MenuVerticalPlacement miniPlayerVerticalPlacementNear = MenuVerticalPlacement::Top;
     MenuHorizontalPlacement miniPlayerHorizontalPlacement = MenuHorizontalPlacement::Right;
@@ -2506,7 +2506,7 @@ struct ModSettings {
     std::wstring artistLineContent    = L"artist";  // artist | album | album_if_no_art
     std::wstring titleFormat          = L"";        // "%title% · %album%"; empty = plain title
     std::wstring artistFormat         = L"";        // empty = artistLineContent
-    bool         hideNativeWidgetsButton = true;
+    bool         hideNativeWidgetsButton = false;
     WidgetsHideScope hideNativeWidgetsScope = WidgetsHideScope::Both;
     int          infoOrder            = 2;
     bool         infoDetached             = false;
@@ -2610,7 +2610,7 @@ struct ModSettings {
     bool         showRestartButton    = false;
     bool         showSuccessNotification = false;
     std::wstring settingsLanguage        = L"auto";         // XAML settings-window language code (see ResolveSettingsUiLanguage)
-    std::wstring settingsAccentColor     = L"102 207 253";  // XAML settings-window accent (R G B; blank = system)
+    std::wstring settingsAccentColor     = L"-1 -1 -1";  // XAML settings-window accent (R G B; blank = system)
     bool         settingsAnimations      = true;            // XAML settings-window motion (see MotionOn)
     bool         reportButtonInSidebar   = true;            // XAML settings-window bug button in the sidebar
     bool         sidebarIconsAboveSave   = true;            // XAML settings-window icon row above Save instead of under
@@ -3000,7 +3000,7 @@ static constexpr SettingSpec SETTINGS[] = {
     SBool(L"AnimationSettings.enableSmoothPositionAnimation", &ModSettings::enableSmoothPositionAnimation),
     SBool(L"AnimationSettings.enableAlbumArtFade", &ModSettings::enableAlbumArtFade),
     SBool(L"NotificationSettings.showSuccessNotification", &ModSettings::showSuccessNotification),
-    SStr(L"PlayerMenuSettings.placementMode", L"near"),
+    SStr(L"PlayerMenuSettings.placementMode", L"screen"),
     SIntRaw(L"PlayerMenuSettings.PlayerMenuSettingsNear.miniPlayerHorizontalOffsetNear"),
     SStr(L"PlayerMenuSettings.PlayerMenuSettingsNear.miniPlayerVerticalPlacementNear", L"top"),
     SStr(L"PlayerMenuSettings.PlayerMenuSettingsScreen.miniPlayerHorizontalPlacement", L"right"),
@@ -3018,11 +3018,11 @@ static constexpr SettingSpec SETTINGS[] = {
     SStr(L"PlayerMenuSettings.miniPlayerBackground", L"acrylic"),
     SStr(L"PlayerMenuSettings.miniPlayerBackgroundColor", L"242 242 242$36 36 36", &ModSettings::miniPlayerBackgroundColor),
     SInt(L"PlayerMenuSettings.miniPlayerBackgroundOpacity", 0, 100, &ModSettings::miniPlayerBackgroundOpacity),
-    SStr(L"PlayerMenuSettings.miniPlayerSeekBarColor", L"-2 -2 -2", &ModSettings::miniPlayerSeekBarColor),
+    SStr(L"PlayerMenuSettings.miniPlayerSeekBarColor", L"-1 -1 -3", &ModSettings::miniPlayerSeekBarColor),
     SInt(L"PlayerMenuSettings.miniPlayerSeekBarOpacity", 0, 100, &ModSettings::miniPlayerSeekBarOpacity),
-    SStr(L"PlayerMenuSettings.miniPlayerIconStyle", L"as_media_buttons"),
+    SStr(L"PlayerMenuSettings.miniPlayerIconStyle", L"fluent_filled"),
     SStr(L"SettingsWindowSettings.settingsLanguage", L"auto", &ModSettings::settingsLanguage),
-    SStr(L"SettingsWindowSettings.accentColor", L"102 207 253"),
+    SStr(L"SettingsWindowSettings.accentColor", L"-1 -1 -1"),
     SBool(L"SettingsWindowSettings.animations", &ModSettings::settingsAnimations),
     SBool(L"SettingsWindowSettings.reportButtonInSidebar", &ModSettings::reportButtonInSidebar),
     SBool(L"SettingsWindowSettings.sidebarIconsAboveSave", &ModSettings::sidebarIconsAboveSave),
