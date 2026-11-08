@@ -68,10 +68,10 @@ A media player built into the Windows 11 taskbar, styled to fit in with the rest
 
 ## Screenshots
 
-| Light theme                                     | Dark theme                                     |
-| ----------------------------------------------- | ---------------------------------------------- |
-| ![Light theme](https://i.imgur.com/hlH82zF.png) | ![Dark theme](https://i.imgur.com/w9cle3h.png) |
-| ![Light theme](https://i.imgur.com/ZiZh9gh.png) | ![Dark theme](https://i.imgur.com/Ni16pNo.png) |
+| Dark theme | Light theme |
+|---|---|
+| ![Dark theme](https://i.imgur.com/mhqfRNn.png) | ![Light theme](https://i.imgur.com/iplchN5.png) |
+| ![Dark theme](https://i.imgur.com/d73md9J.png) | ![Light theme](https://i.imgur.com/ZD02C2V.png) |
 
 ## Install
 
