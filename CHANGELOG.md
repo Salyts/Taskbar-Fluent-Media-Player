@@ -53,7 +53,7 @@
 - The title bar can match the window, stay as Windows draws it, or take any color.
 - The page fades at its top and bottom edges while you scroll.
 - Any color can follow the album, including the window's own accent, which fades to the new color when the song changes.
-- Report a bug from inside the window. You choose whether to attach errors, crash info, the log and your settings. Reports also include your PC name and Windows user name, and the form says so.
+- Report a bug from inside the window: it copies a report with your mod and Windows versions, plus recent errors and your settings if you tick them, and opens the mod's Discord so you can paste it in bug-reports. The mod sends nothing itself.
 - Reset to Windhawk's settings, in Other.
 - An Animations switch, which also follows Windows' own setting.
 
@@ -94,6 +94,7 @@
 - Right and middle double-click actions fire again.
 - "Hide when no media" no longer keeps taking up space. (#14)
 - Fixed the gap with "Right of Widgets", and the player going under the icons with Taskbar Styler "Borderless". (#74)
+- Minimize and close only ever act on the media app's own window, never one from a similarly named app.
 
 ### Not in this version
 

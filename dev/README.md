@@ -8,6 +8,7 @@ For Salyts and GR0UD. Nothing here is for people using the mod.
 | [request-checklist.md](request-checklist.md) | Everything people have asked for on GitHub, and whether it's done |
 | [issue-replies.md](issue-replies.md) | Paste-ready replies for open GitHub issues |
 | [windhawk-pr.md](windhawk-pr.md) | How to send an update to the Windhawk market, with the text for 1.7 |
+| [review-reply.md](review-reply.md) | Reply to the AI review on the 1.7.0 pull request |
 | `chk.sh` | Compile check with Windhawk's own compiler: `sh dev/chk.sh <full path to the mod> syntax\|full` |
 | `windhawk_pch.h` | Precompiled header for faster editor checks |
 
