@@ -12,7 +12,7 @@
 
 [English](README.md) | **Русский**
 
-<img src="https://i.imgur.com/pGFnmiG.gif" alt="Плеер на панели задач" width="40%">
+<img src="https://i.imgur.com/EBms83g.gif" alt="Плеер на панели задач" width="40%">
 
 </div>
 
