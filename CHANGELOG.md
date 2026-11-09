@@ -98,6 +98,7 @@
 - "Hide when no media" no longer keeps taking up space. (#14)
 - Fixed the gap with "Right of Widgets", and the player going under the icons with Taskbar Styler "Borderless". (#74)
 - Minimize and close only ever act on the media app's own window, never one from a similarly named app.
+- "Open Windhawk" finds Windhawk wherever it is, portable installs included.
 
 ### Not in this version
 
