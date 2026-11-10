@@ -23356,7 +23356,7 @@ static wuxc::Border MakeLpPlaceholder(int part, double w, double h, bool live) {
     if (part == 0 || part == 2) {
         row.Spacing(std::max(4.0, ih * 0.4));
         row.HorizontalAlignment(wux::HorizontalAlignment::Left);
-        row.Margin(wux::Thickness{ part == 2 ? 7.0 : 4.0, 0, 7, 0 });
+        row.Margin(part == 2 ? wux::Thickness{ 7, 0, 7, 0 } : wux::Thickness{ 4, 0, 4, 0 });
     } else {
         row.Spacing(std::max(2.0, ih * 0.25));
         row.HorizontalAlignment(wux::HorizontalAlignment::Center);
@@ -23381,21 +23381,26 @@ static wuxc::Border MakeLpPlaceholder(int part, double w, double h, bool live) {
     return b;
 }
 
-// How wide a part is drawn when it isn't on the taskbar to measure.
-static double LpDefaultWidth(int part, double ih) {
+// How wide a part is drawn when it isn't on the taskbar to measure, for a
+// box `h` tall. Its contents get 4 px all round, like MakeLpPlaceholder.
+static double LpDefaultWidth(int part, double h) {
+    const double ih = std::max(8.0, h - 8);
     switch (part) {
         case 0: {
-            double w = 10;
-            if (LpInPlayer(1)) w += ih + 4;
-            if (LpInPlayer(2)) w += ih * 3.4 + 4;
-            if (LpInPlayer(3)) w += ih * 2.4 + 4;
-            if (LpInPlayer(4)) w += ih * 1.3 + 4;
-            return std::max(w, ih * 1.6);
+            std::vector<double> items;
+            if (LpInPlayer(1)) items.push_back(ih);
+            if (LpInPlayer(2)) items.push_back(ih * 3.4);
+            if (LpInPlayer(3)) items.push_back(ih * 2.3);
+            if (LpInPlayer(4)) items.push_back(ih * 1.2);
+            if (items.empty()) return h;
+            double w = 8 + std::max(4.0, ih * 0.4) * (double)(items.size() - 1);
+            for (double x : items) w += x;
+            return w;
         }
-        case 1: return ih + 8;
-        case 2: return ih * 3.4 + 8;
-        case 3: return ih * 2.4 + 12;
-        default: return ih * 1.3 + 10;
+        case 1: return h;   // a square, the cover 4 px in from every side
+        case 2: return ih * 3.4 + 14;
+        case 3: return ih * 2.3 + 8;
+        default: return ih * 1.2 + 8;
     }
 }
 
@@ -24094,6 +24099,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
                 x = sx - w / 2 + off;
                 off += w + 4;
             }
+            if (pl.part == 1) { const double cx = x + w / 2; w = ih; x = cx - w / 2; }   // always a square
             w = std::max(w, ih * 0.8);
             x = std::clamp(x, pad, W - pad - w);
             auto ph = MakeLpPlaceholder(pl.part, w, ih, live);
