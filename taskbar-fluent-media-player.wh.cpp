@@ -23812,6 +23812,8 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
 
         // Ours: where they really are, or at their spot when they aren't showing now.
         std::map<std::wstring, double> stacked;
+        struct Beside { double x, w; const wchar_t* value; };
+        std::vector<Beside> beside;
         for (const Placed& pl : placed) {
             if (pl.zone != 0 || pl.monitor != m.value) continue;
             double x = -1, w = 0;
@@ -23835,6 +23837,30 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
             WireLpDrag(ph, pl.part, st);
             if (pl.part == 0) st->players.push_back(winrt::make_weak(ph));
             cv.Children().Append(ph);
+            const PlayerPosition pos = ParseSettingChoice(pl.position, PLAYER_POSITIONS, PlayerPosition::TrayLeft);
+            if (!IsEdgePosition(pos)) beside.push_back({ x, live ? w : std::min(w, LpDefaultWidth(pl.part, ih)), PositionKey(pos) });
+        }
+
+        // Next to ours: parts sharing a spot line up side by side, so either
+        // side of one is that same spot. Overlays would sit on top of each other.
+        for (const auto& b : beside) {
+            for (double bx : { b.x - 3, b.x + b.w + 3 }) {
+                bool merged = false;
+                for (auto& o : strip.slots) merged = merged || (!o.overlay && std::abs(o.x - bx) < 7);
+                if (merged || bx < pad || bx > W - pad) continue;
+                strip.slots.push_back({ b.value, bx, false });
+                wsh::Rectangle mk;
+                mk.Width(4); mk.Height(4);
+                mk.RadiusX(2); mk.RadiusY(2);
+                mk.Fill(AccentBrush());
+                mk.Opacity(0.3);
+                mk.IsHitTestVisible(false);
+                wuxc::Canvas::SetLeft(mk, bx - 2);
+                wuxc::Canvas::SetTop(mk, H - 6);
+                wuxc::Canvas::SetZIndex(mk, 20);
+                cv.Children().Append(mk);
+                strip.markers.push_back(winrt::make_weak(mk.as<wux::FrameworkElement>()));
+            }
         }
 
         wuxc::StackPanel pair;
