@@ -20791,12 +20791,17 @@ static wma::Storyboard AnimateColors(std::initializer_list<ColorTween> tweens, i
 // The page has the layout preview on it: its accent tints are brushes of its
 // own, so it's redrawn when the accent changes.
 static bool s_layoutPreviewShown = false;
+static winrt::Windows::UI::Color s_layoutPreviewAccent{};   // the accent it was drawn with
 
 static void FollowAccentColor() {
     if (!s_accentBrush) return;
     const auto c = AccentTargetColor();
     if (c == s_accentShown) return;
-    if (s_layoutPreviewShown && s_hostWnd) SetTimer(s_hostWnd, RELAYOUT_TIMER, 480, nullptr);
+    // Only a real change: rebuilding every tick closed every panel on the page.
+    if (s_layoutPreviewShown && s_hostWnd && c != s_layoutPreviewAccent) {
+        s_layoutPreviewAccent = c;
+        SetTimer(s_hostWnd, RELAYOUT_TIMER, 480, nullptr);
+    }
     if (!MotionOn()) { RefreshAccentBrushes(); return; }
     s_accentShown = c;
     s_accentFade = AnimateColors({
@@ -23418,6 +23423,10 @@ struct LpStrip {
     // The taskbar's own sections: the left end (Widgets), the icon group, the
     // tray. Each lays itself out, so room made in one doesn't move the others.
     int Section(double x) const { return x >= trayX - 1 ? 2 : x >= groupX - 6 ? 1 : 0; }
+    // While the dragged part is lifted out of this copy, what came after it in
+    // its section closes the gap: where `x` is drawn then.
+    double gapFrom = 1e9, gapW = 0;
+    double V(double x) const { return (gapW > 0 && x >= gapFrom - 1 && Section(x) == Section(gapFrom - 1)) ? x - gapW : x; }
     winrt::weak_ref<winrt::Windows::UI::Xaml::Shapes::Rectangle> dropBox;   // dashed outline where it would land
     struct Mover { winrt::weak_ref<wux::FrameworkElement> el; double x, w; bool floats = false; double off = 0; };   // off: where it's slid to
     bool roomBack = false;   // room is made backward here (forward would push something out)
@@ -23490,7 +23499,7 @@ static void LpShowMarkers(LpDrag& st, bool on) {
                 }
                 m.Opacity(target ? 1.0 : on ? 0.6 : 0.3);
                 m.Height(4);
-                wuxc::Canvas::SetLeft(m, slot.x - 2);
+                wuxc::Canvas::SetLeft(m, strip.V(slot.x) - 2);
                 wuxc::Canvas::SetTop(m, strip.height - 6);
             }
     for (auto* z : { &st.attachZone, &st.hiddenZone })
@@ -23516,29 +23525,28 @@ static void LpShowMarkers(LpDrag& st, bool on) {
     for (size_t si = 0; si < st.strips.size(); si++) {
         auto& strip = st.strips[si];
         const bool here = on && st.tZone == 0 && (int)si == st.tStrip && !strip.slots[st.tSlot].overlay;
-        const bool ownPlace = here && (int)si == st.srcStrip &&
-            strip.slots[st.tSlot].x >= st.srcX - 8 && strip.slots[st.tSlot].x <= st.srcX + st.srcW + 8;
-        const double slotX = here ? strip.slots[st.tSlot].x : 0;
+        const bool ownPlace = false;
+        const double slotX = here ? strip.V(strip.slots[st.tSlot].x) : 0;
         const double gap = std::max(8.0, st.dropW > 0 ? st.dropW : strip.ih * 2) + 4;
         auto moves = [&](const LpStrip::Mover& mv, wux::FrameworkElement const& el) {
             return here && !ownPlace && !mv.floats && !(source && el == source) &&
-                   strip.Section(mv.x) == strip.Section(slotX);
+                   strip.Section(mv.x) == strip.Section(strip.slots[st.tSlot].x);
         };
         // Forward, unless that would push something past the end: then what's
         // before the spot makes room backward. Nothing leaves the copy.
         strip.roomBack = false;
         for (const auto& mv : strip.movers) {
             auto el = mv.el.get();
-            if (el && moves(mv, el) && mv.x >= slotX && mv.x + mv.w + gap > strip.width - strip.pad) strip.roomBack = true;
+            if (el && moves(mv, el) && strip.V(mv.x) >= slotX && strip.V(mv.x) + mv.w + gap > strip.width - strip.pad) strip.roomBack = true;
         }
         if (here && !ownPlace && slotX + 2 + gap > strip.width - strip.pad) strip.roomBack = true;
         for (auto& mv : strip.movers) {
             auto el = mv.el.get();
             if (!el) continue;
-            double off = 0;
+            double off = on && !mv.floats ? strip.V(mv.x) - mv.x : 0;   // closing the lifted part's gap
             if (moves(mv, el)) {
-                if (strip.roomBack) { if (mv.x < slotX) off = -gap; }
-                else if (mv.x >= slotX) off = gap;
+                if (strip.roomBack) { if (strip.V(mv.x) < slotX) off -= gap; }
+                else if (strip.V(mv.x) >= slotX) off += gap;
             }
             // Our own record of where it's slid to: an animation doesn't change
             // the local value, so reading that back left things stuck.
@@ -23560,10 +23568,9 @@ static void LpShowMarkers(LpDrag& st, bool on) {
         double x;
         if (slot.overlay) {
             x = v == L"taskbar_left_edge" ? strip.pad : v == L"taskbar_center_edge" ? strip.width / 2 - w / 2 : strip.width - strip.pad - w;
-        } else if ((int)si == st.srcStrip && slot.x >= st.srcX - 8 && slot.x <= st.srcX + st.srcW + 8) {
-            x = st.srcX;   // its own place: stays where it is
         } else {
-            x = strip.roomBack ? slot.x - 2 - w : slot.x + 2;   // in the room that just opened
+            const double sx = strip.V(slot.x);
+            x = strip.roomBack ? sx - 2 - w : sx + 2;   // in the room that just opened
         }
         x = std::clamp(x, 2.0, std::max(2.0, strip.width - w - 2));
         box.Width(w);
@@ -23607,11 +23614,14 @@ static void WireLpDrag(wuxc::Border const& el, int part, std::shared_ptr<LpDrag>
             st->srcStrip = -1;
             for (size_t si = 0; si < st->strips.size(); si++)
                 for (const auto& mv : st->strips[si].movers)
-                    if (auto el = mv.el.get(); el && el == src) { st->srcStrip = (int)si; st->srcX = mv.x; st->srcW = src.ActualWidth(); }
+                    if (auto el = mv.el.get(); el && el == src) {
+                        st->srcStrip = (int)si; st->srcX = mv.x; st->srcW = mv.w;
+                        if (!mv.floats) { st->strips[si].gapFrom = mv.x + mv.w; st->strips[si].gapW = mv.w + 4; }
+                    }
             st->ghost.Opacity(0.9);
             st->ghost.IsHitTestVisible(false);
             ov.Children().Append(st->ghost);
-            src.Opacity(0.3);
+            src.Opacity(0);   // lifted out: the copy shows the taskbar without it
         }
         st->ghostTr.X(pt.X - st->grab.X);
         st->ghostTr.Y(pt.Y - st->grab.Y);
@@ -23643,7 +23653,7 @@ static void WireLpDrag(wuxc::Border const& el, int part, std::shared_ptr<LpDrag>
             for (size_t k = 0; k < strip.slots.size(); k++) {
                 const auto& s = strip.slots[k];
                 if (s.overlay != overlayRow) continue;
-                double d = std::abs((overlayRow ? op.X : lp.X) - s.x);
+                double d = std::abs((overlayRow ? op.X : lp.X) - (s.overlay ? s.x : strip.V(s.x)));
                 // The spot it's on now keeps it until another is clearly closer (no flicker).
                 if (prevZone == 0 && prevStrip == (int)si && prevSlot == (int)k) d -= 8;
                 if (d < best) { best = d; st->tZone = 0; st->tStrip = (int)si; st->tSlot = (int)k; }
@@ -23684,6 +23694,7 @@ static void WireLpDrag(wuxc::Border const& el, int part, std::shared_ptr<LpDrag>
             }
             return;
         }
+        for (auto& s2 : st->strips) { s2.gapFrom = 1e9; s2.gapW = 0; }
         auto removeGhost = [st]() {
             if (auto ov2 = st->overlay.get(); ov2 && st->ghost) {
                 uint32_t i = 0;
@@ -23747,6 +23758,7 @@ static void WireLpDrag(wuxc::Border const& el, int part, std::shared_ptr<LpDrag>
         if (!wasDragging) return;
         if (st->landing) return;
         Wh_Log(L"LayoutPreview: drag of %s canceled (pointer taken)", LP_PARTS[st->part].label);
+        for (auto& s2 : st->strips) { s2.gapFrom = 1e9; s2.gapW = 0; }
         if (auto ov = st->overlay.get(); ov && st->ghost) {
             uint32_t i = 0;
             if (ov.Children().IndexOf(st->ghost, i)) ov.Children().RemoveAt(i);
@@ -24244,6 +24256,7 @@ static void FillLayoutPreview(wuxc::Grid const& outer, double w) {
 
 static wuxc::Grid BuildLayoutPreview() {
     s_layoutPreviewShown = true;
+    s_layoutPreviewAccent = AccentTargetColor();
     wuxc::Grid outer;
     auto lastW = std::make_shared<double>(0.0);
     outer.SizeChanged([lastW](winrt::Windows::Foundation::IInspectable const& sender, wux::SizeChangedEventArgs const& e) {
