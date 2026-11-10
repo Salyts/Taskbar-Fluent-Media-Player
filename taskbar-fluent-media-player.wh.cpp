@@ -22896,20 +22896,20 @@ static std::wstring LpSlotName(const std::wstring& v) {
 // The sketch: boxes to draw and the drop spots between them, in strip pixels.
 struct LpBox { double x, w; const wchar_t* text; int kind; };  // kind 0 glyph, 1 Start, 2 app, 3 text, 4 thin, 5 two icons
 struct LpSlot { const wchar_t* value; double x; bool overlay; };
-static constexpr double LP_W = 680, LP_H = 44;
+static constexpr double LP_H = 44;
 
-static void BuildLpSketch(bool centered, std::vector<LpBox>& boxes, std::vector<LpSlot>& slots) {
-    const double trayW = 280, TW = LP_W - trayW, gap = 14, ic = 20, side = 2;
+static void BuildLpSketch(double W, bool centered, std::vector<LpBox>& boxes, std::vector<LpSlot>& slots) {
+    const double trayW = 280, TW = W - trayW, gap = 14, ic = 20, side = 2;
     auto around = [&](double x, double w, const wchar_t* l, const wchar_t* r) {
         slots.push_back({ l, x - side, false });
         slots.push_back({ r, x + w + side, false });
     };
     slots.push_back({ L"taskbar_left_edge", 4, true });
-    slots.push_back({ L"taskbar_center_edge", TW / 2, true });
+    slots.push_back({ L"taskbar_center_edge", std::min(W / 2, TW - 12), true });
     slots.push_back({ L"taskbar_right_edge", TW - 4, true });
 
     const double groupW = 6 * ic + 5 * gap;
-    double x = centered ? TW / 2 - groupW / 2 : 84;
+    double x = centered ? std::min(W / 2, TW - groupW / 2 - 16) - groupW / 2 : 84;
     boxes.push_back({ x, ic, nullptr, 1 });       around(x, ic, L"taskbar_left_start", L"taskbar_right_start");
     x += ic + gap;
     boxes.push_back({ x, ic, L"\uE721", 0 });     around(x, ic, L"taskbar_after_search_left", L"taskbar_after_search_right");
@@ -22919,8 +22919,8 @@ static void BuildLpSketch(bool centered, std::vector<LpBox>& boxes, std::vector<
     const double wx = centered ? 20 : 20;
     boxes.push_back({ wx, 44, L"\uE706", 3 });    around(wx, 44, L"taskbar_after_widgets_left", L"taskbar_after_widgets_right");
 
-    double tx = LP_W - 14;
-    slots.push_back({ L"tray_right", LP_W - 3, false });
+    double tx = W - 14;
+    slots.push_back({ L"tray_right", W - 3, false });
     auto tray = [&](double w, const wchar_t* text, int kind, const wchar_t* l, const wchar_t* r) {
         tx -= w;
         boxes.push_back({ tx, w, text, kind });
@@ -22945,6 +22945,7 @@ static bool TaskbarIconsCentered() {
 
 struct LpStrip {
     winrt::weak_ref<wuxc::Canvas> canvas;
+    double width = 0;
     int monitor = 0;
     std::vector<LpSlot> slots;
     std::vector<winrt::weak_ref<winrt::Windows::UI::Xaml::Shapes::Rectangle>> markers;
@@ -23048,7 +23049,7 @@ static void WireLpChip(wuxc::Border const& chip, int part, std::shared_ptr<LpDra
             auto cv = st->strips[si].canvas.get();
             if (!cv) continue;
             auto lp = e.GetCurrentPoint(cv).Position();
-            if (lp.Y < -16 || lp.Y > LP_H + 16 || lp.X < -20 || lp.X > LP_W + 20) continue;
+            if (lp.Y < -16 || lp.Y > LP_H + 16 || lp.X < -20 || lp.X > st->strips[si].width + 20) continue;
             for (size_t k = 0; k < st->strips[si].slots.size(); k++) {
                 const auto& s = st->strips[si].slots[k];
                 // Overlay spots answer near the top edge, the rest across the middle.
@@ -23112,7 +23113,7 @@ static void WireLpChip(wuxc::Border const& chip, int part, std::shared_ptr<LpDra
     chip.PointerCaptureLost(finish);
 }
 
-static wuxc::Grid BuildLayoutPreview() {
+static wuxc::Grid BuildLayoutPreviewAt(double W) {
     using winrt::hstring;
     namespace wsh = winrt::Windows::UI::Xaml::Shapes;
     auto st = std::make_shared<LpDrag>();
@@ -23130,7 +23131,7 @@ static wuxc::Grid BuildLayoutPreview() {
 
     std::vector<LpBox> boxes;
     std::vector<LpSlot> slots;
-    BuildLpSketch(TaskbarIconsCentered(), boxes, slots);
+    BuildLpSketch(W, TaskbarIconsCentered(), boxes, slots);
 
     const auto dim = s_light ? Brush(255, 205, 205, 205) : Brush(255, 70, 70, 70);
     const auto stripBg = s_light ? Brush(255, 238, 238, 238) : Brush(255, 28, 28, 28);
@@ -23163,9 +23164,9 @@ static wuxc::Grid BuildLayoutPreview() {
         stack.Children().Append(label);
 
         wuxc::Canvas cv;
-        cv.Width(LP_W); cv.Height(LP_H);
+        cv.Width(W); cv.Height(LP_H);
         wuxc::Border bg;
-        bg.Width(LP_W); bg.Height(LP_H);
+        bg.Width(W); bg.Height(LP_H);
         bg.CornerRadius(wux::CornerRadius{ 6, 6, 6, 6 });
         bg.Background(stripBg);
         cv.Children().Append(bg);
@@ -23225,6 +23226,7 @@ static wuxc::Grid BuildLayoutPreview() {
 
         LpStrip strip;
         strip.canvas = winrt::make_weak(cv);
+        strip.width = W;
         strip.monitor = m.value;
         strip.slots = slots;
         for (const LpSlot& s : slots) {
@@ -23250,7 +23252,7 @@ static wuxc::Grid BuildLayoutPreview() {
             auto chip = MakeLpChip(text, pl.part == 0);
             const double w = chip.Width();
             double& offset = used[pl.position];
-            double left = std::clamp(sx - w / 2 + offset, 0.0, LP_W - w);
+            double left = std::clamp(sx - w / 2 + offset, 0.0, W - w);
             offset += w + 4;
             wuxc::Canvas::SetLeft(chip, left);
             wuxc::Canvas::SetTop(chip, (LP_H - 20) / 2);
@@ -23311,6 +23313,22 @@ static wuxc::Grid BuildLayoutPreview() {
     st->caption = winrt::make_weak(caption);
 
     return host;
+}
+
+// Drawn at the card's width, and redrawn when that changes.
+static wuxc::Grid BuildLayoutPreview() {
+    wuxc::Grid outer;
+    auto lastW = std::make_shared<double>(0.0);
+    outer.SizeChanged([lastW](winrt::Windows::Foundation::IInspectable const& sender, wux::SizeChangedEventArgs const& e) {
+        const double w = std::floor(e.NewSize().Width);
+        if (w <= 0 || std::abs(w - *lastW) < 4) return;
+        *lastW = w;
+        auto g = sender.as<wuxc::Grid>();
+        g.Children().Clear();
+        g.Children().Append(BuildLayoutPreviewAt(std::max(520.0, w)));
+    });
+    outer.Children().Append(BuildLayoutPreviewAt(680));
+    return outer;
 }
 
 static wuxc::StackPanel BuildReorderList(const SettingCard& card) {
