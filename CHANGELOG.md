@@ -4,7 +4,7 @@
 
 ### New
 
-- **Weather when nothing plays.** Turn on "Show Widgets when nothing plays" under Native Widgets: the player hides when nothing is playing and the Windows Widgets button (with the weather) comes back in its place. While music plays, the player is back and Widgets is hidden.
+- **Weather when nothing plays.** Turn on "Show Widgets when nothing plays" under Native Widgets: the player hides when nothing is playing and the Windows Widgets button (with the weather) comes back in its place. Detached parts stay where they are. While music plays, the player is back and Widgets is hidden.
 
 ### Fixes
 

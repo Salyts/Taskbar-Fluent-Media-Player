@@ -889,7 +889,7 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
     - showWidgetsWhenIdle: false
       #! $showIf: {hideNativeWidgetsButton: true}
       $name: Show Widgets when nothing plays
-      $description: "Swaps them: the player hides when nothing is playing and the Widgets button (with the weather) shows in its place. The Widgets button has to be on in Windows' taskbar settings."
+      $description: "Swaps them: the main player hides when nothing is playing and the Widgets button (with the weather) shows in its place. Detached parts stay. The Widgets button has to be on in Windows' taskbar settings."
     $name: Native Widgets button
   #! $hideIf: {settingsView: window}
   $name: Main Settings
@@ -14667,6 +14667,9 @@ static void UpdateVisibility() {
 
     if (g_hiddenByIdle) hide = true;
 
+    // Nothing playing. "Hide when no media" hides every part; the Widgets swap
+    // only the main player, detached parts stay.
+    bool noMediaHide = false;
     if (!hide) {
         Wh_Log(L"UpdateVisibility: hasMedia=%d, hasSession=%d, hideWhenNoMedia=%d", hasMedia, hasSession, g_settings.hideWhenNoMedia);
 
@@ -14677,7 +14680,7 @@ static void UpdateVisibility() {
         if (g_settings.hideWhenNoMedia || WidgetsSwapActive()) {
 
             if (!hasSession) {
-                hide = true;
+                noMediaHide = true;
             }
 
             else if (!hasMedia) {
@@ -14685,7 +14688,7 @@ static void UpdateVisibility() {
                 auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - g_lastMediaTime).count();
 
                 if (elapsed > 2500) {
-                    hide = true;
+                    noMediaHide = true;
                 } else if (!g_unloading && !g_noMediaRecheckPending.exchange(true)) {
                     // Look again once the 2.5 s are up.
                     SpawnTrackedWorker([elapsed]() {
@@ -14700,13 +14703,14 @@ static void UpdateVisibility() {
         }
     }
 
-    const bool idleHide = hide;
+    if (noMediaHide && g_settings.hideWhenNoMedia) hide = true;
+    const bool idleHide = hide || noMediaHide;
     if (fullscreenHide) hide = true;
     if (g_playerIdleHidden.exchange(idleHide) != idleHide && WidgetsSwapActive() && !g_unloading)
         SpawnTrackedWorker([]() { EnsureWidgetsHideStateApplied(); });
 
     // Detached parts follow `hide`; `hidePlayer` also collapses an empty main bar.
-    bool hidePlayer = hide || !PlayerHasInlineContent();
+    bool hidePlayer = hide || (idleHide && WidgetsSwapActive()) || !PlayerHasInlineContent();
 
     Wh_Log(L"UpdateVisibility: Final decision - hide=%d hidePlayer=%d", hide, hidePlayer);
 
