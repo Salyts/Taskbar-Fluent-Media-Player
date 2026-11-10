@@ -23413,7 +23413,7 @@ struct LpStrip {
     winrt::weak_ref<wuxc::Canvas> ovCanvas;   // the overlay row above the copy
     double ovH = 0, pad = 0, trayX = 0;
     winrt::weak_ref<winrt::Windows::UI::Xaml::Shapes::Rectangle> dropBox;   // dashed outline where it would land
-    struct Mover { winrt::weak_ref<wux::FrameworkElement> el; double x; };
+    struct Mover { winrt::weak_ref<wux::FrameworkElement> el; double x; bool floats = false; double off = 0; };   // off: where it's slid to
     std::vector<Mover> movers;   // what slides aside to make room
 };
 struct LpDrag {
@@ -23504,32 +23504,24 @@ static void LpShowMarkers(LpDrag& st, bool on) {
     st.shownKey = key;
     auto source = st.source.get();
 
-    // Room: on the taskbar what's after the spot slides right; the tray grows
-    // to the left (it hangs off the right end), so what's before it slides left.
-    // An overlay floats and moves nothing.
+    // Room: everything after the spot slides forward by the part's width.
+    // Overlays float and move nothing; neither does a part's own place.
     for (size_t si = 0; si < st.strips.size(); si++) {
-        const auto& strip = st.strips[si];
+        auto& strip = st.strips[si];
         const bool here = on && st.tZone == 0 && (int)si == st.tStrip && !strip.slots[st.tSlot].overlay;
-        double gap = 0, slotX = 0;
-        bool inTray = false;
         const bool ownPlace = here && (int)si == st.srcStrip &&
             strip.slots[st.tSlot].x >= st.srcX - 8 && strip.slots[st.tSlot].x <= st.srcX + st.srcW + 8;
-        if (here && !ownPlace) {
-            const auto& slot = strip.slots[st.tSlot];
-            gap = std::max(8.0, st.dropW > 0 ? st.dropW : strip.ih * 2) + 4;
-            slotX = slot.x;
-            inTray = std::wstring(slot.value).rfind(L"tray_", 0) == 0;
-        }
-        for (const auto& mv : strip.movers) {
+        const double slotX = here ? strip.slots[st.tSlot].x : 0;
+        const double gap = std::max(8.0, st.dropW > 0 ? st.dropW : strip.ih * 2) + 4;
+        for (auto& mv : strip.movers) {
             auto el = mv.el.get();
             if (!el) continue;
-            double off = 0;
-            if (here && !ownPlace && !(source && el == source)) {
-                if (inTray) { if (mv.x >= strip.trayX - 1 && mv.x < slotX) off = -gap; }
-                else if (mv.x >= slotX && mv.x < strip.trayX - 1) off = gap;
-            }
-            if (auto tr = el.RenderTransform().try_as<wuxm::TranslateTransform>())
-                if (std::abs(tr.X() - off) > 0.5) AnimateTo(tr, L"X", off, 130);
+            const double off = (here && !ownPlace && !mv.floats && !(source && el == source) && mv.x >= slotX) ? gap : 0;
+            // Our own record of where it's slid to: an animation doesn't change
+            // the local value, so reading that back left things stuck.
+            if (std::abs(mv.off - off) < 0.5) continue;
+            mv.off = off;
+            if (auto tr = el.RenderTransform().try_as<wuxm::TranslateTransform>()) AnimateTo(tr, L"X", off, 130);
         }
     }
 
@@ -23547,10 +23539,8 @@ static void LpShowMarkers(LpDrag& st, bool on) {
             x = v == L"taskbar_left_edge" ? strip.pad : v == L"taskbar_center_edge" ? strip.width / 2 - w / 2 : strip.width - strip.pad - w;
         } else if ((int)si == st.srcStrip && slot.x >= st.srcX - 8 && slot.x <= st.srcX + st.srcW + 8) {
             x = st.srcX;   // its own place: stays where it is
-        } else if (v.rfind(L"tray_", 0) == 0) {
-            x = slot.x - 2 - w;
         } else {
-            x = slot.x + 2;
+            x = slot.x + 2;   // in the room that just opened after the spot
         }
         x = std::clamp(x, 2.0, std::max(2.0, strip.width - w - 2));
         box.Width(w);
@@ -23973,6 +23963,11 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
 
         wuxc::Canvas cv;
         cv.Width(W); cv.Height(H);
+        {
+            wuxm::RectangleGeometry clip;
+            clip.Rect({ 0, 0, (float)W, (float)H });
+            cv.Clip(clip);
+        }
         wuxc::Border bg;
         bg.Width(W); bg.Height(H);
         bg.CornerRadius(wux::CornerRadius{ 6, 6, 6, 6 });
@@ -24110,8 +24105,8 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
             if (pl.part == 0) st->players.push_back(winrt::make_weak(ph));
             ph.RenderTransform(wuxm::TranslateTransform());
             cv.Children().Append(ph);
-            strip.movers.push_back({ winrt::make_weak(ph.as<wux::FrameworkElement>()), x });
             const PlayerPosition pos = ParseSettingChoice(pl.position, PLAYER_POSITIONS, PlayerPosition::TrayLeft);
+            strip.movers.push_back({ winrt::make_weak(ph.as<wux::FrameworkElement>()), x, IsEdgePosition(pos) });
             if (!IsEdgePosition(pos)) beside.push_back({ pl.part, x, live ? w : std::min(w, LpDefaultWidth(pl.part, ih)), PositionKey(pos) });
         }
 
