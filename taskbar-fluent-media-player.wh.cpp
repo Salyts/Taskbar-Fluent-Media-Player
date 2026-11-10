@@ -23824,10 +23824,6 @@ static wux::FrameworkElement MakeLpItem(const LpItem& it, double w, double ih,
         case LpTaskView: box.Child(LpGlyph(L"\uE7C4", ih * 0.42)); break;
         case LpWidgetsHidden:
         case LpWidgets: {
-            if (it.kind == LpWidgetsHidden) {
-                box.Opacity(0.4);
-                wuxc::ToolTipService::SetToolTip(box, winrt::box_value(hstring{ Loc(L"Hidden") }));
-            }
             auto r = rowOf(ih * 0.22);
             r.HorizontalAlignment(wux::HorizontalAlignment::Left);
             r.Margin(wux::Thickness{ ih * 0.1, 0, 0, 0 });
