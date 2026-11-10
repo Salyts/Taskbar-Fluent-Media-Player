@@ -22849,7 +22849,7 @@ static const LpPart LP_PARTS[] = {
 
 static bool LpOn(const wchar_t* key) {
     if (!key) return false;
-    std::wstring v = GetSettingOverride(key, RawFetchInt(key) ? L"1" : L"0");
+    const std::wstring v = RuleCurrentValue(key);   // what the switches below show
     return !v.empty() && v != L"0";
 }
 static bool LpPartOn(const LpPart& p) {
@@ -22902,7 +22902,7 @@ static std::wstring LpSlotName(const std::wstring& v) {
 }
 
 enum LpKind {
-    LpStart = 1, LpSearchIcon, LpSearchBox, LpTaskView, LpWidgets, LpApp, LpOtherButton,
+    LpStart = 1, LpSearchIcon, LpSearchBox, LpTaskView, LpWidgets, LpApp, LpOtherButton, LpWidgetsHidden,
     LpChevron = 10, LpTrayIcons, LpLanguage, LpOmni, LpClock, LpShowDesktop, LpOtherTray,
 };
 struct LpItem { int kind; double x, w; };
@@ -22955,9 +22955,19 @@ static void TakeLpSnapOnThread(void* param) {
             for (int i = 0; i < n; i++) {
                 auto c = VisualTreeHelper::GetChild(repeater, i).try_as<FrameworkElement>();
                 double x, w;
-                if (!c || !rectOf(c, x, w)) continue;
+                if (!c) continue;
                 const std::wstring name = c.Name().c_str();
                 if (ours(name)) continue;
+                if (!rectOf(c, x, w)) {
+                    // The Widgets button we hide is still there, just zero wide.
+                    if (name == L"AugmentedEntryPointButton" && g_settings.hideNativeWidgetsButton) {
+                        try {
+                            const double hx = c.TransformToVisual(root).TransformPoint({ 0, 0 }).X;
+                            if (hx >= 0 && hx < W) snap->items.push_back({ LpWidgetsHidden, hx, H * 2 });
+                        } catch (...) { LOG_IGNORED_EXCEPTION(); }
+                    }
+                    continue;
+                }
                 const std::wstring cls = winrt::get_class_name(c).c_str();
                 std::wstring id;
                 try { id = winrt::Windows::UI::Xaml::Automation::AutomationProperties::GetAutomationId(c).c_str(); } catch (...) { LOG_IGNORED_EXCEPTION(); }
@@ -23236,6 +23246,7 @@ struct LpDrag {
 
 static void LpCommit(int part, int zone, int monitor, const std::wstring& position) {
     const LpPart& p = LP_PARTS[part];
+    Wh_Log(L"LayoutPreview: drop %s zone=%d monitor=%d position=%s", p.label, zone, monitor, position.c_str());
     if (zone == 1) {
         if (p.detachKey) SetOverrideLive(p.detachKey, L"0");
     } else if (zone == 2) {
@@ -23380,6 +23391,7 @@ static void WireLpDrag(wuxc::Border const& el, int part, std::shared_ptr<LpDrag>
         if (auto cap = st->caption.get()) cap.Text(winrt::hstring{ st->hint });
         const int zone = st->tZone;
         if (zone < 0) {
+            Wh_Log(L"LayoutPreview: dropped %s outside every target", LP_PARTS[st->part].label);
             if (auto src = st->source.get()) src.Opacity(1.0);
             return;
         }
@@ -23455,7 +23467,12 @@ static wux::FrameworkElement MakeLpItem(const LpItem& it, double w, double ih,
             break;
         }
         case LpTaskView: box.Child(LpGlyph(L"\uE7C4", ih * 0.42)); break;
+        case LpWidgetsHidden:
         case LpWidgets: {
+            if (it.kind == LpWidgetsHidden) {
+                box.Opacity(0.4);
+                wuxc::ToolTipService::SetToolTip(box, winrt::box_value(hstring{ Loc(L"Hidden") }));
+            }
             auto r = rowOf(ih * 0.12);
             r.Children().Append(LpGlyph(L"\uE706", ih * 0.42));
             if (w > ih * 1.3) r.Children().Append(label(L"18\u00B0", ih * 0.32));
@@ -23556,7 +23573,8 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         if (snap.hwnd && !g_unloading) RunFromWindowThread(snap.hwnd, TakeLpSnapOnThread, &snap);
         if (!snap.ok || snap.width <= 0) BuildLpSketch(snap);
 
-        const double s = W / snap.width;
+        const double pad = 12;   // nothing touches the ends
+        const double s = (W - 2 * pad) / snap.width;
         const double H = std::clamp(snap.height * s, 34.0, 60.0);
         const double ih = std::round(H * 0.74);
         const double y0 = std::round((H - ih) / 2);
@@ -23580,7 +23598,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         for (const LpItem& it : snap.items) {
             if (it.kind == LpApp) continue;
             auto el = MakeLpItem(it, it.w * s, ih, timeText, dateText);
-            wuxc::Canvas::SetLeft(el, it.x * s);
+            wuxc::Canvas::SetLeft(el, pad + it.x * s);
             wuxc::Canvas::SetTop(el, y0 + (ih - el.Height()) / 2);
             cv.Children().Append(el);
         }
@@ -23593,7 +23611,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         strip.ih = ih;
         strip.y0 = y0;
         for (const LpSlot& sl : snap.slots) {
-            LpSlot scaled{ sl.value, sl.x * s, sl.overlay };
+            LpSlot scaled{ sl.value, pad + sl.x * s, sl.overlay };
             bool merged = false;
             for (auto& o : strip.slots) merged = merged || (o.overlay == scaled.overlay && std::abs(o.x - scaled.x) < 7);
             if (merged) continue;
@@ -23617,7 +23635,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
             if (pl.zone != 0 || pl.monitor != m.value) continue;
             double x = -1, w = 0;
             bool live = false;
-            for (auto& r : snap.parts) if (r.part == pl.part) { x = r.x * s; w = r.w * s; live = true; break; }
+            for (auto& r : snap.parts) if (r.part == pl.part) { x = pad + r.x * s; w = r.w * s; live = true; break; }
             if (!live) {
                 double sx = -1;
                 for (auto& sl : strip.slots) if (pl.position == sl.value) { sx = sl.x; break; }
@@ -23628,7 +23646,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
                 off += w + 4;
             }
             w = std::max(w, ih * 0.8);
-            x = std::clamp(x, 0.0, W - w);
+            x = std::clamp(x, pad, W - pad - w);
             auto ph = MakeLpPlaceholder(pl.part, w, ih, live);
             wuxc::Canvas::SetLeft(ph, x);
             wuxc::Canvas::SetTop(ph, y0);
