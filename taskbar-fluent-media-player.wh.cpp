@@ -22931,7 +22931,7 @@ enum LpKind {
     LpStart = 1, LpSearchIcon, LpSearchBox, LpTaskView, LpWidgets, LpApp, LpOtherButton, LpWidgetsHidden,
     LpChevron = 10, LpTrayIcons, LpLanguage, LpOmni, LpClock, LpShowDesktop, LpOtherTray,
 };
-struct LpItem { int kind; double x, w; std::wstring t1, t2; };   // t1/t2: the Widgets button's text
+struct LpItem { int kind; double x, w; std::wstring t1, t2, icon; };   // the Widgets button's text and weather icon
 struct LpSlot {
     const wchar_t* value; double x; bool overlay;
     // Beside one of ours: who shares the spot (left to right), whose side, and
@@ -22960,6 +22960,32 @@ static void CollectLpTexts(winrt::Windows::UI::Xaml::DependencyObject const& n, 
     }
     const int c = VisualTreeHelper::GetChildrenCount(n);
     for (int i = 0; i < c && out.size() < 2; i++) CollectLpTexts(VisualTreeHelper::GetChild(n, i), out, depth + 1);
+}
+
+// Where the first image under `n` comes from (the weather icon), or empty.
+static std::wstring FindLpIconUri(winrt::Windows::UI::Xaml::DependencyObject const& n, int depth) {
+    if (!n || depth > 16) return {};
+    if (auto img = n.try_as<wuxc::Image>()) {
+        try {
+            auto src = img.Source();
+            if (auto bmp = src.try_as<wuxm::Imaging::BitmapImage>(); bmp && bmp.UriSource()) return bmp.UriSource().ToString().c_str();
+            if (auto svg = src.try_as<wuxm::Imaging::SvgImageSource>(); svg && svg.UriSource()) return svg.UriSource().ToString().c_str();
+        } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    }
+    const int c = VisualTreeHelper::GetChildrenCount(n);
+    for (int i = 0; i < c; i++) {
+        auto r = FindLpIconUri(VisualTreeHelper::GetChild(n, i), depth + 1);
+        if (!r.empty()) return r;
+    }
+    return {};
+}
+
+static void ReadLpWeather(FrameworkElement const& widgets, LpItem& item) {
+    std::vector<std::wstring> texts;
+    CollectLpTexts(widgets, texts, 0);
+    if (texts.size() > 0) item.t1 = texts[0];
+    if (texts.size() > 1) item.t2 = texts[1];
+    item.icon = FindLpIconUri(widgets, 0);
 }
 
 // Runs on the taskbar's thread; only plain values leave it.
@@ -23008,10 +23034,13 @@ static void TakeLpSnapOnThread(void* param) {
                         try {
                             const double hx = c.TransformToVisual(root).TransformPoint({ 0, 0 }).X;
                             if (hx >= 0 && hx < W) {
-                                snap->items.push_back({ LpWidgetsHidden, hx, H });
+                                LpItem item{ LpWidgetsHidden, hx, H };
+                                ReadLpWeather(c, item);
+                                if (!item.t1.empty()) item.w = H * 0.8 + 7.5 * (double)std::max(item.t1.size(), item.t2.size());
+                                snap->items.push_back(item);
                                 // Still a spot either side of it: the mod anchors to the hidden shell.
                                 slot(PlayerPosition::TaskbarAfterWidgetsLeft, hx - 3);
-                                slot(PlayerPosition::TaskbarAfterWidgetsRight, hx + H + 3);
+                                slot(PlayerPosition::TaskbarAfterWidgetsRight, hx + item.w + 3);
                             }
                         } catch (...) { LOG_IGNORED_EXCEPTION(); }
                     }
@@ -23029,12 +23058,7 @@ static void TakeLpSnapOnThread(void* param) {
                 else if (cls == L"Taskbar.AugmentedEntryPointButton" || name == L"AugmentedEntryPointButton") kind = LpWidgets;
                 else if (cls == L"Taskbar.TaskListButton") kind = LpApp;
                 LpItem item{ kind, x, w };
-                if (kind == LpWidgets) {
-                    std::vector<std::wstring> texts;
-                    CollectLpTexts(c, texts, 0);
-                    if (texts.size() > 0) item.t1 = texts[0];
-                    if (texts.size() > 1) item.t2 = texts[1];
-                }
+                if (kind == LpWidgets) ReadLpWeather(c, item);
                 snap->items.push_back(item);
             }
             static const PlayerPosition anchored[] = {
@@ -23677,18 +23701,34 @@ static wux::FrameworkElement MakeLpItem(const LpItem& it, double w, double ih,
                 box.Opacity(0.4);
                 wuxc::ToolTipService::SetToolTip(box, winrt::box_value(hstring{ Loc(L"Hidden") }));
             }
-            auto r = rowOf(ih * 0.15);
-            r.Children().Append(LpGlyph(L"\uE706", ih * 0.46));   // stands in for the weather icon
-            if (!it.t1.empty() && w > ih * 1.2) {
+            auto r = rowOf(ih * 0.22);
+            r.HorizontalAlignment(wux::HorizontalAlignment::Left);
+            r.Margin(wux::Thickness{ ih * 0.1, 0, 0, 0 });
+            // The real weather icon when it can be loaded, a sun otherwise.
+            wux::FrameworkElement icon = LpGlyph(L"\uE706", ih * 0.5);
+            if (!it.icon.empty()) {
+                try {
+                    winrt::Windows::Foundation::Uri uri{ winrt::hstring{ it.icon } };
+                    wuxc::Image img;
+                    img.Width(ih * 0.72); img.Height(ih * 0.72);
+                    img.VerticalAlignment(wux::VerticalAlignment::Center);
+                    if (it.icon.find(L".svg") != std::wstring::npos) img.Source(wuxm::Imaging::SvgImageSource(uri));
+                    else img.Source(wuxm::Imaging::BitmapImage(uri));
+                    icon = img;
+                } catch (...) { LOG_IGNORED_EXCEPTION(); }
+            }
+            r.Children().Append(icon);
+            const std::wstring t1 = it.t1.empty() ? L"--\u00B0" : it.t1;
+            if (w > ih * 1.2) {
                 wuxc::StackPanel two;
                 two.VerticalAlignment(wux::VerticalAlignment::Center);
-                auto a = label(it.t1, ih * 0.3);
+                auto a = label(t1, ih * 0.32);
                 a.FontWeight(winrt::Windows::UI::Text::FontWeights::SemiBold());
                 a.HorizontalAlignment(wux::HorizontalAlignment::Left);
                 two.Children().Append(a);
                 if (!it.t2.empty()) {
-                    auto b2 = label(it.t2, ih * 0.27);
-                    b2.Opacity(0.7);
+                    auto b2 = label(it.t2, ih * 0.29);
+                    b2.Opacity(0.75);
                     b2.HorizontalAlignment(wux::HorizontalAlignment::Left);
                     two.Children().Append(b2);
                 }
