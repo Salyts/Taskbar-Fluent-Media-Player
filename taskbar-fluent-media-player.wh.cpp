@@ -1358,6 +1358,7 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
     - "mica_alt": "Mica Alt"
     - "acrylic": "Acrylic"
     - "acrylic_thin": "Acrylic Thin"
+    - "album": "Album cover (blurred)"
   - windowTransparency: 0
     $name: Acrylic transparency (%)
     $description: 0 is Windows' own look. Only used with Acrylic.
@@ -1723,7 +1724,7 @@ static winrt::Windows::Graphics::Effects::IGraphicsEffect MakeXsEffect(
 
 // The window's materials (see WantedMaterial).
 static constexpr int XS_MATERIAL_NONE = 1, XS_MATERIAL_MICA = 2, XS_MATERIAL_ACRYLIC = 3, XS_MATERIAL_MICA_ALT = 4,
-                     XS_MATERIAL_ACRYLIC_THIN = 5;
+                     XS_MATERIAL_ACRYLIC_THIN = 5, XS_MATERIAL_ALBUM = 6;   // album: the blurred cover, drawn by us
 
 // Tint, tint opacity and luminosity opacity of Windows App SDK's MicaController (Base, BaseAlt)
 // and DesktopAcrylicController (Base, Thin).
@@ -19228,6 +19229,7 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
                          {L"mica_alt", L"Mica Alt"},
                          {L"acrylic", L"Acrylic"},
                          {L"acrylic_thin", L"Acrylic Thin"},
+                         {L"album", L"Album cover (blurred)"},
                      }),
                      L"Background of this window. Mica follows your Windows wallpaper; Acrylic shows what's behind the window. Needs Windows 11 22H2 or newer; older versions stay solid."),
             WithDesc(RowSlider(L"Transparency", L"SettingsWindowSettings.windowTransparency", L"0", 0, 100),
@@ -19987,6 +19989,7 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"Placement", L"Розташування", L"Расположение", L"Platzierung", L"स्थान", L"位置", L"位置", L"Ubicación", L"Emplacement", L"Posição", L"Posizione", L"Umiejscowienie", L"Yerleşim", L"配置", L"배치" },
     { L"Taskbar layout", L"Розташування на панелі завдань", L"Расположение на панели задач", L"Taskleisten-Layout", L"टास्कबार लेआउट", L"任务栏布局", L"工作列配置", L"Diseño de la barra de tareas", L"Disposition de la barre des tâches", L"Layout da barra de tarefas", L"Layout della barra delle applicazioni", L"Układ paska zadań", L"Görev çubuğu düzeni", L"タスク バーのレイアウト", L"작업 표시줄 레이아웃" },
     { L"Drag the player or a part onto a taskbar or into a box. Double-click a part to move it into the player, or out of it into Hidden.", L"Перетягніть програвач або його частину на панель завдань чи в рамку. Двічі клацніть частину, щоб перемістити її в програвач або з нього в Приховано.", L"Перетащите плеер или его часть на панель задач или в рамку. Дважды щёлкните часть, чтобы переместить её в плеер или из него в Скрыто.", L"Zieh den Player oder einen Teil auf eine Taskleiste oder in ein Feld. Doppelklick auf einen Teil holt ihn in den Player oder aus ihm nach Ausgeblendet.", L"प्लेयर या उसके किसी हिस्से को टास्कबार पर या किसी बॉक्स में खींचें। किसी हिस्से पर डबल-क्लिक करके उसे प्लेयर में लाएँ, या प्लेयर से छिपा हुआ में भेजें।", L"把播放器或其中一部分拖到任务栏上或框里。双击某部分可把它放进播放器，或从播放器移到“已隐藏”。", L"把播放器或其中一部分拖到工作列上或框裡。按兩下某部分可把它放進播放器，或從播放器移到「已隱藏」。", L"Arrastra el reproductor o una parte a una barra de tareas o a un recuadro. Haz doble clic en una parte para meterla en el reproductor o sacarla a Oculto.", L"Faites glisser le lecteur ou une partie sur une barre des tâches ou dans un cadre. Double-cliquez sur une partie pour la mettre dans le lecteur, ou l'en sortir vers Masqué.", L"Arraste o player ou uma parte para uma barra de tarefas ou para uma caixa. Clique duas vezes numa parte para colocá-la no player ou tirá-la para Oculto.", L"Trascina il player o una parte su una barra delle applicazioni o in un riquadro. Fai doppio clic su una parte per metterla nel player o toglierla in Nascosto.", L"Przeciągnij odtwarzacz lub jego część na pasek zadań albo do ramki. Kliknij część dwukrotnie, aby przenieść ją do odtwarzacza albo z niego do Ukryte.", L"Oynatıcıyı veya bir parçasını bir görev çubuğuna ya da bir kutuya sürükleyin. Bir parçayı oynatıcıya almak ya da oradan Gizli'ye taşımak için çift tıklayın.", L"プレーヤーやその一部をタスク バーか枠にドラッグします。一部をダブルクリックすると、プレーヤーに入れたり、プレーヤーから非表示に移したりできます。", L"플레이어나 그 일부를 작업 표시줄이나 상자로 끌어 놓으세요. 일부를 두 번 클릭하면 플레이어에 넣거나 플레이어에서 숨김으로 옮깁니다." },
+    { L"Album cover (blurred)", L"Обкладинка альбому (розмита)", L"Обложка альбома (размытая)", L"Albumcover (unscharf)", L"एल्बम कवर (धुंधला)", L"专辑封面（模糊）", L"專輯封面（模糊）", L"Portada del álbum (difuminada)", L"Pochette d'album (floutée)", L"Capa do álbum (desfocada)", L"Copertina dell'album (sfocata)", L"Okładka albumu (rozmyta)", L"Albüm kapağı (bulanık)", L"アルバム カバー (ぼかし)", L"앨범 커버 (흐림)" },
     { L"Overlay", L"Поверх", L"Поверх", L"Overlay", L"ओवरले", L"悬浮", L"懸浮", L"Superpuesto", L"Superposé", L"Sobreposto", L"Sovrapposto", L"Nakładka", L"Üstte", L"オーバーレイ", L"오버레이" },
     { L"Left edge", L"Лівий край", L"Левый край", L"Linker Rand", L"बायाँ किनारा", L"左边缘", L"左邊緣", L"Borde izquierdo", L"Bord gauche", L"Borda esquerda", L"Bordo sinistro", L"Lewa krawędź", L"Sol kenar", L"左端", L"왼쪽 가장자리" },
     { L"Right edge", L"Правий край", L"Правый край", L"Rechter Rand", L"दायाँ किनारा", L"右边缘", L"右邊緣", L"Borde derecho", L"Bord droit", L"Borda direita", L"Bordo destro", L"Prawa krawędź", L"Sağ kenar", L"右端", L"오른쪽 가장자리" },
@@ -23411,7 +23414,10 @@ struct LpStrip {
     std::vector<LpSlot> slots;   // in strip pixels
     std::vector<winrt::weak_ref<wux::FrameworkElement>> markers;   // a dot per spot, a pill per overlay spot
     winrt::weak_ref<wuxc::Canvas> ovCanvas;   // the overlay row above the copy
-    double ovH = 0, pad = 0, trayX = 0;
+    double ovH = 0, pad = 0, trayX = 0, groupX = 0;   // where the tray and the icon group start
+    // The taskbar's own sections: the left end (Widgets), the icon group, the
+    // tray. Each lays itself out, so room made in one doesn't move the others.
+    int Section(double x) const { return x >= trayX - 1 ? 2 : x >= groupX - 6 ? 1 : 0; }
     winrt::weak_ref<winrt::Windows::UI::Xaml::Shapes::Rectangle> dropBox;   // dashed outline where it would land
     struct Mover { winrt::weak_ref<wux::FrameworkElement> el; double x; bool floats = false; double off = 0; };   // off: where it's slid to
     std::vector<Mover> movers;   // what slides aside to make room
@@ -23504,8 +23510,8 @@ static void LpShowMarkers(LpDrag& st, bool on) {
     st.shownKey = key;
     auto source = st.source.get();
 
-    // Room: everything after the spot slides forward by the part's width.
-    // Overlays float and move nothing; neither does a part's own place.
+    // Room: what's after the spot in the same section slides forward by the
+    // part's width. Overlays float and move nothing; neither does a part's own place.
     for (size_t si = 0; si < st.strips.size(); si++) {
         auto& strip = st.strips[si];
         const bool here = on && st.tZone == 0 && (int)si == st.tStrip && !strip.slots[st.tSlot].overlay;
@@ -23516,7 +23522,8 @@ static void LpShowMarkers(LpDrag& st, bool on) {
         for (auto& mv : strip.movers) {
             auto el = mv.el.get();
             if (!el) continue;
-            const double off = (here && !ownPlace && !mv.floats && !(source && el == source) && mv.x >= slotX) ? gap : 0;
+            const double off = (here && !ownPlace && !mv.floats && !(source && el == source) && mv.x >= slotX &&
+                                strip.Section(mv.x) == strip.Section(slotX)) ? gap : 0;
             // Our own record of where it's slid to: an animation doesn't change
             // the local value, so reading that back left things stuck.
             if (std::abs(mv.off - off) < 0.5) continue;
@@ -23977,7 +23984,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         cv.Children().Append(bg);
 
         std::vector<LpStrip::Mover> movers;
-        double trayX = W;
+        double trayX = W, groupX = W;
         for (const LpItem& it : snap.items) {
             if (it.kind == LpApp) continue;
             auto el = MakeLpItem(it, it.w * s, ih, timeText, dateText);
@@ -23988,6 +23995,8 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
             cv.Children().Append(el);
             movers.push_back({ winrt::make_weak(el), ex });
             if (it.kind >= LpChevron) trayX = std::min(trayX, ex);
+            if (it.kind == LpStart || it.kind == LpSearchIcon || it.kind == LpSearchBox || it.kind == LpTaskView || it.kind == LpOtherButton)
+                groupX = std::min(groupX, ex);
         }
 
         LpStrip strip;
@@ -23998,6 +24007,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         strip.ih = ih;
         strip.y0 = y0;
         strip.trayX = trayX;
+        strip.groupX = std::min(groupX, trayX);
         strip.movers = std::move(movers);
         // Above the copy: the spots that float over the taskbar instead of making room.
         wuxc::Canvas ovRow;
@@ -24107,6 +24117,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
             cv.Children().Append(ph);
             const PlayerPosition pos = ParseSettingChoice(pl.position, PLAYER_POSITIONS, PlayerPosition::TrayLeft);
             strip.movers.push_back({ winrt::make_weak(ph.as<wux::FrameworkElement>()), x, IsEdgePosition(pos) });
+            if (!IsTaskbarPosition(pos)) strip.trayX = std::min(strip.trayX, x);
             if (!IsEdgePosition(pos)) beside.push_back({ pl.part, x, live ? w : std::min(w, LpDefaultWidth(pl.part, ih)), PositionKey(pos) });
         }
 
@@ -25212,6 +25223,7 @@ static int WantedMaterial() {
     if (v == L"mica_alt") return 4;
     if (v == L"acrylic") return 3;
     if (v == L"acrylic_thin") return 5;
+    if (v == L"album") return XS_MATERIAL_ALBUM;
     return 2;
 }
 
@@ -25224,6 +25236,32 @@ static bool XsTransparencyEnabled() {
         if (!winrt::Windows::UI::ViewManagement::UISettings().AdvancedEffectsEnabled()) return false;
     } catch (...) { LOG_IGNORED_EXCEPTION(); }
     return true;
+}
+
+static uint64_t s_albumBgHash = 0;   // the cover the window's background was made from
+
+// The cover playing now, blurred and mixed with the window color so text
+// stays readable. Its own decode on this thread: the player's blur cache
+// belongs to the taskbar's. Null with nothing playing.
+static wuxm::Brush MakeAlbumWindowBrush(uint64_t& outHash) {
+    std::vector<BYTE> bytes;
+    { std::lock_guard<std::mutex> lk(g_mediaMtx); bytes = g_media.thumbnailBytes; outHash = g_media.thumbnailHash; }
+    if (bytes.empty()) return nullptr;
+    std::vector<BYTE> px;
+    int w = 0, h = 0;
+    if (!DecodeImageToBGRA(bytes, px, w, h, 96) || w <= 0 || h <= 0) return nullptr;
+    for (int i = 0; i < 3; i++) ApplyBoxBlurBGRA(px, w, h, 6);
+    const double base = s_light ? 243.0 : 32.0, cover = s_light ? 0.45 : 0.5;
+    for (size_t i = 0; i + 3 < px.size(); i += 4) {
+        for (int c = 0; c < 3; c++) px[i + c] = (BYTE)std::lround(px[i + c] * cover + base * (1.0 - cover));
+        px[i + 3] = 255;
+    }
+    auto wb = MakeWriteableBitmapPBGRA(px, w, h);
+    if (!wb) return nullptr;
+    wuxm::ImageBrush brush;
+    brush.ImageSource(wb);
+    brush.Stretch(wuxm::Stretch::UniformToFill);
+    return brush;
 }
 
 // Puts (or removes) the Mica visual under the XAML content, as taskbar-ai-usage does for its flyout:
@@ -25244,6 +25282,16 @@ static void UpdateMicaVisual() {
             ElementCompositionPreview::SetElementChildVisual(s_micaHost, nullptr);
             s_micaHost.Visibility(wux::Visibility::Collapsed);
         };
+        s_micaHost.Background(nullptr);
+        if (s_materialApplied == XS_MATERIAL_ALBUM) {
+            clear();
+            uint64_t hash = 0;
+            auto brush = g_unloading ? nullptr : MakeAlbumWindowBrush(hash);
+            s_albumBgHash = hash;
+            s_micaHost.Background(brush);   // none: the plain window color shows
+            s_micaHost.Visibility(brush ? wux::Visibility::Visible : wux::Visibility::Collapsed);
+            return;
+        }
         if (!s_micaOn || g_unloading || !XsTransparencyEnabled()) { clear(); return; }
         s_micaHost.Visibility(wux::Visibility::Visible);
         auto hostVisual = ElementCompositionPreview::GetElementVisual(s_micaHost);
@@ -25321,6 +25369,8 @@ static void ApplyTitleBar(HWND hwnd) {
         const auto t = ContrastColor(c);
         caption = RGB(c.R, c.G, c.B);
         text = RGB(t.R, t.G, t.B);
+    } else if (mode != L"default" && s_micaOn && s_materialApplied == XS_MATERIAL_ALBUM) {
+        caption = s_light ? RGB(243, 243, 243) : RGB(32, 32, 32);   // the cover can't reach the title bar
     } else if (mode != L"default" && s_micaOn) {
         caption = COLOR_NONE;
     }
@@ -25342,7 +25392,7 @@ static void ApplyMica(HWND hwnd) {
 
     const int wanted = WantedMaterial();
     // Acrylic's brush only sees through with this set, and it also gives the title bar the material.
-    DWORD type = wanted == 5 /*Acrylic Thin*/ ? 3 : (DWORD)wanted;
+    DWORD type = wanted == 5 /*Acrylic Thin*/ ? 3 : wanted == XS_MATERIAL_ALBUM ? 1 : (DWORD)wanted;
     DwmSetWindowAttribute(hwnd, 38 /*DWMWA_SYSTEMBACKDROP_TYPE*/, &type, sizeof(type));
     s_micaOn = wanted != 1;
     s_materialApplied = wanted;
@@ -25429,6 +25479,11 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                             RefreshMonitorPickers();
                         }
                         FollowAccentColor();
+                        if (s_materialApplied == XS_MATERIAL_ALBUM) {
+                            uint64_t hash = 0;
+                            { std::lock_guard<std::mutex> lk(g_mediaMtx); hash = g_media.thumbnailHash; }
+                            if (hash != s_albumBgHash) UpdateMicaVisual();
+                        }
                         ApplyTitleBar(h);
                     } catch (...) { LOG_IGNORED_EXCEPTION(); }
                 }
