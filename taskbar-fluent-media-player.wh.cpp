@@ -20144,6 +20144,7 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"For \"Solid color\".", L"Для «Суцільний колір».", L"Для «Сплошной цвет».", L"Für \"Volltonfarbe\".", L"\"ठोस रंग\" के लिए।", L"用于“纯色”。", L"用於「純色」。", L"Para \"Color sólido\".", L"Pour « Couleur unie ».", L"Para \"Cor sólida\".", L"Per \"Colore pieno\".", L"Dla „Kolor jednolity”.", L"\"Düz renk\" için.", L"「単色」用。", L"'단색'용입니다." },
     { L"For \"Solid color\" and \"Album colors gradient\".", L"Для «Суцільний колір» і «Градієнт із кольорів альбому».", L"Для «Сплошной цвет» и «Градиент из цветов альбома».", L"Für \"Volltonfarbe\" und \"Verlauf aus Albumfarben\".", L"\"ठोस रंग\" और \"एल्बम रंगों का ग्रेडिएंट\" के लिए।", L"用于“纯色”和“专辑颜色渐变”。", L"用於「純色」和「專輯顏色漸層」。", L"Para \"Color sólido\" y \"Degradado con colores del álbum\".", L"Pour « Couleur unie » et « Dégradé des couleurs de l'album ».", L"Para \"Cor sólida\" e \"Gradiente com as cores do álbum\".", L"Per \"Colore pieno\" e \"Sfumatura con i colori dell'album\".", L"Dla „Kolor jednolity” i „Gradient z kolorów albumu”.", L"\"Düz renk\" ve \"Albüm renklerinden geçiş\" için.", L"「単色」と「アルバムの色のグラデーション」用。", L"'단색'과 '앨범 색상 그라데이션'용입니다." },
     { L"Second line shows", L"Другий рядок показує", L"Вторая строка показывает", L"Zweite Zeile zeigt", L"दूसरी पंक्ति में दिखाएँ", L"第二行显示", L"第二行顯示", L"La segunda línea muestra", L"La deuxième ligne affiche", L"A segunda linha mostra", L"La seconda riga mostra", L"Druga linia pokazuje", L"İkinci satırda gösterilen", L"2 行目の表示", L"두 번째 줄 표시" },
+    { L"Name", L"Назва", L"Название", L"Name", L"नाम", L"名称", L"名稱", L"Nombre", L"Nom", L"Nome", L"Nome", L"Nazwa", L"Ad", L"名前", L"이름" },
     { L"Artist", L"Виконавець", L"Исполнитель", L"Interpret", L"कलाकार", L"艺术家", L"演出者", L"Artista", L"Artiste", L"Artista", L"Artista", L"Wykonawca", L"Sanatçı", L"アーティスト", L"아티스트" },
     { L"Album name", L"Назва альбому", L"Название альбома", L"Albumname", L"एल्बम का नाम", L"专辑名称", L"專輯名稱", L"Nombre del álbum", L"Nom de l'album", L"Nome do álbum", L"Nome dell'album", L"Nazwa albumu", L"Albüm adı", L"アルバム名", L"앨범 이름" },
     { L"Album name when there's no album art", L"Назва альбому, коли немає обкладинки", L"Название альбома, когда нет обложки", L"Albumname, wenn kein Cover da ist", L"एल्बम आर्ट न होने पर एल्बम का नाम", L"没有专辑封面时显示专辑名称", L"沒有專輯封面時顯示專輯名稱", L"Nombre del álbum cuando no hay portada", L"Nom de l'album quand il n'y a pas de pochette", L"Nome do álbum quando não há capa", L"Nome dell'album quando manca la copertina", L"Nazwa albumu, gdy nie ma okładki", L"Albüm kapağı yoksa albüm adı", L"アルバム アートがないときはアルバム名", L"앨범 아트가 없을 때 앨범 이름" },
@@ -23317,9 +23318,8 @@ static wuxc::Border MakeLpPlaceholder(int part, double w, double h, bool live) {
     wuxc::ToolTipService::SetToolTip(b, winrt::box_value(winrt::hstring{ Loc(LP_PARTS[part].label) }));
 
     const double ih = std::max(8.0, h - 8);
-    std::wstring title, artist;
-    { std::lock_guard<std::mutex> lk(g_mediaMtx); title = g_media.title; artist = g_media.artist; }
-    if (title.empty()) title = Loc(LP_PARTS[part].label);
+    // Stand-in text, not the song playing: it shows the layout, not the music.
+    const std::wstring title = Loc(L"Name"), artist = Loc(L"Artist");
 
     auto cover = LpCurrentArt();
     auto art = [&]() {
