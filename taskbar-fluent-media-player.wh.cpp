@@ -19965,7 +19965,7 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"Shape", L"Форма", L"Форма", L"Form", L"आकृति", L"形状", L"形狀", L"Forma", L"Forme", L"Forma", L"Forma", L"Kształt", L"Şekil", L"形状", L"모양" },
     { L"Placement", L"Розташування", L"Расположение", L"Platzierung", L"स्थान", L"位置", L"位置", L"Ubicación", L"Emplacement", L"Posição", L"Posizione", L"Umiejscowienie", L"Yerleşim", L"配置", L"배치" },
     { L"Taskbar layout", L"Розташування на панелі завдань", L"Расположение на панели задач", L"Taskleisten-Layout", L"टास्कबार लेआउट", L"任务栏布局", L"工作列配置", L"Diseño de la barra de tareas", L"Disposition de la barre des tâches", L"Layout da barra de tarefas", L"Layout della barra delle applicazioni", L"Układ paska zadań", L"Görev çubuğu düzeni", L"タスク バーのレイアウト", L"작업 표시줄 레이아웃" },
-    { L"Drag the player or a part onto a taskbar to move it there.", L"Перетягніть програвач або його частину на панель завдань, щоб перемістити туди.", L"Перетащите плеер или его часть на панель задач, чтобы переместить туда.", L"Zieh den Player oder einen Teil auf eine Taskleiste, um ihn dorthin zu verschieben.", L"प्लेयर या उसके किसी हिस्से को टास्कबार पर खींचें, वह वहीं चला जाएगा।", L"把播放器或其中一部分拖到任务栏上，即可移到那里。", L"把播放器或其中一部分拖到工作列上，即可移到那裡。", L"Arrastra el reproductor o una de sus partes a una barra de tareas para moverlo allí.", L"Faites glisser le lecteur ou une de ses parties sur une barre des tâches pour l'y déplacer.", L"Arraste o player ou uma parte dele para uma barra de tarefas para movê-lo para lá.", L"Trascina il player o una sua parte su una barra delle applicazioni per spostarlo lì.", L"Przeciągnij odtwarzacz lub jego część na pasek zadań, aby go tam przenieść.", L"Oynatıcıyı veya bir parçasını oraya taşımak için bir görev çubuğuna sürükleyin.", L"プレーヤーやその一部をタスク バーにドラッグすると、そこに移動します。", L"플레이어나 그 일부를 작업 표시줄로 끌어 놓으면 그 위치로 옮겨집니다." },
+    { L"Drag the player or a part onto a taskbar to move it there. To put a part back, drop it on the player or double-click it.", L"Перетягніть програвач або його частину на панель завдань, щоб перемістити туди. Щоб повернути частину, киньте її на програвач або двічі клацніть її.", L"Перетащите плеер или его часть на панель задач, чтобы переместить туда. Чтобы вернуть часть, бросьте её на плеер или дважды щёлкните по ней.", L"Zieh den Player oder einen Teil auf eine Taskleiste, um ihn dorthin zu verschieben. Um einen Teil zurückzuholen, leg ihn auf den Player oder doppelklick ihn.", L"प्लेयर या उसके किसी हिस्से को टास्कबार पर खींचें, वह वहीं चला जाएगा। किसी हिस्से को वापस लाने के लिए उसे प्लेयर पर छोड़ें या उस पर डबल-क्लिक करें।", L"把播放器或其中一部分拖到任务栏上，即可移到那里。要把某部分放回，把它拖到播放器上或双击它。", L"把播放器或其中一部分拖到工作列上，即可移到那裡。要把某部分放回，把它拖到播放器上或按兩下它。", L"Arrastra el reproductor o una de sus partes a una barra de tareas para moverlo allí. Para devolver una parte, suéltala sobre el reproductor o haz doble clic en ella.", L"Faites glisser le lecteur ou une de ses parties sur une barre des tâches pour l'y déplacer. Pour remettre une partie, déposez-la sur le lecteur ou double-cliquez dessus.", L"Arraste o player ou uma parte dele para uma barra de tarefas para movê-lo para lá. Para devolver uma parte, solte-a no player ou clique duas vezes nela.", L"Trascina il player o una sua parte su una barra delle applicazioni per spostarlo lì. Per rimettere una parte, rilasciala sul player o fai doppio clic su di essa.", L"Przeciągnij odtwarzacz lub jego część na pasek zadań, aby go tam przenieść. Aby przywrócić część, upuść ją na odtwarzacz albo kliknij ją dwukrotnie.", L"Oynatıcıyı veya bir parçasını oraya taşımak için bir görev çubuğuna sürükleyin. Bir parçayı geri koymak için oynatıcının üzerine bırakın veya çift tıklayın.", L"プレーヤーやその一部をタスク バーにドラッグすると、そこに移動します。一部を戻すには、プレーヤーの上にドロップするか、ダブルクリックします。", L"플레이어나 그 일부를 작업 표시줄로 끌어 놓으면 그 위치로 옮겨집니다. 일부를 다시 넣으려면 플레이어 위에 놓거나 두 번 클릭하세요." },
     { L"Hidden", L"Приховано", L"Скрыто", L"Ausgeblendet", L"छिपा हुआ", L"已隐藏", L"已隱藏", L"Oculto", L"Masqué", L"Oculto", L"Nascosto", L"Ukryte", L"Gizli", L"非表示", L"숨김" },
     { L"In the player", L"У програвачі", L"В плеере", L"Im Player", L"प्लेयर में", L"在播放器中", L"在播放器中", L"En el reproductor", L"Dans le lecteur", L"No player", L"Nel player", L"W odtwarzaczu", L"Oynatıcıda", L"プレーヤー内", L"플레이어 안" },
     { L"Micro, next to the artist text", L"Мікро, біля імені виконавця", L"Микро, рядом с именем исполнителя", L"Mikro, neben dem Interpreten", L"माइक्रो, कलाकार के नाम के पास", L"微型，位于艺术家文字旁", L"微型，位於藝人文字旁", L"Micro, junto al artista", L"Micro, à côté de l'artiste", L"Micro, ao lado do artista", L"Micro, accanto all'artista", L"Mikro, obok wykonawcy", L"Mikro, sanatçı adının yanında", L"マイクロ、アーティスト名の横", L"마이크로, 아티스트 이름 옆" },
@@ -23230,6 +23230,8 @@ struct LpDrag {
     wuxc::Border ghost{ nullptr };
     winrt::weak_ref<wuxc::Border> source;
     int tStrip = -1, tSlot = -1, tZone = -1;   // zone 0 a taskbar spot, 1 in the player, 2 hidden
+    int lastClickPart = -1;
+    ULONGLONG lastClickAt = 0;
 };
 
 static void LpCommit(int part, int zone, int monitor, const std::wstring& position) {
@@ -23269,6 +23271,12 @@ static void LpShowMarkers(LpDrag& st, bool on) {
     for (auto* z : { &st.attachZone, &st.hiddenZone })
         if (auto b = z->get()) b.BorderBrush(on && st.tZone == (z == &st.attachZone ? 1 : 2) ? AccentBrush()
                                              : (s_light ? Brush(60, 0, 0, 0) : Brush(60, 255, 255, 255)));
+    if (auto b = st.attachZone.get()) {
+        const auto ac = AccentTargetColor();
+        const bool offer = on && st.part != 0;
+        b.Background(offer ? Brush(st.tZone == 1 ? 0x40 : 0x18, ac.R, ac.G, ac.B)
+                           : wuxm::SolidColorBrush(winrt::Windows::UI::Colors::Transparent()));
+    }
     for (auto& p : st.players)
         if (auto b = p.get()) b.BorderThickness(on && st.tZone == 1 && st.part != 0 ? wux::Thickness{ 2, 2, 2, 2 } : wux::Thickness{ 1, 1, 1, 1 });
 }
@@ -23351,7 +23359,18 @@ static void WireLpDrag(wuxc::Border const& el, int part, std::shared_ptr<LpDrag>
         const bool wasDragging = st->dragging;
         st->dragging = false;
         sender.as<wux::UIElement>().ReleasePointerCaptures();
-        if (!wasDragging) return;
+        if (!wasDragging) {
+            // Two clicks on a detached part: back into the player.
+            const ULONGLONG now = GetTickCount64();
+            const bool twice = st->lastClickPart == st->part && now - st->lastClickAt <= GetDoubleClickTime();
+            st->lastClickPart = st->part;
+            st->lastClickAt = now;
+            if (twice && st->part != 0 && LpOn(LP_PARTS[st->part].detachKey)) {
+                st->lastClickPart = -1;
+                LpCommit(st->part, 1, 0, L"");
+            }
+            return;
+        }
         if (auto ov = st->overlay.get(); ov && st->ghost) {
             uint32_t i = 0;
             if (ov.Children().IndexOf(st->ghost, i)) ov.Children().RemoveAt(i);
@@ -23491,7 +23510,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
     using winrt::hstring;
     namespace wsh = winrt::Windows::UI::Xaml::Shapes;
     auto st = std::make_shared<LpDrag>();
-    st->hint = Loc(L"Drag the player or a part onto a taskbar to move it there.");
+    st->hint = Loc(L"Drag the player or a part onto a taskbar to move it there. To put a part back, drop it on the player or double-click it.");
 
     wuxc::Grid host;
     wuxc::StackPanel stack;
@@ -23575,9 +23594,9 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         strip.y0 = y0;
         for (const LpSlot& sl : snap.slots) {
             LpSlot scaled{ sl.value, sl.x * s, sl.overlay };
-            bool near = false;
-            for (auto& o : strip.slots) near = near || (o.overlay == scaled.overlay && std::abs(o.x - scaled.x) < 7);
-            if (near) continue;
+            bool merged = false;
+            for (auto& o : strip.slots) merged = merged || (o.overlay == scaled.overlay && std::abs(o.x - scaled.x) < 7);
+            if (merged) continue;
             strip.slots.push_back(scaled);
             wsh::Rectangle mk;
             mk.Width(4); mk.Height(sl.overlay ? 8 : 4);
