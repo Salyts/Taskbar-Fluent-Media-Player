@@ -22857,7 +22857,7 @@ static bool LpPartOn(const LpPart& p) {
 }
 static bool LpInPlayer(int part) {
     const LpPart& p = LP_PARTS[part];
-    return LpPartOn(p) && !LpOn(p.detachKey);
+    return LpPartOn(p) && !LpOn(p.detachKey);   // off parts go to Hidden
 }
 static std::wstring LpPosition(const LpPart& p) {
     std::wstring v = GetSettingOverride(p.positionKey, RawFetchStr(p.positionKey, p.positionDef));
@@ -22905,7 +22905,7 @@ enum LpKind {
     LpStart = 1, LpSearchIcon, LpSearchBox, LpTaskView, LpWidgets, LpApp, LpOtherButton, LpWidgetsHidden,
     LpChevron = 10, LpTrayIcons, LpLanguage, LpOmni, LpClock, LpShowDesktop, LpOtherTray,
 };
-struct LpItem { int kind; double x, w; };
+struct LpItem { int kind; double x, w; std::wstring t1, t2; };   // t1/t2: the Widgets button's text
 struct LpSlot { const wchar_t* value; double x; bool overlay; };
 struct LpPartRect { int part; double x, w; };
 // One taskbar in its own pixels: read from Explorer, or a sketch when it can't be.
@@ -22918,7 +22918,20 @@ struct LpSnap {
     std::vector<LpPartRect> parts;
 };
 
-// Runs on the taskbar's thread; only plain numbers leave it.
+// The first two lines of text under `n` (the Widgets button's weather).
+static void CollectLpTexts(winrt::Windows::UI::Xaml::DependencyObject const& n, std::vector<std::wstring>& out, int depth) {
+    if (!n || depth > 16 || out.size() >= 2) return;
+    if (auto t = n.try_as<wuxc::TextBlock>()) {
+        std::wstring s = t.Text().c_str();
+        bool plain = !s.empty() && t.Visibility() == Visibility::Visible;
+        for (wchar_t ch : s) plain = plain && !(ch >= 0xE000 && ch <= 0xF8FF);   // icon glyphs
+        if (plain) out.push_back(s);
+    }
+    const int c = VisualTreeHelper::GetChildrenCount(n);
+    for (int i = 0; i < c && out.size() < 2; i++) CollectLpTexts(VisualTreeHelper::GetChild(n, i), out, depth + 1);
+}
+
+// Runs on the taskbar's thread; only plain values leave it.
 static void TakeLpSnapOnThread(void* param) {
     auto* snap = static_cast<LpSnap*>(param);
     try {
@@ -22963,7 +22976,7 @@ static void TakeLpSnapOnThread(void* param) {
                     if (name == L"AugmentedEntryPointButton" && g_settings.hideNativeWidgetsButton) {
                         try {
                             const double hx = c.TransformToVisual(root).TransformPoint({ 0, 0 }).X;
-                            if (hx >= 0 && hx < W) snap->items.push_back({ LpWidgetsHidden, hx, H * 2 });
+                            if (hx >= 0 && hx < W) snap->items.push_back({ LpWidgetsHidden, hx, H });
                         } catch (...) { LOG_IGNORED_EXCEPTION(); }
                     }
                     continue;
@@ -22979,7 +22992,14 @@ static void TakeLpSnapOnThread(void* param) {
                 else if (id == L"TaskViewButton") kind = LpTaskView;
                 else if (cls == L"Taskbar.AugmentedEntryPointButton" || name == L"AugmentedEntryPointButton") kind = LpWidgets;
                 else if (cls == L"Taskbar.TaskListButton") kind = LpApp;
-                snap->items.push_back({ kind, x, w });
+                LpItem item{ kind, x, w };
+                if (kind == LpWidgets) {
+                    std::vector<std::wstring> texts;
+                    CollectLpTexts(c, texts, 0);
+                    if (texts.size() > 0) item.t1 = texts[0];
+                    if (texts.size() > 1) item.t2 = texts[1];
+                }
+                snap->items.push_back(item);
             }
             static const PlayerPosition anchored[] = {
                 PlayerPosition::TaskbarLeftStart, PlayerPosition::TaskbarRightStart,
@@ -23057,6 +23077,47 @@ static void TakeLpSnapOnThread(void* param) {
     }
 }
 
+// Apps aren't drawn, so the buttons (and ours among them) close up: centered
+// like Windows does when nothing is pinned, or from where the group starts.
+static void CompactLpSnap(LpSnap& s, bool centered) {
+    auto inGroup = [](int k) {
+        return k == LpStart || k == LpSearchIcon || k == LpSearchBox || k == LpTaskView || k == LpApp || k == LpOtherButton;
+    };
+    double gl = 1e9, gr = -1e9;
+    for (auto& it : s.items) if (inGroup(it.kind)) { gl = std::min(gl, it.x); gr = std::max(gr, it.x + it.w); }
+    if (gl > gr) return;
+    struct Member { double x, w; int item, part; bool drop; double nx; };
+    std::vector<Member> ms;
+    for (size_t i = 0; i < s.items.size(); i++)
+        if (inGroup(s.items[i].kind)) ms.push_back({ s.items[i].x, s.items[i].w, (int)i, -1, s.items[i].kind == LpApp, 0 });
+    for (size_t i = 0; i < s.parts.size(); i++) {
+        const auto& p = s.parts[i];
+        if (p.x + p.w > gl - 4 && p.x < gr + 4) ms.push_back({ p.x, p.w, -1, (int)i, false, 0 });
+    }
+    std::sort(ms.begin(), ms.end(), [](const Member& a, const Member& b) { return a.x < b.x; });
+    double cur = 0;
+    for (auto& m : ms) if (!m.drop) { m.nx = cur; cur += m.w; }
+    const double origin = centered ? s.width / 2 - cur / 2 : gl;
+    for (auto& m : ms) m.nx += origin;
+    // A spot moves with the member it sits against.
+    for (auto& sl : s.slots) {
+        if (sl.overlay) continue;
+        const Member* best = nullptr;
+        double bd = 1e9;
+        for (auto& m : ms) {
+            if (m.drop) continue;
+            const double d = sl.x < m.x ? m.x - sl.x : (sl.x > m.x + m.w ? sl.x - (m.x + m.w) : 0);
+            if (d < bd) { bd = d; best = &m; }
+        }
+        if (best && bd <= 8) sl.x += best->nx - best->x;
+    }
+    for (auto& m : ms) {
+        if (m.item >= 0) s.items[m.item].x = m.nx;
+        if (m.part >= 0) s.parts[m.part].x = m.nx;
+    }
+    s.items.erase(std::remove_if(s.items.begin(), s.items.end(), [](const LpItem& it) { return it.kind == LpApp; }), s.items.end());
+}
+
 static bool TaskbarIconsCentered() {
     DWORD v = 1, size = sizeof(v);
     if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
@@ -23114,14 +23175,43 @@ static wuxc::TextBlock LpGlyph(const wchar_t* g, double size) {
     return t;
 }
 
+// The cover now playing, for the previews' album art. Owned by the images
+// that show it; this only finds it again while a preview is up.
+[[clang::no_destroy]] static winrt::weak_ref<wuxm::Imaging::BitmapImage> s_lpArt;
+static uint64_t s_lpArtHash = 0;
+
+static wuxm::Imaging::BitmapImage LpCurrentArt() {
+    std::vector<BYTE> bytes;
+    uint64_t hash = 0;
+    { std::lock_guard<std::mutex> lk(g_mediaMtx); bytes = g_media.thumbnailBytes; hash = g_media.thumbnailHash; }
+    if (bytes.empty()) return nullptr;
+    if (hash == s_lpArtHash) if (auto b = s_lpArt.get()) return b;
+    try {
+        winrt::com_ptr<IStream> cs;
+        cs.attach(SHCreateMemStream(bytes.data(), (UINT)bytes.size()));
+        if (!cs) return nullptr;
+        winrt::Windows::Storage::Streams::IRandomAccessStream rs{ nullptr };
+        CreateRandomAccessStreamOverStream(cs.get(), BSOS_DEFAULT,
+            winrt::guid_of<winrt::Windows::Storage::Streams::IRandomAccessStream>(), winrt::put_abi(rs));
+        if (!rs) return nullptr;
+        wuxm::Imaging::BitmapImage bmp;
+        bmp.DecodePixelHeight(64);
+        bmp.SetSourceAsync(rs);
+        s_lpArt = winrt::make_weak(bmp);
+        s_lpArtHash = hash;
+        return bmp;
+    } catch (...) { LOG_IGNORED_EXCEPTION(); return nullptr; }
+}
+
 // The player or a part, drawn as a small version of itself.
 static wuxc::Border MakeLpPlaceholder(int part, double w, double h, bool live) {
     const auto ac = AccentTargetColor();
+    const auto fg = s_light ? Brush(255, 20, 20, 20) : Brush(255, 255, 255, 255);
     wuxc::Border b;
     b.Width(w); b.Height(h);
-    b.CornerRadius(wux::CornerRadius{ 4, 4, 4, 4 });
-    b.Background(Brush(live ? 0x48 : 0x26, ac.R, ac.G, ac.B));
-    b.BorderBrush(Brush(live ? 0xFF : 0x99, ac.R, ac.G, ac.B));
+    b.CornerRadius(wux::CornerRadius{ 5, 5, 5, 5 });
+    b.Background(s_light ? Brush(live ? 0x18 : 0x0C, 0, 0, 0) : Brush(live ? 0x1C : 0x0E, 255, 255, 255));
+    b.BorderBrush(Brush(live ? 0xC0 : 0x70, ac.R, ac.G, ac.B));
     b.BorderThickness(wux::Thickness{ 1, 1, 1, 1 });
     wuxm::RectangleGeometry clip;
     clip.Rect({ 0, 0, (float)w, (float)h });
@@ -23133,12 +23223,20 @@ static wuxc::Border MakeLpPlaceholder(int part, double w, double h, bool live) {
     { std::lock_guard<std::mutex> lk(g_mediaMtx); title = g_media.title; artist = g_media.artist; }
     if (title.empty()) title = Loc(LP_PARTS[part].label);
 
+    auto cover = LpCurrentArt();
     auto art = [&]() {
         wuxc::Border a;
         a.Width(ih); a.Height(ih);
         a.CornerRadius(wux::CornerRadius{ 3, 3, 3, 3 });
-        a.Background(Brush(0x70, ac.R, ac.G, ac.B));
-        a.Child(LpGlyph(L"\uE8D6", ih * 0.5));
+        a.Background(s_light ? Brush(0x30, 0, 0, 0) : Brush(0x30, 255, 255, 255));
+        if (cover) {
+            wuxc::Image img;
+            img.Source(cover);
+            img.Stretch(wuxm::Stretch::UniformToFill);
+            a.Child(img);
+        } else {
+            a.Child(LpGlyph(L"\uE8D6", ih * 0.5));
+        }
         return a;
     };
     auto text = [&](double maxW) {
@@ -23170,7 +23268,7 @@ static wuxc::Border MakeLpPlaceholder(int part, double w, double h, bool live) {
             wsh::Rectangle r;
             r.Width(std::max(2.0, ih * 0.1)); r.Height(std::max(2.0, ih * 0.8 * f));
             r.RadiusX(1); r.RadiusY(1);
-            r.Fill(AccentBrush());
+            r.Fill(fg);
             r.VerticalAlignment(wux::VerticalAlignment::Center);
             s.Children().Append(r);
         }
@@ -23247,11 +23345,16 @@ struct LpDrag {
 static void LpCommit(int part, int zone, int monitor, const std::wstring& position) {
     const LpPart& p = LP_PARTS[part];
     Wh_Log(L"LayoutPreview: drop %s zone=%d monitor=%d position=%s", p.label, zone, monitor, position.c_str());
+    if (p.enableKey && zone != 2 && !LpPartOn(p)) SetOverrideLive(p.enableKey, L"1");
     if (zone == 1) {
         if (p.detachKey) SetOverrideLive(p.detachKey, L"0");
     } else if (zone == 2) {
-        if (p.detachKey) SetOverrideLive(p.detachKey, L"1");
-        SetOverrideLive(p.monitorKey, std::to_wstring(MONITOR_OFF));
+        if (p.enableKey) {
+            SetOverrideLive(p.enableKey, L"0");
+            if (p.enableKey2) SetOverrideLive(p.enableKey2, L"0");
+        } else {
+            SetOverrideLive(p.monitorKey, std::to_wstring(MONITOR_OFF));   // the player: off on every monitor
+        }
     } else {
         if (p.detachKey) SetOverrideLive(p.detachKey, L"1");
         SetOverrideLive(p.positionKey, position);
@@ -23273,7 +23376,7 @@ static void LpShowMarkers(LpDrag& st, bool on) {
                 const auto& slot = strip.slots[k];
                 const bool target = on && st.tZone == 0 && (int)si == st.tStrip && (int)k == st.tSlot;
                 const double h = slot.overlay ? 8 : (target ? strip.ih : 4);
-                m.Opacity(!on ? 0.0 : target ? 1.0 : 0.55);
+                m.Opacity(target ? 1.0 : on ? 0.6 : 0.3);
                 m.Width(target ? 4 : 4);
                 m.Height(h);
                 wuxc::Canvas::SetLeft(m, slot.x - 2);
@@ -23473,9 +23576,23 @@ static wux::FrameworkElement MakeLpItem(const LpItem& it, double w, double ih,
                 box.Opacity(0.4);
                 wuxc::ToolTipService::SetToolTip(box, winrt::box_value(hstring{ Loc(L"Hidden") }));
             }
-            auto r = rowOf(ih * 0.12);
-            r.Children().Append(LpGlyph(L"\uE706", ih * 0.42));
-            if (w > ih * 1.3) r.Children().Append(label(L"18\u00B0", ih * 0.32));
+            auto r = rowOf(ih * 0.15);
+            r.Children().Append(LpGlyph(L"\uE706", ih * 0.46));   // stands in for the weather icon
+            if (!it.t1.empty() && w > ih * 1.2) {
+                wuxc::StackPanel two;
+                two.VerticalAlignment(wux::VerticalAlignment::Center);
+                auto a = label(it.t1, ih * 0.3);
+                a.FontWeight(winrt::Windows::UI::Text::FontWeights::SemiBold());
+                a.HorizontalAlignment(wux::HorizontalAlignment::Left);
+                two.Children().Append(a);
+                if (!it.t2.empty()) {
+                    auto b2 = label(it.t2, ih * 0.27);
+                    b2.Opacity(0.7);
+                    b2.HorizontalAlignment(wux::HorizontalAlignment::Left);
+                    two.Children().Append(b2);
+                }
+                r.Children().Append(two);
+            }
             box.Child(r);
             break;
         }
@@ -23560,7 +23677,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
     };
     for (int i = 0; i < (int)ARRAYSIZE(LP_PARTS); i++) {
         const LpPart& p = LP_PARTS[i];
-        if (!LpPartOn(p)) continue;
+        if (!LpPartOn(p)) { placed.push_back({ i, 0, L"", 2 }); continue; }
         if (p.detachKey && !LpOn(p.detachKey)) { placed.push_back({ i, 0, L"", 1 }); continue; }
         const int mon = LpMonitor(p);
         if (mon == MONITOR_OFF || !onStrip(mon)) { placed.push_back({ i, mon, L"", 2 }); continue; }
@@ -23572,6 +23689,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         snap.hwnd = FindTaskbarWndForMonitorWithHopBack(m.value);
         if (snap.hwnd && !g_unloading) RunFromWindowThread(snap.hwnd, TakeLpSnapOnThread, &snap);
         if (!snap.ok || snap.width <= 0) BuildLpSketch(snap);
+        CompactLpSnap(snap, TaskbarIconsCentered());
 
         const double pad = 12;   // nothing touches the ends
         const double s = (W - 2 * pad) / snap.width;
@@ -23620,7 +23738,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
             mk.Width(4); mk.Height(sl.overlay ? 8 : 4);
             mk.RadiusX(2); mk.RadiusY(2);
             mk.Fill(AccentBrush());
-            mk.Opacity(0.0);
+            mk.Opacity(0.3);   // where things can go, always shown
             mk.IsHitTestVisible(false);
             wuxc::Canvas::SetLeft(mk, scaled.x - 2);
             wuxc::Canvas::SetTop(mk, sl.overlay ? 1 : H - 6);
