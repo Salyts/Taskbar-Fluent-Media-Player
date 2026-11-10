@@ -23430,6 +23430,8 @@ struct LpDrag {
     double dropW = 0;        // the dragged part's width on a taskbar copy
     bool landing = false;    // gliding into place after a drop
     long long shownKey = -2; // the target the room and outline were last made for
+    int srcStrip = -1;       // the dragged part's own place on a copy, if it's on one
+    double srcX = 0, srcW = 0;
 };
 
 static void LpCommit(int part, int zone, int monitor, const std::wstring& position) {
@@ -23505,7 +23507,9 @@ static void LpShowMarkers(LpDrag& st, bool on) {
         const bool here = on && st.tZone == 0 && (int)si == st.tStrip && !strip.slots[st.tSlot].overlay;
         double gap = 0, slotX = 0;
         bool inTray = false;
-        if (here) {
+        const bool ownPlace = here && (int)si == st.srcStrip &&
+            strip.slots[st.tSlot].x >= st.srcX - 8 && strip.slots[st.tSlot].x <= st.srcX + st.srcW + 8;
+        if (here && !ownPlace) {
             const auto& slot = strip.slots[st.tSlot];
             gap = std::max(8.0, st.dropW > 0 ? st.dropW : strip.ih * 2) + 4;
             slotX = slot.x;
@@ -23515,12 +23519,12 @@ static void LpShowMarkers(LpDrag& st, bool on) {
             auto el = mv.el.get();
             if (!el) continue;
             double off = 0;
-            if (here && !(source && el == source)) {
+            if (here && !ownPlace && !(source && el == source)) {
                 if (inTray) { if (mv.x >= strip.trayX - 1 && mv.x < slotX) off = -gap; }
                 else if (mv.x >= slotX && mv.x < strip.trayX - 1) off = gap;
             }
             if (auto tr = el.RenderTransform().try_as<wuxm::TranslateTransform>())
-                if (std::abs(tr.X() - off) > 0.5) AnimateTo(tr, L"X", off, 150);
+                if (std::abs(tr.X() - off) > 0.5) AnimateTo(tr, L"X", off, 130);
         }
     }
 
@@ -23536,6 +23540,8 @@ static void LpShowMarkers(LpDrag& st, bool on) {
         double x;
         if (slot.overlay) {
             x = v == L"taskbar_left_edge" ? strip.pad : v == L"taskbar_center_edge" ? strip.width / 2 - w / 2 : strip.width - strip.pad - w;
+        } else if ((int)si == st.srcStrip && slot.x >= st.srcX - 8 && slot.x <= st.srcX + st.srcW + 8) {
+            x = st.srcX;   // its own place: stays where it is
         } else if (v.rfind(L"tray_", 0) == 0) {
             x = slot.x - 2 - w;
         } else {
@@ -23580,6 +23586,10 @@ static void WireLpDrag(wuxc::Border const& el, int part, std::shared_ptr<LpDrag>
             st->ghostTr = wuxm::TranslateTransform();
             st->ghost.RenderTransform(st->ghostTr);
             st->dropW = src.ActualWidth();
+            st->srcStrip = -1;
+            for (size_t si = 0; si < st->strips.size(); si++)
+                for (const auto& mv : st->strips[si].movers)
+                    if (auto el = mv.el.get(); el && el == src) { st->srcStrip = (int)si; st->srcX = mv.x; st->srcW = src.ActualWidth(); }
             st->ghost.Opacity(0.9);
             st->ghost.IsHitTestVisible(false);
             ov.Children().Append(st->ghost);
@@ -23588,7 +23598,7 @@ static void WireLpDrag(wuxc::Border const& el, int part, std::shared_ptr<LpDrag>
         st->ghostTr.X(pt.X - st->grab.X);
         st->ghostTr.Y(pt.Y - st->grab.Y);
 
-        const int prevZone = st->tZone, prevSlot = st->tSlot;
+        const int prevZone = st->tZone, prevSlot = st->tSlot, prevStrip = st->tStrip;
         st->tZone = -1; st->tStrip = -1; st->tSlot = -1;
         auto inside = [&e](winrt::weak_ref<wuxc::Border> const& w) {
             auto b = w.get();
@@ -23615,7 +23625,9 @@ static void WireLpDrag(wuxc::Border const& el, int part, std::shared_ptr<LpDrag>
             for (size_t k = 0; k < strip.slots.size(); k++) {
                 const auto& s = strip.slots[k];
                 if (s.overlay != overlayRow) continue;
-                const double d = std::abs((overlayRow ? op.X : lp.X) - s.x);
+                double d = std::abs((overlayRow ? op.X : lp.X) - s.x);
+                // The spot it's on now keeps it until another is clearly closer (no flicker).
+                if (prevZone == 0 && prevStrip == (int)si && prevSlot == (int)k) d -= 8;
                 if (d < best) { best = d; st->tZone = 0; st->tStrip = (int)si; st->tSlot = (int)k; }
             }
         }
