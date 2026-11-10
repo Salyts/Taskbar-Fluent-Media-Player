@@ -83,6 +83,8 @@ so that's out.
 
 ## Next
 
+**Lyrics (beta idea, on hold).** A lyrics part for the taskbar (detachable like the others, collapses when a song has none) and a lyrics view in the mini player, synced from lrclib.net. On hold because Windhawk doesn't allow mods to contact servers. If it happens, it would be an off-by-default beta outside the official build, or local .lrc files only.
+
 **The player on several monitors at once (#15, #90).** The main feature for the
 version after 1.7.
 1. Turn the player into something that can exist more than once: its elements,
