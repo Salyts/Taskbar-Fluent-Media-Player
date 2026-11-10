@@ -1950,6 +1950,7 @@ namespace Runtime {
     static void KeepTrayPlacement(HWND hWnd);
     static void DispatchMediaUpdate();
     static void ExecuteMediaAction(const std::wstring& action, FrameworkElement const& sourceElement = nullptr);
+    static void HookTaskbarViewIfWanted();
 } // namespace Runtime
 
 // ###########################################################################
@@ -3245,6 +3246,15 @@ COLD_UNOPTIMIZED static void LoadSettings() {
         }
     }
 
+    if (g_settings.vizOrder == 4 && g_settings.albumArtOrder == 1 && g_settings.infoOrder == 2 &&
+        g_settings.buttonsOrder == 3 && !FindOverride(L"MainSettings.VisualizerFunctionsSettings.vizOrder") &&
+        Str(L"MainSettings.VisualizerFunctionsSettings.vizPosition", L"right") == L"left") {
+        g_settings.vizOrder = 1;
+        g_settings.albumArtOrder = 2;
+        g_settings.infoOrder = 3;
+        g_settings.buttonsOrder = 4;
+    }
+
     g_settings.monitor              = GetEffectiveMonitorSetting();
     PublishIgnoredApps(g_settings.ignoredProcesses, g_settings.allowedProcesses);
     g_settings.position             = ParseSettingChoice(Str(L"MainSettings.PlayerSetting.position", L"tray_left"),
@@ -3769,6 +3779,11 @@ static int              g_playerColumn    = -1;
 // Set by BuildPlayerGrid; lets the mini-player keep the player button visually
 // "active" while the popup is open (Salyts 1.6.0). No-op until wired.
 static std::atomic<bool> g_needsUiUpdate{false};
+
+// With the main player off (monitor -1) the detached parts still need updates.
+static bool HasAnyPlayerUi() {
+    return g_playerGrid || g_detachedAlbumArt.grid || g_detachedInfo.grid || g_detachedButtons.grid || g_detachedViz.grid;
+}
 
 } // namespace Core
 
@@ -4792,6 +4807,7 @@ static void FetchMediaPropertiesAsync() {
                     }
                 }
 
+                const bool iconDone = !appIconBytes.empty() || !g_settings.showAppIcon;
                 {
                     std::lock_guard<std::mutex> lk(g_mediaMtx);
                     try {
@@ -4813,7 +4829,7 @@ static void FetchMediaPropertiesAsync() {
                     }
                 }
 
-                if (forceIconRefresh && !appIconBytes.empty()) {
+                if (forceIconRefresh && iconDone) {
                     std::lock_guard<std::mutex> lk(g_sessionMtx);
                     g_userSwitchedSession = false;
                     Wh_Log(L"FetchMediaPropertiesAsync: Icon refreshed after session switch");
@@ -5072,7 +5088,12 @@ static GlobalSystemMediaTransportControlsSession PickBestSession() {
     }
 }
 
+// Two session events at once would both see the old session and register the
+// handlers twice, so the whole check-detach-attach runs as one.
+static std::recursive_mutex g_attachMtx;
+
 static void AttachToSession(GlobalSystemMediaTransportControlsSession session) {
+    std::lock_guard<std::recursive_mutex> attachLock(g_attachMtx);
     if (!session) {
         Wh_Log(L"AttachToSession: No session provided, detaching current session");
         DetachCurrentSession();
@@ -5781,9 +5802,10 @@ static void SetupHoverCommonStatesForMode(Button const& btn, Brush const& normal
 }
 
 // ---- [Graphics] Image decoding, blur, album palette extraction ----
+// maxDim > 0 scales the longest side down to it while decoding.
 static bool DecodeImageToBGRA(const std::vector<BYTE>& imgBytes,
                                std::vector<BYTE>& outPixels,
-                               int& outW, int& outH)
+                               int& outW, int& outH, int maxDim = 0)
 {
     if (imgBytes.empty()) return false;
     // com_ptr releases every interface on every exit path, including the
@@ -5803,9 +5825,19 @@ static bool DecodeImageToBGRA(const std::vector<BYTE>& imgBytes,
         return false;
     winrt::com_ptr<IWICBitmapFrameDecode> frame;
     if (FAILED(decoder->GetFrame(0, frame.put()))) return false;
+    winrt::com_ptr<IWICBitmapSource> source = frame;
+    UINT fw = 0, fh = 0;
+    if (maxDim > 0 && SUCCEEDED(frame->GetSize(&fw, &fh)) && std::max(fw, fh) > (UINT)maxDim) {
+        double k = (double)maxDim / std::max(fw, fh);
+        winrt::com_ptr<IWICBitmapScaler> scaler;
+        if (SUCCEEDED(factory->CreateBitmapScaler(scaler.put())) &&
+            SUCCEEDED(scaler->Initialize(frame.get(), std::max(1u, (UINT)(fw * k)), std::max(1u, (UINT)(fh * k)),
+                                         WICBitmapInterpolationModeFant)))
+            source = scaler;
+    }
     winrt::com_ptr<IWICFormatConverter> converter;
     if (FAILED(factory->CreateFormatConverter(converter.put()))) return false;
-    if (FAILED(converter->Initialize(frame.get(), GUID_WICPixelFormat32bppBGRA,
+    if (FAILED(converter->Initialize(source.get(), GUID_WICPixelFormat32bppBGRA,
                                      WICBitmapDitherTypeNone, nullptr, 0.0,
                                      WICBitmapPaletteTypeMedianCut)))
         return false;
@@ -6054,7 +6086,7 @@ static bool UpdateAlbumBlurBgCache(const std::vector<BYTE>& thumbBytes,
         return true;
 
     std::vector<BYTE> srcPixels; int srcW = 0, srcH = 0;
-    if (!DecodeImageToBGRA(thumbBytes, srcPixels, srcW, srcH)) return false;
+    if (!DecodeImageToBGRA(thumbBytes, srcPixels, srcW, srcH, 256)) return false;
 
     // Work at a bounded size that PRESERVES the cover's aspect ratio (cap the
     // longest side). No 1/8 pre-shrink smear, and no squish to the panel shape.
@@ -6098,7 +6130,7 @@ static AlbumPalette ExtractAlbumPalette(const std::vector<BYTE>& thumbBytes) {
     try {
         std::vector<BYTE> pixels;
         int w = 0, h = 0;
-        if (!DecodeImageToBGRA(thumbBytes, pixels, w, h) || w <= 0 || h <= 0 ||
+        if (!DecodeImageToBGRA(thumbBytes, pixels, w, h, 128) || w <= 0 || h <= 0 ||
             pixels.size() < (size_t)w * h * 4)
             return {fallbackPrimary, fallbackSecondary};
 
@@ -6876,18 +6908,18 @@ static void ChangeSystemVolume(bool increase) {
     hr = defaultDevice->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_ALL, NULL, endpointVolume.put_void());
     if (FAILED(hr)) return;
 
-    float currentVolume = 0.0f;
-    if (SUCCEEDED(endpointVolume->GetMasterVolumeLevelScalar(&currentVolume))) {
-        float newVolume = currentVolume + (increase ? 0.005f : -0.005f);
-        newVolume = std::clamp(newVolume, 0.0f, 1.0f);
-        endpointVolume->SetMasterVolumeLevelScalar(newVolume, NULL);
-    }
-
-    HWND hShellTrayWnd = FindWindow(L"Shell_TrayWnd", nullptr);
-    if (hShellTrayWnd) {
+    // The shell's step (2%) also shows the volume flyout; set it directly
+    // only when there's no taskbar to send it to.
+    if (HWND hShellTrayWnd = FindWindow(L"Shell_TrayWnd", nullptr)) {
         SHORT appCommand = increase ? APPCOMMAND_VOLUME_UP : APPCOMMAND_VOLUME_DOWN;
         PostMessage(hShellTrayWnd, WM_APPCOMMAND, (WPARAM)hShellTrayWnd,
                     MAKELPARAM(0, appCommand));
+        return;
+    }
+    float currentVolume = 0.0f;
+    if (SUCCEEDED(endpointVolume->GetMasterVolumeLevelScalar(&currentVolume))) {
+        float newVolume = std::clamp(currentVolume + (increase ? 0.02f : -0.02f), 0.0f, 1.0f);
+        endpointVolume->SetMasterVolumeLevelScalar(newVolume, NULL);
     }
 }
 
@@ -11056,6 +11088,7 @@ static void RefreshMiniPlayerFlyoutUI() {
                         g_miniSessionCurrentFlags[i]->store(isCurrent);
                     }
                     if (auto btn = sessionList.Children().GetAt(i).try_as<Button>()) {
+                        btn.Tag(winrt::box_value(winrt::hstring(infos[i].id)));
                         if (auto hb = btn.Content().try_as<Border>()) {
                             if (hoveredIdx != static_cast<int>(i)) {
                                 hb.Background(MakeBrush(isCurrent
@@ -11415,9 +11448,13 @@ static Button BuildSessionRowButton(const MiniSessionInfo& info, bool isCurrent,
     rowBtn.Background(MakeBrush({0x00, 0x00, 0x00, 0x00}));
     rowBtn.Content(hoverBorder);
 
-    std::wstring capturedId = info.id;
-    rowBtn.Click([capturedId](auto const&, auto const&) {
+    // The row can be reused for another session later, which updates the Tag.
+    rowBtn.Tag(winrt::box_value(winrt::hstring(info.id)));
+    rowBtn.Click([](winrt::Windows::Foundation::IInspectable const& sender, RoutedEventArgs const&) {
         if (g_unloading) return;
+        std::wstring capturedId;
+        if (auto b = sender.try_as<Button>()) capturedId = winrt::unbox_value_or<winrt::hstring>(b.Tag(), L"").c_str();
+        if (capturedId.empty()) return;
         SpawnTrackedWorker([capturedId]() {
             winrt::init_apartment(winrt::apartment_type::multi_threaded);
             GlobalSystemMediaTransportControlsSession targetSession{nullptr};
@@ -12056,6 +12093,8 @@ COLD_UNOPTIMIZED static Grid BuildMiniPlayerFlyoutContent() {
             [](auto const&, auto const&) {
                 g_miniPlayerSeekDragging.store(true);
             })), true);
+        seekSlider.PointerCaptureLost([](auto const&, auto const&) { g_miniPlayerSeekDragging.store(false); });
+        seekSlider.PointerCanceled([](auto const&, auto const&) { g_miniPlayerSeekDragging.store(false); });
         seekSlider.AddHandler(UIElement::PointerReleasedEvent(), winrt::box_value(
             winrt::Windows::UI::Xaml::Input::PointerEventHandler(
             [](auto const& sender, auto const&) {
@@ -12402,13 +12441,28 @@ struct MiniPlayerAnchor {
     double animSign = 1.0;
 };
 
+// The taskbar the mini player was opened from: a detached part can sit on
+// another monitor than the player.
+static HWND g_miniPlayerHostWnd = nullptr;
+
+static HWND TaskbarWndForElement(FrameworkElement const& el) {
+    try {
+        for (DependencyObject cur = el; cur; cur = VisualTreeHelper::GetParent(cur)) {
+            for (DetachedWidgetState* dw : { &g_detachedAlbumArt, &g_detachedInfo, &g_detachedButtons, &g_detachedViz })
+                if (dw->grid && dw->injectedOnWnd && IsWindow(dw->injectedOnWnd) && cur == dw->grid) return dw->injectedOnWnd;
+        }
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    return g_taskbarWnd;
+}
+
 static bool GetTaskbarMonitorWorkAreaInfo(FrameworkElement const& rootContent,
                                           RECT& outWorkAreaPx,
                                           POINT& outOriginPx,
                                           double& outScale) {
-    if (!g_taskbarWnd || !rootContent) return false;
+    HWND hostWnd = (g_miniPlayerHostWnd && IsWindow(g_miniPlayerHostWnd)) ? g_miniPlayerHostWnd : g_taskbarWnd;
+    if (!hostWnd || !rootContent) return false;
 
-    HMONITOR mon = MonitorFromWindow(g_taskbarWnd, MONITOR_DEFAULTTONEAREST);
+    HMONITOR mon = MonitorFromWindow(hostWnd, MONITOR_DEFAULTTONEAREST);
     if (!mon) return false;
 
     MONITORINFO mi{};
@@ -12417,7 +12471,7 @@ static bool GetTaskbarMonitorWorkAreaInfo(FrameworkElement const& rootContent,
     outWorkAreaPx = mi.rcWork;
 
     POINT originPx{0, 0};
-    if (!ClientToScreen(g_taskbarWnd, &originPx)) return false;
+    if (!ClientToScreen(hostWnd, &originPx)) return false;
     outOriginPx = originPx;
 
     double scale = 1.0;
@@ -12525,6 +12579,7 @@ static void ShowMiniPlayerFlyout(FrameworkElement const& target) {
             return;
         }
 
+        g_miniPlayerHostWnd = TaskbarWndForElement(target);
         Flyout flyout;
         Grid content = BuildMiniPlayerFlyoutContent();
 
@@ -12757,6 +12812,7 @@ static void ShowMiniPlayerFlyout(FrameworkElement const& target) {
 
         g_miniFlyoutClosedToken = flyout.Closed([](auto const&, auto const&) {
             g_miniPlayerFlyoutOpen = false;
+            g_miniPlayerSeekDragging.store(false);
             g_miniPlayerClosingAnimStarted.store(false);
             g_miniSessionHoveredIndex.store(-1);
             g_miniPlayerArtRef = nullptr;
@@ -14211,7 +14267,7 @@ static bool RefreshAlbumArt(const PlayerSnapshot& m) {
                                 }
 
                                 bmp.ImageOpened([](auto const&, auto const&) {
-                                    if (g_unloading || g_applyingSettings || !g_playerGrid) return;
+                                    if (g_unloading || g_applyingSettings || !HasAnyPlayerUi()) return;
                                     try {
                                         if (auto panelFe = FindMediaChild(PANEL_GRID_NAME)) {
                                             panelFe.UpdateLayout();
@@ -14538,14 +14594,14 @@ static void RefreshAppIcon(std::vector<BYTE> appIconBytes) {
 }
 
 static void RefreshPlayerContents() {
-    if (!g_playerGrid || g_unloading || g_applyingSettings) return;
+    if (!HasAnyPlayerUi() || g_unloading || g_applyingSettings) return;
 
     Wh_Log(L"RefreshPlayerContents: Starting");
     PlayerSnapshot m = TakePlayerSnapshot();
     Wh_Log(L"RefreshPlayerContents: title='%s', artist='%s', isPlaying=%d, hasMedia=%d",
            m.title.c_str(), m.artist.c_str(), m.isPlaying, m.hasMedia);
 
-    g_playerGrid.UpdateLayout();
+    if (g_playerGrid) g_playerGrid.UpdateLayout();
 
     ResetMarqueeOnTrackChange(m);
     RefreshTrackText(m);
@@ -14595,8 +14651,10 @@ static bool PlayerHasInlineContent() {
     return albumArtInline || infoInline || buttonsInline || vizInline;
 }
 
+static std::atomic<bool> g_noMediaRecheckPending{false};
+
 static void UpdateVisibility() {
-    if (!g_playerGrid || g_unloading || g_applyingSettings) return;
+    if (!HasAnyPlayerUi() || g_unloading || g_applyingSettings) return;
 
     bool hasMedia = false, hasSession = false;
     { std::lock_guard<std::mutex> lk(g_mediaMtx); hasMedia = g_media.hasMedia; }
@@ -14610,7 +14668,7 @@ static void UpdateVisibility() {
     if (!hide) {
         Wh_Log(L"UpdateVisibility: hasMedia=%d, hasSession=%d, hideWhenNoMedia=%d", hasMedia, hasSession, g_settings.hideWhenNoMedia);
 
-        if (hasMedia || hasSession) {
+        if (hasMedia) {
             g_lastMediaTime = std::chrono::steady_clock::now();
         }
 
@@ -14626,9 +14684,15 @@ static void UpdateVisibility() {
 
                 if (elapsed > 2500) {
                     hide = true;
-                } else {
-                    // SetEvent never blocks, so no thread is needed for it.
-                    if (!g_unloading && g_timerUpdateEvent) SetEvent(g_timerUpdateEvent);
+                } else if (!g_unloading && !g_noMediaRecheckPending.exchange(true)) {
+                    // Look again once the 2.5 s are up.
+                    SpawnTrackedWorker([elapsed]() {
+                        bool slept = SleepUnlessUnloading((DWORD)(2600 - elapsed));
+                        g_noMediaRecheckPending = false;
+                        if (!slept) return;
+                        g_needsUiUpdate = true;
+                        if (g_timerUpdateEvent) SetEvent(g_timerUpdateEvent);
+                    });
                 }
             }
         }
@@ -14640,90 +14704,92 @@ static void UpdateVisibility() {
     Wh_Log(L"UpdateVisibility: Final decision - hide=%d hidePlayer=%d", hide, hidePlayer);
 
     try {
-        Wh_Log(L"UpdateVisibility: g_playerColumn=%d", g_playerColumn);
-        if (g_playerColumn == -1) {
-            if (hidePlayer) {
-                g_playerGrid.Visibility(Visibility::Collapsed);
-                Wh_Log(L"UpdateVisibility: Set Visibility to Collapsed (playerColumn=-1)");
+        if (g_playerGrid) {
+            Wh_Log(L"UpdateVisibility: g_playerColumn=%d", g_playerColumn);
+            if (g_playerColumn == -1) {
+                if (hidePlayer) {
+                    g_playerGrid.Visibility(Visibility::Collapsed);
+                    Wh_Log(L"UpdateVisibility: Set Visibility to Collapsed (playerColumn=-1)");
+                } else {
+                    g_playerGrid.Visibility(Visibility::Visible);
+                    Wh_Log(L"UpdateVisibility: Set Visibility to Visible (playerColumn=-1)");
+                }
             } else {
-                g_playerGrid.Visibility(Visibility::Visible);
-                Wh_Log(L"UpdateVisibility: Set Visibility to Visible (playerColumn=-1)");
-            }
-        } else {
-            bool isTrackingPosition = IsAnchorPosition(g_settings.position);
+                bool isTrackingPosition = IsAnchorPosition(g_settings.position);
 
-            if (hidePlayer && isTrackingPosition && g_settings.enableSmoothPositionAnimation) {
-                g_playerGrid.Opacity(0.0);
+                if (hidePlayer && isTrackingPosition && g_settings.enableSmoothPositionAnimation) {
+                    g_playerGrid.Opacity(0.0);
 
-                SpawnTrackedWorker([]() {
-                    if (!SleepUnlessUnloading(200)) return;
-                    try {
-                        RunFromWindowThread(g_taskbarWnd, [](void* param) {
-                            try {
-                                if (g_playerGrid) {
-                                    g_playerGrid.Visibility(Visibility::Collapsed);
+                    SpawnTrackedWorker([]() {
+                        if (!SleepUnlessUnloading(200)) return;
+                        try {
+                            RunFromWindowThread(g_taskbarWnd, [](void* param) {
+                                try {
+                                    if (g_playerGrid) {
+                                        g_playerGrid.Visibility(Visibility::Collapsed);
 
-                                    if (g_injectionParent) {
-                                        if (auto targetGrid = g_injectionParent.try_as<Grid>()) {
-                                            if (g_playerColumn < (int)targetGrid.ColumnDefinitions().Size()) {
-                                                auto colDef = targetGrid.ColumnDefinitions().GetAt(g_playerColumn);
-                                                colDef.Width({0.0, GridUnitType::Pixel});
+                                        if (g_injectionParent) {
+                                            if (auto targetGrid = g_injectionParent.try_as<Grid>()) {
+                                                if (g_playerColumn < (int)targetGrid.ColumnDefinitions().Size()) {
+                                                    auto colDef = targetGrid.ColumnDefinitions().GetAt(g_playerColumn);
+                                                    colDef.Width({0.0, GridUnitType::Pixel});
+                                                }
                                             }
                                         }
+
+                                        g_playerGrid.MinWidth(0);
+                                        g_playerGrid.MaxWidth(0);
+                                        g_playerGrid.Width(0);
                                     }
+                                } catch (...) { LOG_IGNORED_EXCEPTION(); }
+                            }, nullptr);
+                        } catch (...) { LOG_IGNORED_EXCEPTION(); }
+                    });
+                } else {
+                    g_playerGrid.Visibility(hidePlayer ? Visibility::Collapsed : Visibility::Visible);
+                    g_playerGrid.Opacity(hidePlayer ? 0.0 : 1.0);
+                    Wh_Log(L"UpdateVisibility: Set Visibility=%d, Opacity=%f", hidePlayer ? 0 : 1, hidePlayer ? 0.0 : 1.0);
 
-                                    g_playerGrid.MinWidth(0);
-                                    g_playerGrid.MaxWidth(0);
-                                    g_playerGrid.Width(0);
+                    if (g_injectionParent) {
+                        if (auto targetGrid = g_injectionParent.try_as<Grid>()) {
+                            if (g_playerColumn < (int)targetGrid.ColumnDefinitions().Size()) {
+                                auto colDef = targetGrid.ColumnDefinitions().GetAt(g_playerColumn);
+                                if (hidePlayer) {
+                                    colDef.Width({0.0, GridUnitType::Pixel});
+                                    Wh_Log(L"UpdateVisibility: Set column width to 0");
+                                } else {
+                                    colDef.Width({1.0, GridUnitType::Auto});
+                                    Wh_Log(L"UpdateVisibility: Set column width to Auto");
                                 }
-                            } catch (...) { LOG_IGNORED_EXCEPTION(); }
-                        }, nullptr);
-                    } catch (...) { LOG_IGNORED_EXCEPTION(); }
-                });
-            } else {
-                g_playerGrid.Visibility(hidePlayer ? Visibility::Collapsed : Visibility::Visible);
-                g_playerGrid.Opacity(hidePlayer ? 0.0 : 1.0);
-                Wh_Log(L"UpdateVisibility: Set Visibility=%d, Opacity=%f", hidePlayer ? 0 : 1, hidePlayer ? 0.0 : 1.0);
-
-                if (g_injectionParent) {
-                    if (auto targetGrid = g_injectionParent.try_as<Grid>()) {
-                        if (g_playerColumn < (int)targetGrid.ColumnDefinitions().Size()) {
-                            auto colDef = targetGrid.ColumnDefinitions().GetAt(g_playerColumn);
-                            if (hidePlayer) {
-                                colDef.Width({0.0, GridUnitType::Pixel});
-                                Wh_Log(L"UpdateVisibility: Set column width to 0");
-                            } else {
-                                colDef.Width({1.0, GridUnitType::Auto});
-                                Wh_Log(L"UpdateVisibility: Set column width to Auto");
                             }
                         }
+                    } else {
+                        Wh_Log(L"UpdateVisibility: g_injectionParent is NULL");
                     }
-                } else {
-                    Wh_Log(L"UpdateVisibility: g_injectionParent is NULL");
-                }
 
-                if (hidePlayer) {
-                    g_playerGrid.MinWidth(0);
-                    g_playerGrid.MaxWidth(0);
-                    g_playerGrid.Width(0);
-                } else {
-                    bool hasTextOrButtons = g_settings.showTrackTitle || g_settings.showTrackArtist || (g_settings.showMediaButtons && !g_mediaButtons.empty());
-                    if (hasTextOrButtons && g_settings.playerMinWidth > 0) {
-                        g_playerGrid.MinWidth((double)g_settings.playerMinWidth);
-                    } else {
+                    if (hidePlayer) {
                         g_playerGrid.MinWidth(0);
-                    }
-                    if (g_settings.playerMaxWidth > 0) {
-                        g_playerGrid.MaxWidth((double)g_settings.playerMaxWidth);
+                        g_playerGrid.MaxWidth(0);
+                        g_playerGrid.Width(0);
                     } else {
-                        g_playerGrid.ClearValue(FrameworkElement::MaxWidthProperty());
+                        bool hasTextOrButtons = g_settings.showTrackTitle || g_settings.showTrackArtist || (g_settings.showMediaButtons && !g_mediaButtons.empty());
+                        if (hasTextOrButtons && g_settings.playerMinWidth > 0) {
+                            g_playerGrid.MinWidth((double)g_settings.playerMinWidth);
+                        } else {
+                            g_playerGrid.MinWidth(0);
+                        }
+                        if (g_settings.playerMaxWidth > 0) {
+                            g_playerGrid.MaxWidth((double)g_settings.playerMaxWidth);
+                        } else {
+                            g_playerGrid.ClearValue(FrameworkElement::MaxWidthProperty());
+                        }
+                        g_playerGrid.ClearValue(FrameworkElement::WidthProperty());
                     }
-                    g_playerGrid.ClearValue(FrameworkElement::WidthProperty());
                 }
             }
-        }
 
-        g_playerGrid.UpdateLayout();
+            g_playerGrid.UpdateLayout();
+        }
 
         for (DetachedWidgetState* dw : { &g_detachedAlbumArt, &g_detachedInfo, &g_detachedButtons, &g_detachedViz }) {
             if (!dw->grid) continue;
@@ -16061,6 +16127,7 @@ static void RemovePlayerGrid() {
         }
         g_miniPlayerFlyout = nullptr;
         g_miniPlayerFlyoutOpen = false;
+        g_miniPlayerSeekDragging.store(false);
     } catch (...) { LOG_IGNORED_EXCEPTION(); }
 
     try {
@@ -16203,7 +16270,9 @@ static void InjectDetachedWidgetOnThread(void* p) {
     HWND hWnd = ctx->hWnd;
 
     // Latch the axis BEFORE buildContent(): the builders read it, and latching
-    // after built a horizontal visualizer into a vertical strip.
+    // after built a horizontal visualizer into a vertical strip. Put back after,
+    // so the main player's taskbar keeps deciding it.
+    struct SidebarRestore { bool v; ~SidebarRestore() { g_sidebarMode = v; } } sidebarRestore{ g_sidebarMode };
     g_sidebarMode = IsVerticalTaskbarEdge(GetTaskbarEdgeForWnd(hWnd));
     if (g_sidebarMode && !g_settings.sidebarEnabled) {
         Wh_Log(L"InjectDetachedWidgetOnThread: Taskbar is vertical and sidebar mode is disabled - skipping injection");
@@ -16606,6 +16675,7 @@ static void ForgetInjectedTreeState() {
     // path exists precisely for when that is no longer safe.
     g_miniPlayerFlyout     = nullptr;
     g_miniPlayerFlyoutOpen = false;
+    g_miniPlayerSeekDragging.store(false);
 
     for (DetachedWidgetState* dw : { &g_detachedAlbumArt, &g_detachedInfo, &g_detachedButtons, &g_detachedViz }) {
         dw->grid            = nullptr;
@@ -16755,6 +16825,12 @@ static thread_local unsigned int     g_widgetsPaddingDepth{0};
 static thread_local FrameworkElement g_widgetsCandidateButton = nullptr;
 
 // A taskbar's own Widgets inner panel (the element the hide collapses).
+static FrameworkElement WidgetsInnerPanelOf(FrameworkElement const& outer) {
+    auto inner = FindChildByName(outer, L"ExperienceToggleButtonRootPanel");
+    if (!inner) inner = FindChildByClassName(outer, L"Taskbar.TaskListButtonPanel");
+    return inner;
+}
+
 static FrameworkElement FindWidgetsInnerPanelForTaskbar(HWND taskbarWnd) {
     if (!taskbarWnd) return nullptr;
     auto xamlRoot = GetTaskbarXamlRoot(taskbarWnd);
@@ -16768,9 +16844,7 @@ static FrameworkElement FindWidgetsInnerPanelForTaskbar(HWND taskbarWnd) {
     auto outer = FindChildByName(repeater, L"AugmentedEntryPointButton");
     if (!outer) outer = FindChildByClassName(repeater, L"Taskbar.AugmentedEntryPointButton");
     if (!outer) return nullptr;
-    auto inner = FindChildByName(outer, L"ExperienceToggleButtonRootPanel");
-    if (!inner) inner = FindChildByClassName(outer, L"Taskbar.TaskListButtonPanel");
-    return inner;
+    return WidgetsInnerPanelOf(outer);
 }
 
 // Hide scope covers this button's taskbar: 1 yes, 0 no, -1 can't tell (the
@@ -16901,7 +16975,11 @@ static void QueueNativeWidgetsHideUpdate(FrameworkElement const& widgetsButton) 
         auto weakButton = winrt::make_weak(widgetsButton);
         auto dispatcher  = widgetsButton.Dispatcher();
         QueueOnDispatcher(dispatcher, winrt::Windows::UI::Core::CoreDispatcherPriority::Normal, [weakButton]() {
-            if (auto button = weakButton.get()) ApplyNativeWidgetsHideState(button);
+            auto button = weakButton.get();
+            if (!button) return;
+            // The hook reports the outer button; hiding works on its inner panel.
+            auto inner = WidgetsInnerPanelOf(button);
+            ApplyNativeWidgetsHideState(inner ? inner : button);
         });
     } catch (...) { LOG_IGNORED_EXCEPTION(); }
 }
@@ -17343,7 +17421,7 @@ static DWORD WINAPI TimerThreadProc(void*) {
         if (needsUpdate) {
             RunFromWindowThread(hWnd, [](void*) {
                 if (g_unloading || g_applyingSettings) return;
-                if (g_playerGrid) {
+                if (HasAnyPlayerUi()) {
                     g_hookFailCount = 0;
                     RefreshPlayerContents();
                     UpdateVisibility();
@@ -17442,6 +17520,7 @@ static void ApplySettings() {
         try { InjectAllDetachedContainers(); } catch (...) { Wh_Log(L"ApplySettings: Exception in InjectAllDetachedContainers"); }
         // Every rebuild comes through here, and each one can mean a new Widgets
         // button, so the hide state is re-applied here.
+        HookTaskbarViewIfWanted();
         try { EnsureWidgetsHideStateApplied(); } catch (...) { Wh_Log(L"ApplySettings: Exception in EnsureWidgetsHideStateApplied"); }
         // The text may have moved to another taskbar's thread.
         if (g_settings.enableTitleScrolling || g_settings.enableArtistScrolling) StartScrollTimer();
@@ -17554,7 +17633,7 @@ static void RecoverMissingPlayer(HWND hWnd) {
         if (!content) return;   // XAML not up yet: the next tick tries again
         ApplySettingsWithRetry(content, []() {
             if (g_settings.enableTitleScrolling || g_settings.enableArtistScrolling) StartScrollTimer();
-            if (g_playerGrid) {
+            if (HasAnyPlayerUi()) {
                 RefreshPlayerContents();
                 UpdateVisibility();
                 g_needsUiUpdate = true;
@@ -17616,7 +17695,7 @@ static void KeepTrayPlacement(HWND hWnd) {
         try { ApplySettings(); } catch (...) { Wh_Log(L"KeepTrayPlacement: ApplySettings threw"); }
         g_applyingSettings = false;
         if (g_settings.enableTitleScrolling || g_settings.enableArtistScrolling) StartScrollTimer();
-        if (g_playerGrid) {
+        if (HasAnyPlayerUi()) {
             RefreshPlayerContents();
             UpdateVisibility();
             g_needsUiUpdate = true;
@@ -17817,7 +17896,7 @@ using LoadLibraryExW_t = decltype(&LoadLibraryExW);
 static LoadLibraryExW_t LoadLibraryExW_Original = nullptr;
 
 static void HookTaskbarViewNow(HMODULE h, bool afterInit) {
-    if (!h || g_taskbarViewHooked.exchange(true)) return;
+    if (!h || !g_settings.hideNativeWidgetsButton || g_taskbarViewHooked.exchange(true)) return;
     if (!HookTaskbarViewDllSymbols(h)) {
         Wh_Log(L"HookTaskbarViewNow: hooking failed (native Widgets hiding unavailable)");
         return;
@@ -17833,6 +17912,11 @@ static HMODULE WINAPI LoadLibraryExW_Hook(LPCWSTR name, HANDLE file, DWORD flags
         HookTaskbarViewNow(m, true);
     }
     return m;
+}
+
+// The setting can be turned on after the mod started.
+static void HookTaskbarViewIfWanted() {
+    if (g_settings.hideNativeWidgetsButton && !g_taskbarViewHooked) HookTaskbarViewNow(FindTaskbarViewModule(), true);
 }
 
 // ============================================================================
@@ -24275,7 +24359,7 @@ void Wh_ModAfterInit() {
                 if (g_settings.enableTitleScrolling || g_settings.enableArtistScrolling) {
                     StartScrollTimer();
                 }
-                if (g_playerGrid) {
+                if (HasAnyPlayerUi()) {
                     Wh_Log(L"Wh_ModAfterInit: Player grid exists, refreshing UI");
                     ShowSuccessNotification();
                     MaybeShowSettingsTip();
@@ -24321,6 +24405,7 @@ static void StopTaskbarCallbacksOnThread() {
         } catch (...) { LOG_IGNORED_EXCEPTION(); }
         g_miniPlayerFlyout = nullptr;
         g_miniPlayerFlyoutOpen = false;
+        g_miniPlayerSeekDragging.store(false);
     }
     g_miniFlyoutOpenedToken = g_miniFlyoutClosingToken = g_miniFlyoutClosedToken = {};
     for (auto* sb : { &g_mainArtFade, &g_miniArtFade }) {
