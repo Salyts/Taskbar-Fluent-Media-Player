@@ -23212,7 +23212,10 @@ static wuxc::Border MakeLpPlaceholder(int part, double w, double h, bool live) {
     const auto ac = AccentTargetColor();
     const auto fg = s_light ? Brush(255, 20, 20, 20) : Brush(255, 255, 255, 255);
     wuxc::Border b;
-    b.Width(w); b.Height(h);
+    // The player hugs what's in it (its real width at most); a part fills its box.
+    if (part == 0) { b.MaxWidth(w); b.MinWidth(std::min(w, h)); }
+    else b.Width(w);
+    b.Height(h);
     b.CornerRadius(wux::CornerRadius{ 5, 5, 5, 5 });
     b.Background(s_light ? Brush(live ? 0x18 : 0x0C, 0, 0, 0) : Brush(live ? 0x1C : 0x0E, 255, 255, 255));
     b.BorderBrush(Brush(live ? 0xC0 : 0x70, ac.R, ac.G, ac.B));
@@ -23279,13 +23282,19 @@ static wuxc::Border MakeLpPlaceholder(int part, double w, double h, bool live) {
         return s;
     };
 
-    // Laid out like the real player: from the left, with room between the parts.
+    // The player is laid out like the real one: from the left, with room
+    // between its parts. A part on its own sits centered in its box.
     wuxc::StackPanel row;
     row.Orientation(wuxc::Orientation::Horizontal);
-    row.Spacing(std::max(4.0, ih * 0.4));
     row.VerticalAlignment(wux::VerticalAlignment::Center);
-    row.HorizontalAlignment(wux::HorizontalAlignment::Left);
-    row.Margin(wux::Thickness{ 4, 0, 4, 0 });
+    if (part == 0) {
+        row.Spacing(std::max(4.0, ih * 0.4));
+        row.HorizontalAlignment(wux::HorizontalAlignment::Left);
+        row.Margin(wux::Thickness{ 4, 0, 6, 0 });
+    } else {
+        row.Spacing(std::max(2.0, ih * 0.25));
+        row.HorizontalAlignment(wux::HorizontalAlignment::Center);
+    }
     switch (part) {
         case 0: {
             const bool a = LpInPlayer(1), i = LpInPlayer(2), bt = LpInPlayer(3), v = LpInPlayer(4);
