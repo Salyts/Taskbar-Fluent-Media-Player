@@ -24784,15 +24784,26 @@ static void BuildPage(const SettingCategory& cat, bool animate = false) {
                     }
                 } catch (...) {}
 
+                if (!toggleBtn) Wh_Log(L"ColorPanel: no button found for %s", rkey.c_str());
+                wuxc::Border expandPanel{ nullptr };
                 if (toggleBtn) {
-                    auto expandPanel = MakeColorPickerPanel(rkey, toggleBtn,
-                                                            inPicker.count(row.opacity ? row.opacity->key : L"")
-                                                                ? row.opacity.get() : nullptr);
+                    try {
+                        expandPanel = MakeColorPickerPanel(rkey, toggleBtn,
+                                                           inPicker.count(row.opacity ? row.opacity->key : L"")
+                                                               ? row.opacity.get() : nullptr);
+                    } catch (winrt::hresult_error const& ex) {
+                        Wh_Log(L"ColorPanel: building %s failed: 0x%08X %s", rkey.c_str(), (unsigned)ex.code(), ex.message().c_str());
+                    } catch (...) {
+                        Wh_Log(L"ColorPanel: building %s failed", rkey.c_str());
+                    }
+                }
+                if (toggleBtn && expandPanel) {
                     rowsPanel.Children().Append(expandPanel);
 
                     // Opens with a short fade and slide down from the button; closes at once.
                     toggleBtn.Click([weakPanel = winrt::make_weak(expandPanel)](winrt::Windows::Foundation::IInspectable const& sender, wux::RoutedEventArgs const&) {
                         auto expandPanel = weakPanel.get();
+                        Wh_Log(L"ColorPanel: clicked (panel %s)", expandPanel ? L"alive" : L"gone");
                         if (!expandPanel) return;
                         auto toggleBtn = sender.as<wuxc::Button>();
                         const bool opening = expandPanel.Visibility() != wux::Visibility::Visible;
