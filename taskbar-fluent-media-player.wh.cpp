@@ -11803,10 +11803,13 @@ COLD_UNOPTIMIZED static Grid BuildMiniPlayerFlyoutContent() {
 
     Border artBorder;
     artBorder.Name(L"FluentMediaMiniPlayerArtBorder");
-    artBorder.MaxWidth(300);
-    artBorder.MinWidth(170);
-    artBorder.Height(169);
-    artBorder.HorizontalAlignment(HorizontalAlignment::Center);
+    // The cover fills the popup's width as a square.
+    artBorder.HorizontalAlignment(HorizontalAlignment::Stretch);
+    artBorder.Height(300);
+    artBorder.SizeChanged([](winrt::Windows::Foundation::IInspectable const& sender, SizeChangedEventArgs const& e) {
+        const double w = e.NewSize().Width;
+        if (auto fe = sender.try_as<FrameworkElement>(); fe && w > 0 && std::abs(fe.Height() - w) > 0.5) fe.Height(w);
+    });
     artBorder.CornerRadius({6, 6, 6, 6});
     artBorder.Background(MakeBrush({0x40, 0x80, 0x80, 0x80}));
     artBorder.Margin({0, 0, 0, 10});
@@ -11843,7 +11846,7 @@ COLD_UNOPTIMIZED static Grid BuildMiniPlayerFlyoutContent() {
 
     Controls::Image artImage;
     artImage.Name(L"FluentMediaMiniPlayerArtImage");
-    artImage.Stretch(Stretch::Uniform );
+    artImage.Stretch(Stretch::UniformToFill);
     artImage.HorizontalAlignment(HorizontalAlignment::Center);
     artImage.VerticalAlignment(VerticalAlignment::Center);
     artImage.Visibility(Visibility::Collapsed);
