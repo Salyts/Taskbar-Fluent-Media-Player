@@ -23543,6 +23543,7 @@ static void WireLpDrag(wuxc::Border const& el, int part, std::shared_ptr<LpDrag>
         wuxc::Canvas::SetLeft(st->ghost, pt.X - st->grab.X);
         wuxc::Canvas::SetTop(st->ghost, pt.Y - st->grab.Y);
 
+        const int prevZone = st->tZone, prevSlot = st->tSlot;
         st->tZone = -1; st->tStrip = -1; st->tSlot = -1;
         auto inside = [&e](winrt::weak_ref<wuxc::Border> const& w) {
             auto b = w.get();
@@ -23573,6 +23574,8 @@ static void WireLpDrag(wuxc::Border const& el, int part, std::shared_ptr<LpDrag>
                 if (d < best) { best = d; st->tZone = 0; st->tStrip = (int)si; st->tSlot = (int)k; }
             }
         }
+        if (st->tZone != prevZone || st->tSlot != prevSlot)
+            Wh_Log(L"LayoutPreview: over target zone=%d slot=%d", st->tZone, st->tSlot);
         LpShowMarkers(*st, true);
         if (auto cap = st->caption.get()) {
             std::wstring text = st->hint;
@@ -23589,7 +23592,7 @@ static void WireLpDrag(wuxc::Border const& el, int part, std::shared_ptr<LpDrag>
     });
     auto finish = [st](winrt::Windows::Foundation::IInspectable const& sender, PtrArgs const&) {
         if (!st->pressed) return;
-        st->pressed = false;
+        st->pressed = false;   // first, so the capture loss below is a no-op
         const bool wasDragging = st->dragging;
         st->dragging = false;
         sender.as<wux::UIElement>().ReleasePointerCaptures();
@@ -23634,8 +23637,28 @@ static void WireLpDrag(wuxc::Border const& el, int part, std::shared_ptr<LpDrag>
         LpCommit(st->part, zone, monitor, position);
     };
     el.PointerReleased(finish);
-    el.PointerCanceled(finish);
-    el.PointerCaptureLost(finish);
+    // Lost or canceled (something else took the pointer): put it back, drop nothing.
+    auto cancel = [st](winrt::Windows::Foundation::IInspectable const&, PtrArgs const&) {
+        if (!st->pressed) return;
+        const bool wasDragging = st->dragging;
+        st->pressed = false;
+        st->dragging = false;
+        if (!wasDragging) return;
+        Wh_Log(L"LayoutPreview: drag of %s canceled (pointer taken)", LP_PARTS[st->part].label);
+        if (auto ov = st->overlay.get(); ov && st->ghost) {
+            uint32_t i = 0;
+            if (ov.Children().IndexOf(st->ghost, i)) ov.Children().RemoveAt(i);
+        }
+        st->ghost = nullptr;
+        st->tZone = -1;
+        LpShowMarkers(*st, false);
+        if (auto cap = st->caption.get()) cap.Text(winrt::hstring{ st->hint });
+        if (auto src = st->source.get()) src.Opacity(1.0);
+    };
+    el.PointerCanceled(cancel);
+    el.PointerCaptureLost(cancel);
+    // Keeps the page's scrolling from taking the pointer mid-drag.
+    el.ManipulationMode(wux::Input::ManipulationModes::None);
 }
 
 // One taskbar item, drawn at strip size.
@@ -23918,7 +23941,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
                 pill.Child(t);
                 const double pw = 16 + 6.2 * text.size();
                 pill.Width(pw);
-                const double left = v == L"taskbar_left_edge" ? pad : v == L"taskbar_center_edge" ? W / 2 - pw / 2 : W - pad - pw;
+                const double left = v == L"taskbar_left_edge" ? 0 : v == L"taskbar_center_edge" ? W / 2 - pw / 2 : W - pw;
                 strip.slots.back().x = left + pw / 2;
                 wuxc::Canvas::SetLeft(pill, left);
                 wuxc::Canvas::SetTop(pill, 3);
