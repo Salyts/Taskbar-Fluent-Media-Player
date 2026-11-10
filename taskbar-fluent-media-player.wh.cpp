@@ -24801,10 +24801,10 @@ static void BuildPage(const SettingCategory& cat, bool animate = false) {
                     rowsPanel.Children().Append(expandPanel);
 
                     // Opens with a short fade and slide down from the button; closes at once.
-                    toggleBtn.Click([weakPanel = winrt::make_weak(expandPanel)](winrt::Windows::Foundation::IInspectable const& sender, wux::RoutedEventArgs const&) {
-                        auto expandPanel = weakPanel.get();
-                        Wh_Log(L"ColorPanel: clicked (panel %s)", expandPanel ? L"alive" : L"gone");
-                        if (!expandPanel) return;
+                    // The panel itself, not a weak ref: it holds the button only weakly
+                    // (ColorPickerState), so this makes no cycle.
+                    toggleBtn.Click([expandPanel](winrt::Windows::Foundation::IInspectable const& sender, wux::RoutedEventArgs const&) {
+                        Wh_Log(L"ColorPanel: clicked");
                         auto toggleBtn = sender.as<wuxc::Button>();
                         const bool opening = expandPanel.Visibility() != wux::Visibility::Visible;
                         if (opening) {
@@ -25256,12 +25256,12 @@ static int WantedMaterial() {
     const std::wstring v = GetSettingOverride(L"SettingsWindowSettings.windowMaterial",
                                               g_settings.settingsMaterial.empty() ? std::wstring(L"mica")
                                                                                   : g_settings.settingsMaterial);
-    if (v == L"none") return 1;
-    if (v == L"mica_alt") return 4;
-    if (v == L"acrylic") return 3;
-    if (v == L"acrylic_thin") return 5;
+    if (v == L"none") return XS_MATERIAL_NONE;
+    if (v == L"mica_alt") return XS_MATERIAL_MICA_ALT;
+    if (v == L"acrylic") return XS_MATERIAL_ACRYLIC;
+    if (v == L"acrylic_thin") return XS_MATERIAL_ACRYLIC_THIN;
     if (v == L"album") return XS_MATERIAL_ALBUM;
-    return 2;
+    return XS_MATERIAL_MICA;
 }
 
 static bool XsTransparencyEnabled() {
