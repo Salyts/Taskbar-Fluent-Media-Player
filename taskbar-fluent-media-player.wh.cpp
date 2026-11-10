@@ -23431,7 +23431,8 @@ struct LpStrip {
     std::vector<LpSlot> slots;   // in strip pixels
     std::vector<winrt::weak_ref<wux::FrameworkElement>> markers;   // a dot per spot, a pill per overlay spot
     winrt::weak_ref<wuxc::Canvas> ovCanvas;   // the overlay row above the copy
-    double ovH = 0;
+    double ovH = 0, pad = 0;
+    winrt::weak_ref<winrt::Windows::UI::Xaml::Shapes::Rectangle> dropBox;   // dashed outline where it would land
 };
 struct LpDrag {
     std::vector<LpStrip> strips;
@@ -23448,6 +23449,9 @@ struct LpDrag {
     int tStrip = -1, tSlot = -1, tZone = -1;   // zone 0 a taskbar spot, 1 in the player, 2 hidden
     int lastClickPart = -1, pressWhere = 0;
     ULONGLONG lastClickAt = 0;
+    wuxm::TranslateTransform ghostTr{ nullptr };
+    double dropW = 0;        // the dragged part's width on a taskbar copy
+    bool landing = false;    // gliding into place after a drop
 };
 
 static void LpCommit(int part, int zone, int monitor, const std::wstring& position) {
@@ -23493,9 +23497,9 @@ static void LpShowMarkers(LpDrag& st, bool on) {
                     continue;
                 }
                 m.Opacity(target ? 1.0 : on ? 0.6 : 0.3);
-                m.Height(target ? strip.ih : 4);
+                m.Height(4);
                 wuxc::Canvas::SetLeft(m, slot.x - 2);
-                wuxc::Canvas::SetTop(m, target ? strip.y0 : strip.height - 6);
+                wuxc::Canvas::SetTop(m, strip.height - 6);
             }
     for (auto* z : { &st.attachZone, &st.hiddenZone })
         if (auto b = z->get()) b.BorderBrush(on && st.tZone == (z == &st.attachZone ? 1 : 2) ? AccentBrush()
@@ -23508,6 +23512,33 @@ static void LpShowMarkers(LpDrag& st, bool on) {
     }
     for (auto& p : st.players)
         if (auto b = p.get()) b.BorderThickness(on && st.tZone == 1 && st.part != 0 ? wux::Thickness{ 2, 2, 2, 2 } : wux::Thickness{ 1, 1, 1, 1 });
+
+    // The outline: the part's size, on the side of the spot it would take, sliding between spots.
+    for (size_t si = 0; si < st.strips.size(); si++) {
+        const auto& strip = st.strips[si];
+        auto box = strip.dropBox.get();
+        if (!box) continue;
+        if (!(on && st.tZone == 0 && (int)si == st.tStrip)) { box.Opacity(0); continue; }
+        const auto& slot = strip.slots[st.tSlot];
+        const double w = std::clamp(st.dropW > 0 ? st.dropW : strip.ih * 2, 8.0, std::max(8.0, strip.width - 4));
+        const std::wstring v = slot.value;
+        double x;
+        if (slot.overlay) {
+            x = v == L"taskbar_left_edge" ? strip.pad : v == L"taskbar_center_edge" ? strip.width / 2 - w / 2 : strip.width - strip.pad - w;
+        } else {
+            const bool opensRight = slot.besidePart >= 0 ? slot.besideRight
+                                  : (v.find(L"_right") != std::wstring::npos || v == L"tray_left");
+            x = opensRight ? slot.x + 2 : slot.x - 2 - w;
+        }
+        x = std::clamp(x, 2.0, std::max(2.0, strip.width - w - 2));
+        box.Width(w);
+        box.Height(strip.ih);
+        if (auto tr = box.RenderTransform().try_as<wuxm::TranslateTransform>()) {
+            if (box.Opacity() < 0.5) tr.X(x);
+            else AnimateTo(tr, L"X", x, 120);
+        }
+        box.Opacity(1);
+    }
 }
 
 // `where`: 0 on a taskbar copy, 1 in the "In the player" box, 2 in "Hidden".
@@ -23515,7 +23546,7 @@ static void WireLpDrag(wuxc::Border const& el, int part, std::shared_ptr<LpDrag>
     using PtrArgs = wux::Input::PointerRoutedEventArgs;
     el.PointerPressed([st, part, where](winrt::Windows::Foundation::IInspectable const& sender, PtrArgs const& e) {
         auto ov = st->overlay.get();
-        if (!ov || !e.GetCurrentPoint(nullptr).Properties().IsLeftButtonPressed()) return;
+        if (!ov || st->landing || !e.GetCurrentPoint(nullptr).Properties().IsLeftButtonPressed()) return;
         auto src = sender.as<wuxc::Border>();
         st->part = part; st->pressWhere = where; st->pressed = true; st->dragging = false;
         st->start = e.GetCurrentPoint(ov).Position();
@@ -23535,13 +23566,16 @@ static void WireLpDrag(wuxc::Border const& el, int part, std::shared_ptr<LpDrag>
             if (!src) return;
             st->dragging = true;
             st->ghost = MakeLpPlaceholder(st->part, src.ActualWidth(), src.ActualHeight(), true);
+            st->ghostTr = wuxm::TranslateTransform();
+            st->ghost.RenderTransform(st->ghostTr);
+            st->dropW = src.ActualWidth();
             st->ghost.Opacity(0.9);
             st->ghost.IsHitTestVisible(false);
             ov.Children().Append(st->ghost);
             src.Opacity(0.3);
         }
-        wuxc::Canvas::SetLeft(st->ghost, pt.X - st->grab.X);
-        wuxc::Canvas::SetTop(st->ghost, pt.Y - st->grab.Y);
+        st->ghostTr.X(pt.X - st->grab.X);
+        st->ghostTr.Y(pt.Y - st->grab.Y);
 
         const int prevZone = st->tZone, prevSlot = st->tSlot;
         st->tZone = -1; st->tStrip = -1; st->tSlot = -1;
@@ -23609,16 +23643,19 @@ static void WireLpDrag(wuxc::Border const& el, int part, std::shared_ptr<LpDrag>
             }
             return;
         }
-        if (auto ov = st->overlay.get(); ov && st->ghost) {
-            uint32_t i = 0;
-            if (ov.Children().IndexOf(st->ghost, i)) ov.Children().RemoveAt(i);
-        }
-        st->ghost = nullptr;
-        LpShowMarkers(*st, false);
+        auto removeGhost = [st]() {
+            if (auto ov2 = st->overlay.get(); ov2 && st->ghost) {
+                uint32_t i = 0;
+                if (ov2.Children().IndexOf(st->ghost, i)) ov2.Children().RemoveAt(i);
+            }
+            st->ghost = nullptr;
+        };
         if (auto cap = st->caption.get()) cap.Text(winrt::hstring{ st->hint });
         const int zone = st->tZone;
         if (zone < 0) {
             Wh_Log(L"LayoutPreview: dropped %s outside every target", LP_PARTS[st->part].label);
+            removeGhost();
+            LpShowMarkers(*st, false);
             if (auto src = st->source.get()) src.Opacity(1.0);
             return;
         }
@@ -23634,7 +23671,30 @@ static void WireLpDrag(wuxc::Border const& el, int part, std::shared_ptr<LpDrag>
                 SetOverrideLive(L"MainSettings.PlayerSetting.partOrder", order);
             }
         }
-        LpCommit(st->part, zone, monitor, position);
+        // Where it glides to: the outline on a copy, or into the box.
+        winrt::Windows::Foundation::Point to{};
+        bool haveTo = false;
+        try {
+            if (auto ov = st->overlay.get()) {
+                if (zone == 0) {
+                    if (auto box = st->strips[st->tStrip].dropBox.get()) { to = box.TransformToVisual(ov).TransformPoint({ 0, 0 }); haveTo = true; }
+                } else if (auto z = (zone == 1 ? st->attachZone : st->hiddenZone).get()) {
+                    to = z.TransformToVisual(ov).TransformPoint({ 10, 26 }); haveTo = true;
+                }
+            }
+        } catch (...) { LOG_IGNORED_EXCEPTION(); }
+        auto land = [st, removeGhost, part = st->part, zone, monitor, position]() {
+            removeGhost();
+            st->landing = false;
+            LpShowMarkers(*st, false);
+            LpCommit(part, zone, monitor, position);
+        };
+        st->landing = true;
+        wma::Storyboard sb{ nullptr };
+        if (haveTo && st->ghostTr)
+            sb = Animate({ { st->ghostTr, L"X", (double)to.X }, { st->ghostTr, L"Y", (double)to.Y } }, 170);
+        if (sb) sb.Completed([land](winrt::Windows::Foundation::IInspectable const&, winrt::Windows::Foundation::IInspectable const&) { land(); });
+        else land();
     };
     el.PointerReleased(finish);
     // Lost or canceled (something else took the pointer): put it back, drop nothing.
@@ -23644,6 +23704,7 @@ static void WireLpDrag(wuxc::Border const& el, int part, std::shared_ptr<LpDrag>
         st->pressed = false;
         st->dragging = false;
         if (!wasDragging) return;
+        if (st->landing) return;
         Wh_Log(L"LayoutPreview: drag of %s canceled (pointer taken)", LP_PARTS[st->part].label);
         if (auto ov = st->overlay.get(); ov && st->ghost) {
             uint32_t i = 0;
@@ -23960,6 +24021,28 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
             wuxc::Canvas::SetZIndex(mk, 20);
             cv.Children().Append(mk);
             strip.markers.push_back(winrt::make_weak(mk.as<wux::FrameworkElement>()));
+        }
+
+        // Where the dragged part would land: a dashed outline its size.
+        {
+            const auto ac = AccentTargetColor();
+            wsh::Rectangle box;
+            box.Stroke(Brush(0xFF, ac.R, ac.G, ac.B));
+            box.StrokeThickness(1.5);
+            wuxm::DoubleCollection dash;
+            dash.Append(4); dash.Append(3);
+            box.StrokeDashArray(dash);
+            box.Fill(Brush(0x22, ac.R, ac.G, ac.B));
+            box.RadiusX(5); box.RadiusY(5);
+            box.Width(40); box.Height(ih);
+            box.Opacity(0);
+            box.IsHitTestVisible(false);
+            box.RenderTransform(wuxm::TranslateTransform());
+            wuxc::Canvas::SetTop(box, y0);
+            wuxc::Canvas::SetZIndex(box, 30);
+            cv.Children().Append(box);
+            strip.dropBox = winrt::make_weak(box);
+            strip.pad = pad;
         }
 
         // Ours: where they really are, or at their spot when they aren't showing now.
