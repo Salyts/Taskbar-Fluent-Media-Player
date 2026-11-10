@@ -23212,7 +23212,7 @@ static double LpDefaultWidth(int part, double ih) {
 
 struct LpStrip {
     winrt::weak_ref<wuxc::Canvas> canvas;
-    double width = 0, height = 0;
+    double width = 0, height = 0, ih = 0, y0 = 0;
     int monitor = 0;
     std::vector<LpSlot> slots;   // in strip pixels
     std::vector<winrt::weak_ref<winrt::Windows::UI::Xaml::Shapes::Rectangle>> markers;
@@ -23256,10 +23256,15 @@ static void LpShowMarkers(LpDrag& st, bool on) {
     for (size_t si = 0; si < st.strips.size(); si++)
         for (size_t k = 0; k < st.strips[si].markers.size(); k++)
             if (auto m = st.strips[si].markers[k].get()) {
+                const auto& strip = st.strips[si];
+                const auto& slot = strip.slots[k];
                 const bool target = on && st.tZone == 0 && (int)si == st.tStrip && (int)k == st.tSlot;
-                m.Opacity(!on ? 0.0 : target ? 1.0 : 0.28);
-                m.Width(target ? 4 : 2);
-                wuxc::Canvas::SetLeft(m, st.strips[si].slots[k].x - (target ? 2 : 1));
+                const double h = slot.overlay ? 8 : (target ? strip.ih : 4);
+                m.Opacity(!on ? 0.0 : target ? 1.0 : 0.55);
+                m.Width(target ? 4 : 4);
+                m.Height(h);
+                wuxc::Canvas::SetLeft(m, slot.x - 2);
+                wuxc::Canvas::SetTop(m, slot.overlay ? 1 : (target ? strip.y0 : strip.height - 6));
             }
     for (auto* z : { &st.attachZone, &st.hiddenZone })
         if (auto b = z->get()) b.BorderBrush(on && st.tZone == (z == &st.attachZone ? 1 : 2) ? AccentBrush()
@@ -23554,6 +23559,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         cv.Children().Append(bg);
 
         for (const LpItem& it : snap.items) {
+            if (it.kind == LpApp) continue;
             auto el = MakeLpItem(it, it.w * s, ih, timeText, dateText);
             wuxc::Canvas::SetLeft(el, it.x * s);
             wuxc::Canvas::SetTop(el, y0 + (ih - el.Height()) / 2);
@@ -23565,17 +23571,22 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         strip.width = W;
         strip.height = H;
         strip.monitor = m.value;
+        strip.ih = ih;
+        strip.y0 = y0;
         for (const LpSlot& sl : snap.slots) {
             LpSlot scaled{ sl.value, sl.x * s, sl.overlay };
+            bool near = false;
+            for (auto& o : strip.slots) near = near || (o.overlay == scaled.overlay && std::abs(o.x - scaled.x) < 7);
+            if (near) continue;
             strip.slots.push_back(scaled);
             wsh::Rectangle mk;
-            mk.Width(2); mk.Height(sl.overlay ? 8 : ih);
-            mk.RadiusX(1); mk.RadiusY(1);
+            mk.Width(4); mk.Height(sl.overlay ? 8 : 4);
+            mk.RadiusX(2); mk.RadiusY(2);
             mk.Fill(AccentBrush());
             mk.Opacity(0.0);
             mk.IsHitTestVisible(false);
-            wuxc::Canvas::SetLeft(mk, scaled.x - 1);
-            wuxc::Canvas::SetTop(mk, sl.overlay ? 1 : y0);
+            wuxc::Canvas::SetLeft(mk, scaled.x - 2);
+            wuxc::Canvas::SetTop(mk, sl.overlay ? 1 : H - 6);
             wuxc::Canvas::SetZIndex(mk, 20);
             cv.Children().Append(mk);
             strip.markers.push_back(winrt::make_weak(mk));
