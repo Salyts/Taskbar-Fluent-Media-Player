@@ -22926,7 +22926,7 @@ static void TakeLpSnapOnThread(void* param) {
         auto root = xr ? xr.Content().try_as<FrameworkElement>() : nullptr;
         auto rootGrid = root ? FindTaskbarRootGrid(root) : nullptr;
         if (!rootGrid) return;
-        const double W = rootGrid.ActualWidth(), H = rootGrid.ActualHeight();
+        const double W = root.ActualWidth(), H = root.ActualHeight();
         if (W <= 0 || H <= 0 || H > W) return;   // a vertical taskbar gets the sketch
         snap->width = W;
         snap->height = H;
@@ -22935,7 +22935,7 @@ static void TakeLpSnapOnThread(void* param) {
             if (!el || el.Visibility() != Visibility::Visible) return false;
             w = el.ActualWidth();
             if (w < 1) return false;
-            x = el.TransformToVisual(rootGrid).TransformPoint({ 0, 0 }).X;
+            x = el.TransformToVisual(root).TransformPoint({ 0, 0 }).X;
             return x > -w && x < W;
         };
         auto ours = [](std::wstring const& name) {
@@ -22946,7 +22946,7 @@ static void TakeLpSnapOnThread(void* param) {
         };
 
         double trayX = W, trayR = W;
-        auto trayFrame = FindChildByName(rootGrid, L"SystemTrayFrameGrid");
+        auto trayFrame = FindChildByName(root, L"SystemTrayFrameGrid");
         if (trayFrame) { double x, w; if (rectOf(trayFrame, x, w)) { trayX = x; trayR = x + w; } }
 
         auto repeater = FindChildByName(rootGrid, L"TaskbarFrameRepeater");
@@ -23220,6 +23220,7 @@ struct LpStrip {
 struct LpDrag {
     std::vector<LpStrip> strips;
     winrt::weak_ref<wuxc::Border> attachZone, hiddenZone;
+    std::vector<winrt::weak_ref<wuxc::Border>> players;   // the player on each copy: dropping a part on it puts it back
     winrt::weak_ref<wuxc::Canvas> overlay;
     winrt::weak_ref<wuxc::TextBlock> caption;
     std::wstring hint;
@@ -23263,6 +23264,8 @@ static void LpShowMarkers(LpDrag& st, bool on) {
     for (auto* z : { &st.attachZone, &st.hiddenZone })
         if (auto b = z->get()) b.BorderBrush(on && st.tZone == (z == &st.attachZone ? 1 : 2) ? AccentBrush()
                                              : (s_light ? Brush(60, 0, 0, 0) : Brush(60, 255, 255, 255)));
+    for (auto& p : st.players)
+        if (auto b = p.get()) b.BorderThickness(on && st.tZone == 1 && st.part != 0 ? wux::Thickness{ 2, 2, 2, 2 } : wux::Thickness{ 1, 1, 1, 1 });
 }
 
 static void WireLpDrag(wuxc::Border const& el, int part, std::shared_ptr<LpDrag> st) {
@@ -23298,13 +23301,24 @@ static void WireLpDrag(wuxc::Border const& el, int part, std::shared_ptr<LpDrag>
         wuxc::Canvas::SetTop(st->ghost, pt.Y - st->grab.Y);
 
         st->tZone = -1; st->tStrip = -1; st->tSlot = -1;
+        auto inside = [&e](winrt::weak_ref<wuxc::Border> const& w) {
+            auto b = w.get();
+            if (!b) return false;
+            auto lp = e.GetCurrentPoint(b).Position();
+            return lp.X >= 0 && lp.Y >= 0 && lp.X <= b.ActualWidth() && lp.Y <= b.ActualHeight();
+        };
+        if (st->part != 0) {
+            if (inside(st->attachZone)) st->tZone = 1;
+            for (auto& p : st->players) if (inside(p)) st->tZone = 1;
+        }
+        if (st->tZone < 0 && inside(st->hiddenZone)) st->tZone = 2;
         double best = 1e9;
-        for (size_t si = 0; si < st->strips.size(); si++) {
+        for (size_t si = 0; si < st->strips.size() && st->tZone < 0; si++) {
             auto cv = st->strips[si].canvas.get();
             if (!cv) continue;
             const auto& strip = st->strips[si];
             auto lp = e.GetCurrentPoint(cv).Position();
-            if (lp.Y < -18 || lp.Y > strip.height + 18 || lp.X < -20 || lp.X > strip.width + 20) continue;
+            if (lp.Y < -12 || lp.Y > strip.height + 12 || lp.X < -20 || lp.X > strip.width + 20) continue;
             for (size_t k = 0; k < strip.slots.size(); k++) {
                 const auto& s = strip.slots[k];
                 // Overlay spots answer near the top edge, the rest across the middle.
@@ -23313,16 +23327,6 @@ static void WireLpDrag(wuxc::Border const& el, int part, std::shared_ptr<LpDrag>
                 if (d < best) { best = d; st->tZone = 0; st->tStrip = (int)si; st->tSlot = (int)k; }
             }
         }
-        if (st->tZone < 0) {
-            auto inside = [&e](winrt::weak_ref<wuxc::Border> const& w) {
-                auto b = w.get();
-                if (!b) return false;
-                auto lp = e.GetCurrentPoint(b).Position();
-                return lp.X >= 0 && lp.Y >= 0 && lp.X <= b.ActualWidth() && lp.Y <= b.ActualHeight();
-            };
-            if (st->part != 0 && inside(st->attachZone)) st->tZone = 1;
-            else if (inside(st->hiddenZone)) st->tZone = 2;
-        }
         LpShowMarkers(*st, true);
         if (auto cap = st->caption.get()) {
             std::wstring text = st->hint;
@@ -23330,7 +23334,7 @@ static void WireLpDrag(wuxc::Border const& el, int part, std::shared_ptr<LpDrag>
                 const auto& strip = st->strips[st->tStrip];
                 text = LpSlotName(strip.slots[st->tSlot].value) + L" \u00B7 " + Loc(L"Monitor") + L" " +
                        std::to_wstring(strip.monitor);
-            } else if (st->tZone == 1) text = Loc(L"In the player");
+            } else if (st->tZone == 1) text = Loc(L"In the player");  // the box or the player itself
             else if (st->tZone == 2) text = Loc(L"Hidden");
             cap.Text(winrt::hstring{ text });
         }
@@ -23457,9 +23461,11 @@ static wux::FrameworkElement MakeLpItem(const LpItem& it, double w, double ih,
             two.HorizontalAlignment(wux::HorizontalAlignment::Right);
             two.Margin(wux::Thickness{ 0, 0, ih * 0.15, 0 });
             auto a = label(timeText, ih * 0.3); a.HorizontalAlignment(wux::HorizontalAlignment::Right);
-            auto d = label(dateText, ih * 0.3); d.HorizontalAlignment(wux::HorizontalAlignment::Right);
             two.Children().Append(a);
-            two.Children().Append(d);
+            if (w >= ih * 1.9) {
+                auto d = label(dateText, ih * 0.3); d.HorizontalAlignment(wux::HorizontalAlignment::Right);
+                two.Children().Append(d);
+            }
             box.Child(two);
             break;
         }
@@ -23598,6 +23604,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
             wuxc::Canvas::SetTop(ph, y0);
             wuxc::Canvas::SetZIndex(ph, 10);
             WireLpDrag(ph, pl.part, st);
+            if (pl.part == 0) st->players.push_back(winrt::make_weak(ph));
             cv.Children().Append(ph);
         }
 
