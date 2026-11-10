@@ -23704,17 +23704,30 @@ static wux::FrameworkElement MakeLpItem(const LpItem& it, double w, double ih,
             auto r = rowOf(ih * 0.22);
             r.HorizontalAlignment(wux::HorizontalAlignment::Left);
             r.Margin(wux::Thickness{ ih * 0.1, 0, 0, 0 });
-            // The real weather icon when it can be loaded, a sun otherwise.
-            wux::FrameworkElement icon = LpGlyph(L"\uE706", ih * 0.5);
-            if (!it.icon.empty()) {
+            // The real weather icon when it's a local file, a sun until it loads
+            // (or for good: an online icon isn't fetched, mods don't go online).
+            wuxc::Grid icon;
+            icon.Width(ih * 0.72); icon.Height(ih * 0.72);
+            icon.VerticalAlignment(wux::VerticalAlignment::Center);
+            auto sun = LpGlyph(L"\uE706", ih * 0.5);
+            icon.Children().Append(sun);
+            const bool online = it.icon.rfind(L"http", 0) == 0;
+            if (!it.icon.empty() && !online) {
                 try {
                     winrt::Windows::Foundation::Uri uri{ winrt::hstring{ it.icon } };
                     wuxc::Image img;
-                    img.Width(ih * 0.72); img.Height(ih * 0.72);
-                    img.VerticalAlignment(wux::VerticalAlignment::Center);
-                    if (it.icon.find(L".svg") != std::wstring::npos) img.Source(wuxm::Imaging::SvgImageSource(uri));
-                    else img.Source(wuxm::Imaging::BitmapImage(uri));
-                    icon = img;
+                    auto weakSun = winrt::make_weak(sun);
+                    auto hideSun = [weakSun](auto const&, auto const&) { if (auto s2 = weakSun.get()) s2.Visibility(wux::Visibility::Collapsed); };
+                    if (it.icon.find(L".svg") != std::wstring::npos) {
+                        wuxm::Imaging::SvgImageSource svg(uri);
+                        svg.Opened(hideSun);
+                        img.Source(svg);
+                    } else {
+                        wuxm::Imaging::BitmapImage bmp(uri);
+                        bmp.ImageOpened(hideSun);
+                        img.Source(bmp);
+                    }
+                    icon.Children().Append(img);
                 } catch (...) { LOG_IGNORED_EXCEPTION(); }
             }
             r.Children().Append(icon);
