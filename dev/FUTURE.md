@@ -49,6 +49,38 @@ Windhawk 2.0 is in alpha (alpha 6 as of Sept 21). Things in it that matter to th
   `Wh_GetStringValue` storage is getting attention. That's the API our settings
   store uses.
 
+## 1.7.1
+
+**Idle mode: keep the player's spot when nothing plays.** Asked for on Discord:
+the taskbar icons jump around when the player hides and comes back, and "always
+show" leaves an empty player sitting there. A setting for what the player shows
+with no media, keeping its size so nothing moves:
+- the date and time, or a line of custom text
+- the last song, dimmed, with a click to resume it
+- nothing, just the reserved width
+
+Everything local. A weather version came up too, but mods can't contact servers,
+so that's out.
+
+**From the Windhawk review's functionality notes** (promised on the PR):
+- Widgets hiding: `RepeatButton_Width_Hook` queues the outer RepeatButton but
+  `WidgetsButtonScopeState` compares the inner panel, so nothing gets hidden. Also
+  only install those hooks when `hideNativeWidgetsButton` is on.
+- `AttachToSession` checks, detaches and attaches under separate locks, so two
+  session events at once can register the handlers twice. Do it all on the media thread.
+- The icon-refresh check runs after `appIconBytes` was moved out, so its flag never clears.
+- Mini player: session rows updated in place keep their old `capturedId` (wrong
+  session on click); closing mid-drag leaves `g_miniPlayerSeekDragging` set; placement
+  uses `g_taskbarWnd`'s monitor even when opened from a part on another monitor.
+- With `monitor: -1`, detached parts never update (`RefreshPlayerContents` and
+  `UpdateVisibility` exit early without `g_playerGrid`).
+- `g_sidebarMode` is one global that each detached part's taskbar overwrites.
+- "Hide when no media": the 2.5 s branch never runs.
+- Carry 1.6.0's `vizPosition` (left/right) over to `vizOrder`.
+- `ChangeSystemVolume` changes the volume twice per wheel step (also in 1.6.0).
+- Album art is decoded at full size twice on the UI thread per track change; decode
+  it scaled.
+
 ## Next
 
 **The player on several monitors at once (#15, #90).** The main feature for the
