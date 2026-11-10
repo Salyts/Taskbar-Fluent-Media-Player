@@ -20785,10 +20785,15 @@ static wma::Storyboard AnimateColors(std::initializer_list<ColorTween> tweens, i
 
 // The accent changed from outside this window (a new cover under an album accent).
 // Shorter than the timer that calls this, so one fade is over before the next.
+// The page has the layout preview on it: its accent tints are brushes of its
+// own, so it's redrawn when the accent changes.
+static bool s_layoutPreviewShown = false;
+
 static void FollowAccentColor() {
     if (!s_accentBrush) return;
     const auto c = AccentTargetColor();
     if (c == s_accentShown) return;
+    if (s_layoutPreviewShown && s_hostWnd) SetTimer(s_hostWnd, RELAYOUT_TIMER, 480, nullptr);
     if (!MotionOn()) { RefreshAccentBrushes(); return; }
     s_accentShown = c;
     s_accentFade = AnimateColors({
@@ -23277,28 +23282,6 @@ static wuxc::TextBlock LpGlyph(const wchar_t* g, double size) {
     return t;
 }
 
-// The cover now playing, for the previews' album art. Made fresh for each
-// preview: every settings window has its own thread, and a XAML object can't
-// be used from another one (a cached one crashed Explorer on reopen).
-static wuxm::Imaging::BitmapImage LpCurrentArt() {
-    std::vector<BYTE> bytes;
-    { std::lock_guard<std::mutex> lk(g_mediaMtx); bytes = g_media.thumbnailBytes; }
-    if (bytes.empty()) return nullptr;
-    try {
-        winrt::com_ptr<IStream> cs;
-        cs.attach(SHCreateMemStream(bytes.data(), (UINT)bytes.size()));
-        if (!cs) return nullptr;
-        winrt::Windows::Storage::Streams::IRandomAccessStream rs{ nullptr };
-        CreateRandomAccessStreamOverStream(cs.get(), BSOS_DEFAULT,
-            winrt::guid_of<winrt::Windows::Storage::Streams::IRandomAccessStream>(), winrt::put_abi(rs));
-        if (!rs) return nullptr;
-        wuxm::Imaging::BitmapImage bmp;
-        bmp.DecodePixelHeight(64);
-        bmp.SetSourceAsync(rs);
-        return bmp;
-    } catch (...) { LOG_IGNORED_EXCEPTION(); return nullptr; }
-}
-
 // The player or a part, drawn as a small version of itself.
 static wuxc::Border MakeLpPlaceholder(int part, double w, double h, bool live) {
     const auto ac = AccentTargetColor();
@@ -23318,23 +23301,15 @@ static wuxc::Border MakeLpPlaceholder(int part, double w, double h, bool live) {
     wuxc::ToolTipService::SetToolTip(b, winrt::box_value(winrt::hstring{ Loc(LP_PARTS[part].label) }));
 
     const double ih = std::max(8.0, h - 8);
-    // Stand-in text, not the song playing: it shows the layout, not the music.
     const std::wstring title = Loc(L"Name"), artist = Loc(L"Artist");
 
-    auto cover = LpCurrentArt();
+    // Stand-ins, not the song playing: the preview shows the layout, not the music.
     auto art = [&]() {
         wuxc::Border a;
         a.Width(ih); a.Height(ih);
         a.CornerRadius(wux::CornerRadius{ 3, 3, 3, 3 });
         a.Background(s_light ? Brush(0x30, 0, 0, 0) : Brush(0x30, 255, 255, 255));
-        if (cover) {
-            wuxc::Image img;
-            img.Source(cover);
-            img.Stretch(wuxm::Stretch::UniformToFill);
-            a.Child(img);
-        } else {
-            a.Child(LpGlyph(L"\uE8D6", ih * 0.5));
-        }
+        a.Child(LpGlyph(L"\uE8D6", ih * 0.5));
         return a;
     };
     auto text = [&](double maxW) {
@@ -24231,6 +24206,7 @@ static void FillLayoutPreview(wuxc::Grid const& outer, double w) {
 }
 
 static wuxc::Grid BuildLayoutPreview() {
+    s_layoutPreviewShown = true;
     wuxc::Grid outer;
     auto lastW = std::make_shared<double>(0.0);
     outer.SizeChanged([lastW](winrt::Windows::Foundation::IInspectable const& sender, wux::SizeChangedEventArgs const& e) {
@@ -24653,6 +24629,7 @@ static void RelabelNavItems() {
 static void BuildPage(const SettingCategory& cat, bool animate = false) {
     using winrt::hstring;
     if (!s_pagePanel) return;
+    s_layoutPreviewShown = false;   // set again if this page has it
     s_pagePanel.ChildrenTransitions(animate ? EntranceTransitions(16) : nullptr);
     s_pagePanel.Children().Clear();
 
