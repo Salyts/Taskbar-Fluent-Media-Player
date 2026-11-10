@@ -180,6 +180,10 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       #! $showIf: {settingsView: full}
       $name: Mirror layout
       $description: Album art, text, and buttons will be displayed on the opposite side
+    - partOrder: "art,info,buttons,viz"
+      #! $showIf: {settingsView: full}
+      $name: Detached part order
+      $description: "When detached parts share a spot, the order they're placed in: art, info, buttons, viz. The Layout page's drag and drop sets it."
     - autoSwitchSession: true
       $name: Auto-switch to active media session
       $description: When enabled, the player automatically switches to whichever media session is currently playing. If the active session pauses and another session is already playing, the player will switch to it.
@@ -2430,6 +2434,7 @@ struct ModSettings {
     std::wstring playerMiddleDoubleClick = L"none";
     std::wstring playerWheelAction    = L"none";
     bool         mirrorLayout         = false;
+    std::wstring partOrder            = L"art,info,buttons,viz";   // detached parts' placing order
     bool         autoSwitchSession    = true;
     bool         fullHeightHitArea    = true;
     bool         sidebarEnabled       = true;
@@ -2802,6 +2807,7 @@ static constexpr SettingSpec SETTINGS[] = {
     SStr(L"MainSettings.PlayerSetting.playerMarginVertical", L"0 0"),
     SStr(L"MainSettings.PlayerSetting.playerOffset", L"0 0"),
     SBool(L"MainSettings.PlayerSetting.mirrorLayout", &ModSettings::mirrorLayout),
+    SStr(L"MainSettings.PlayerSetting.partOrder", L"art,info,buttons,viz", &ModSettings::partOrder),
     SBool(L"MainSettings.PlayerSetting.autoSwitchSession", &ModSettings::autoSwitchSession),
     SBool(L"MainSettings.PlayerSetting.fullHeightHitArea", &ModSettings::fullHeightHitArea),
     SBool(L"MainSettings.PlayerSetting.sidebarEnabled", &ModSettings::sidebarEnabled),
@@ -16633,11 +16639,23 @@ static void RemoveDetachedViz() {
     RemoveDetachedWidget(g_detachedViz, g_settings.vizDetachedPosition);
 }
 
+// In "Detached part order": parts sharing a spot line up in the order they go in.
 static void InjectAllDetachedContainers() {
-    try { InjectDetachedAlbumArt(); } catch (...) { Wh_Log(L"InjectAllDetachedContainers: Exception in album art"); }
-    try { InjectDetachedInfo(); } catch (...) { Wh_Log(L"InjectAllDetachedContainers: Exception in info"); }
-    try { InjectDetachedButtons(); } catch (...) { Wh_Log(L"InjectAllDetachedContainers: Exception in buttons"); }
-    try { InjectDetachedViz(); } catch (...) { Wh_Log(L"InjectAllDetachedContainers: Exception in visualizer"); }
+    struct Part { const wchar_t* keyword; bool (*inject)(); };
+    static const Part parts[] = {
+        { L"art", InjectDetachedAlbumArt }, { L"info", InjectDetachedInfo },
+        { L"buttons", InjectDetachedButtons }, { L"viz", InjectDetachedViz },
+    };
+    bool done[ARRAYSIZE(parts)] = {};
+    auto run = [&](size_t i) {
+        if (done[i]) return;
+        done[i] = true;
+        try { parts[i].inject(); } catch (...) { Wh_Log(L"InjectAllDetachedContainers: Exception in %s", parts[i].keyword); }
+    };
+    for (const auto& kw : SplitCommaList(g_settings.partOrder))
+        for (size_t i = 0; i < ARRAYSIZE(parts); i++)
+            if (kw == parts[i].keyword) run(i);
+    for (size_t i = 0; i < ARRAYSIZE(parts); i++) run(i);
 }
 
 static void RemoveAllDetachedContainers() {
@@ -22911,7 +22929,12 @@ enum LpKind {
     LpChevron = 10, LpTrayIcons, LpLanguage, LpOmni, LpClock, LpShowDesktop, LpOtherTray,
 };
 struct LpItem { int kind; double x, w; std::wstring t1, t2; };   // t1/t2: the Widgets button's text
-struct LpSlot { const wchar_t* value; double x; bool overlay; };
+struct LpSlot {
+    const wchar_t* value; double x; bool overlay;
+    // Beside one of ours: who shares the spot (left to right), whose side, and
+    // whether left to right is the order they go in (+1) or the reverse (-1).
+    int besidePart = -1; bool besideRight = false; std::vector<int> group; int dir = 1;
+};
 struct LpPartRect { int part; double x, w; };
 // One taskbar in its own pixels: read from Explorer, or a sketch when it can't be.
 struct LpSnap {
@@ -23128,6 +23151,47 @@ static void CompactLpSnap(LpSnap& s, bool centered) {
     s.items.erase(std::remove_if(s.items.begin(), s.items.end(), [](const LpItem& it) { return it.kind == LpApp; }), s.items.end());
 }
 
+// Parts sharing a spot: +1 when left to right is the order they're placed in.
+// Next to a taskbar button the first one sits closest to it; in the tray the
+// last one does.
+static int LpStackDir(PlayerPosition p) {
+    switch (p) {
+        case PlayerPosition::TaskbarLeftStart: case PlayerPosition::TaskbarAfterSearchLeft:
+        case PlayerPosition::TaskbarAfterTaskViewLeft: case PlayerPosition::TaskbarAfterWidgetsLeft:
+        case PlayerPosition::TrayLeft: case PlayerPosition::TrayBeforeOmniRight:
+        case PlayerPosition::TrayLanguageRight: case PlayerPosition::TrayIconsRight:
+        case PlayerPosition::TrayHiddenIconsRight: case PlayerPosition::TrayAfterShowDesktopRight:
+            return -1;
+        default:
+            return 1;
+    }
+}
+
+static const wchar_t* const LP_PART_KEYWORDS[] = { L"", L"art", L"info", L"buttons", L"viz" };
+
+// The order that puts `moved` on `right ? the right : the left` of `besidePart`.
+// False when it can't: the player always goes in first.
+static bool LpOrderFor(const LpSlot& slot, int moved, std::wstring& outOrder) {
+    if (moved == 0 || slot.besidePart < 0) return false;
+    std::vector<int> v = slot.group;
+    v.erase(std::remove(v.begin(), v.end(), moved), v.end());
+    auto at = std::find(v.begin(), v.end(), slot.besidePart);
+    if (at == v.end()) return false;
+    v.insert(slot.besideRight ? at + 1 : at, moved);
+    if (slot.dir < 0) std::reverse(v.begin(), v.end());
+    if (std::find(v.begin(), v.end(), 0) != v.end() && v.front() != 0) return false;
+    std::vector<std::wstring> order;
+    for (int p : v) if (p > 0) order.push_back(LP_PART_KEYWORDS[p]);
+    const std::wstring cur = GetSettingOverride(L"MainSettings.PlayerSetting.partOrder",
+        RawFetchStr(L"MainSettings.PlayerSetting.partOrder", L"art,info,buttons,viz"));
+    for (const auto& kw : SplitCommaList(cur))
+        if (std::find(order.begin(), order.end(), kw) == order.end()) order.push_back(kw);
+    for (int p = 1; p <= 4; p++)
+        if (std::find(order.begin(), order.end(), LP_PART_KEYWORDS[p]) == order.end()) order.push_back(LP_PART_KEYWORDS[p]);
+    outOrder = JoinCommaList(order);
+    return true;
+}
+
 static bool TaskbarIconsCentered() {
     DWORD v = 1, size = sizeof(v);
     if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
@@ -23185,17 +23249,13 @@ static wuxc::TextBlock LpGlyph(const wchar_t* g, double size) {
     return t;
 }
 
-// The cover now playing, for the previews' album art. Owned by the images
-// that show it; this only finds it again while a preview is up.
-[[clang::no_destroy]] static winrt::weak_ref<wuxm::Imaging::BitmapImage> s_lpArt;
-static uint64_t s_lpArtHash = 0;
-
+// The cover now playing, for the previews' album art. Made fresh for each
+// preview: every settings window has its own thread, and a XAML object can't
+// be used from another one (a cached one crashed Explorer on reopen).
 static wuxm::Imaging::BitmapImage LpCurrentArt() {
     std::vector<BYTE> bytes;
-    uint64_t hash = 0;
-    { std::lock_guard<std::mutex> lk(g_mediaMtx); bytes = g_media.thumbnailBytes; hash = g_media.thumbnailHash; }
+    { std::lock_guard<std::mutex> lk(g_mediaMtx); bytes = g_media.thumbnailBytes; }
     if (bytes.empty()) return nullptr;
-    if (hash == s_lpArtHash) if (auto b = s_lpArt.get()) return b;
     try {
         winrt::com_ptr<IStream> cs;
         cs.attach(SHCreateMemStream(bytes.data(), (UINT)bytes.size()));
@@ -23207,8 +23267,6 @@ static wuxm::Imaging::BitmapImage LpCurrentArt() {
         wuxm::Imaging::BitmapImage bmp;
         bmp.DecodePixelHeight(64);
         bmp.SetSourceAsync(rs);
-        s_lpArt = winrt::make_weak(bmp);
-        s_lpArtHash = hash;
         return bmp;
     } catch (...) { LOG_IGNORED_EXCEPTION(); return nullptr; }
 }
@@ -23219,7 +23277,7 @@ static wuxc::Border MakeLpPlaceholder(int part, double w, double h, bool live) {
     const auto fg = s_light ? Brush(255, 20, 20, 20) : Brush(255, 255, 255, 255);
     wuxc::Border b;
     // The player hugs what's in it (its real width at most); a part fills its box.
-    if (part == 0) { b.MaxWidth(w); b.MinWidth(std::min(w, h)); }
+    if (part == 0 || part == 2) { b.MaxWidth(w); b.MinWidth(std::min(w, h)); }
     else b.Width(w);
     b.Height(h);
     b.CornerRadius(wux::CornerRadius{ 5, 5, 5, 5 });
@@ -23268,7 +23326,7 @@ static wuxc::Border MakeLpPlaceholder(int part, double w, double h, bool live) {
         return t;
     };
     auto buttons = [&]() {
-        wuxc::StackPanel s; s.Orientation(wuxc::Orientation::Horizontal); s.Spacing(ih * 0.2);
+        wuxc::StackPanel s; s.Orientation(wuxc::Orientation::Horizontal); s.Spacing(ih * 0.5);
         s.VerticalAlignment(wux::VerticalAlignment::Center);
         for (auto* g : { L"\uE892", L"\uE768", L"\uE893" }) s.Children().Append(LpGlyph(g, ih * 0.42));
         return s;
@@ -23293,10 +23351,10 @@ static wuxc::Border MakeLpPlaceholder(int part, double w, double h, bool live) {
     wuxc::StackPanel row;
     row.Orientation(wuxc::Orientation::Horizontal);
     row.VerticalAlignment(wux::VerticalAlignment::Center);
-    if (part == 0) {
+    if (part == 0 || part == 2) {
         row.Spacing(std::max(4.0, ih * 0.4));
         row.HorizontalAlignment(wux::HorizontalAlignment::Left);
-        row.Margin(wux::Thickness{ 4, 0, 6, 0 });
+        row.Margin(wux::Thickness{ part == 2 ? 7.0 : 4.0, 0, 7, 0 });
     } else {
         row.Spacing(std::max(2.0, ih * 0.25));
         row.HorizontalAlignment(wux::HorizontalAlignment::Center);
@@ -23304,7 +23362,7 @@ static wuxc::Border MakeLpPlaceholder(int part, double w, double h, bool live) {
     switch (part) {
         case 0: {
             const bool a = LpInPlayer(1), i = LpInPlayer(2), bt = LpInPlayer(3), v = LpInPlayer(4);
-            double rest = w - 8 - (a ? ih + 4 : 0) - (bt ? ih * 1.9 + 4 : 0) - (v ? ih * 1.3 + 4 : 0);
+            double rest = w - 8 - (a ? ih + 4 : 0) - (bt ? ih * 2.4 + 4 : 0) - (v ? ih * 1.3 + 4 : 0);
             if (a) row.Children().Append(art());
             if (i) row.Children().Append(text(rest));
             if (bt) row.Children().Append(buttons());
@@ -23328,13 +23386,13 @@ static double LpDefaultWidth(int part, double ih) {
             double w = 10;
             if (LpInPlayer(1)) w += ih + 4;
             if (LpInPlayer(2)) w += ih * 3.4 + 4;
-            if (LpInPlayer(3)) w += ih * 1.9 + 4;
+            if (LpInPlayer(3)) w += ih * 2.4 + 4;
             if (LpInPlayer(4)) w += ih * 1.3 + 4;
             return std::max(w, ih * 1.6);
         }
         case 1: return ih + 8;
         case 2: return ih * 3.4 + 8;
-        case 3: return ih * 1.9 + 10;
+        case 3: return ih * 2.4 + 12;
         default: return ih * 1.3 + 10;
     }
 }
@@ -23535,8 +23593,14 @@ static void WireLpDrag(wuxc::Border const& el, int part, std::shared_ptr<LpDrag>
         int monitor = 0;
         std::wstring position;
         if (zone == 0) {
+            const auto& slot = st->strips[st->tStrip].slots[st->tSlot];
             monitor = st->strips[st->tStrip].monitor;
-            position = st->strips[st->tStrip].slots[st->tSlot].value;
+            position = slot.value;
+            std::wstring order;
+            if (LpOrderFor(slot, st->part, order)) {
+                Wh_Log(L"LayoutPreview: part order %s", order.c_str());
+                SetOverrideLive(L"MainSettings.PlayerSetting.partOrder", order);
+            }
         }
         LpCommit(st->part, zone, monitor, position);
     };
@@ -23778,7 +23842,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
                 const wchar_t* name = v == L"taskbar_left_edge" ? L"Left edge" : v == L"taskbar_center_edge" ? L"Center" : L"Right edge";
                 wuxc::Border pill;
                 pill.Height(20);
-                pill.Padding(wux::Thickness{ 8, 0, 8, 0 });
+                pill.Padding(wux::Thickness{ 0, 0, 0, 0 });
                 pill.CornerRadius(wux::CornerRadius{ 10, 10, 10, 10 });
                 pill.BorderThickness(wux::Thickness{ 1, 1, 1, 1 });
                 const auto ac = AccentTargetColor();
@@ -23791,6 +23855,8 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
                 t.Text(hstring{ text });
                 t.FontSize(11);
                 t.VerticalAlignment(wux::VerticalAlignment::Center);
+                t.HorizontalAlignment(wux::HorizontalAlignment::Center);
+                t.TextAlignment(wux::TextAlignment::Center);
                 pill.Child(t);
                 const double pw = 16 + 6.2 * text.size();
                 pill.Width(pw);
@@ -23817,7 +23883,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
 
         // Ours: where they really are, or at their spot when they aren't showing now.
         std::map<std::wstring, double> stacked;
-        struct Beside { double x, w; const wchar_t* value; };
+        struct Beside { int part; double x, w; const wchar_t* value; };
         std::vector<Beside> beside;
         for (const Placed& pl : placed) {
             if (pl.zone != 0 || pl.monitor != m.value) continue;
@@ -23843,17 +23909,33 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
             if (pl.part == 0) st->players.push_back(winrt::make_weak(ph));
             cv.Children().Append(ph);
             const PlayerPosition pos = ParseSettingChoice(pl.position, PLAYER_POSITIONS, PlayerPosition::TrayLeft);
-            if (!IsEdgePosition(pos)) beside.push_back({ x, live ? w : std::min(w, LpDefaultWidth(pl.part, ih)), PositionKey(pos) });
+            if (!IsEdgePosition(pos)) beside.push_back({ pl.part, x, live ? w : std::min(w, LpDefaultWidth(pl.part, ih)), PositionKey(pos) });
         }
 
         // Next to ours: parts sharing a spot line up side by side, so either
         // side of one is that same spot. Overlays would sit on top of each other.
         for (const auto& b : beside) {
-            for (double bx : { b.x - 3, b.x + b.w + 3 }) {
-                bool merged = false;
-                for (auto& o : strip.slots) merged = merged || (!o.overlay && std::abs(o.x - bx) < 7);
-                if (merged || bx < pad || bx > W - pad) continue;
-                strip.slots.push_back({ b.value, bx, false });
+            std::vector<const Beside*> mates;
+            for (const auto& o : beside) if (std::wstring(o.value) == b.value) mates.push_back(&o);
+            std::sort(mates.begin(), mates.end(), [](const Beside* l, const Beside* r) { return l->x < r->x; });
+            std::vector<int> group;
+            for (auto* m2 : mates) group.push_back(m2->part);
+            const int dir = LpStackDir(ParseSettingChoice(b.value, PLAYER_POSITIONS, PlayerPosition::TrayLeft));
+            for (bool right : { false, true }) {
+                // The player goes in first, so nothing can sit on its inner side.
+                if (b.part == 0 && right == (dir < 0)) continue;
+                const double bx = right ? b.x + b.w + 3 : b.x - 3;
+                if (bx < pad || bx > W - pad) continue;
+                LpSlot beside{ b.value, bx, false, b.part, right, group, dir };
+                LpSlot* same = nullptr;
+                for (auto& o : strip.slots)
+                    if (!o.overlay && std::abs(o.x - bx) < 7) { same = &o; break; }
+                if (same) {
+                    // The button's own spot right at this part's edge: dropping there means beside it.
+                    if (std::wstring(same->value) == b.value && same->besidePart < 0) *same = beside;
+                    continue;
+                }
+                strip.slots.push_back(beside);
                 wsh::Rectangle mk;
                 mk.Width(4); mk.Height(4);
                 mk.RadiusX(2); mk.RadiusY(2);
@@ -23926,7 +24008,18 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
     return host;
 }
 
-// Drawn at the card's width, and redrawn when that changes.
+// Drawn at the card's width, and redrawn when that changes. A preview that
+// fails to build leaves the card empty rather than taking the window down.
+static void FillLayoutPreview(wuxc::Grid const& outer, double w) {
+    try {
+        outer.Children().Clear();
+        outer.Children().Append(BuildLayoutPreviewAt(w));
+    } catch (...) {
+        Wh_Log(L"LayoutPreview: building it failed");
+        LOG_IGNORED_EXCEPTION();
+    }
+}
+
 static wuxc::Grid BuildLayoutPreview() {
     wuxc::Grid outer;
     auto lastW = std::make_shared<double>(0.0);
@@ -23934,11 +24027,9 @@ static wuxc::Grid BuildLayoutPreview() {
         const double w = std::floor(e.NewSize().Width);
         if (w <= 0 || std::abs(w - *lastW) < 4) return;
         *lastW = w;
-        auto g = sender.as<wuxc::Grid>();
-        g.Children().Clear();
-        g.Children().Append(BuildLayoutPreviewAt(std::max(520.0, w)));
+        if (auto g = sender.try_as<wuxc::Grid>()) FillLayoutPreview(g, std::max(520.0, w));
     });
-    outer.Children().Append(BuildLayoutPreviewAt(680));
+    FillLayoutPreview(outer, 680);
     return outer;
 }
 
