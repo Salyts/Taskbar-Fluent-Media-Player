@@ -2,6 +2,10 @@
 
 ## 1.7.1 (in progress)
 
+### New
+
+- **Weather when nothing plays.** Turn on "Show Widgets when nothing plays" under Native Widgets: the player hides when nothing is playing and the Windows Widgets button (with the weather) comes back in its place. While music plays, the player is back and Widgets is hidden.
+
 ### Fixes
 
 - "Hide native Widgets button" works again, and the mod only hooks the Widgets button while that setting is on.
@@ -9,7 +13,6 @@
 - With the player off on every monitor, detached parts still update.
 - Mini player: clicking a session in the list switches to the right one after the list changes. It opens on the monitor you clicked on, and the seek bar doesn't stay stuck after closing mid-drag.
 - Scrolling the volume moves it once per notch instead of twice.
-- If your visualizer was on the left in 1.6, it starts out on the left again.
 - Album colors and the blurred background decode a smaller copy of the cover, so track changes take less work.
 - A vertical taskbar on another monitor no longer changes how the main player is laid out.
 - Two quick session changes can't attach the player to the same session twice.

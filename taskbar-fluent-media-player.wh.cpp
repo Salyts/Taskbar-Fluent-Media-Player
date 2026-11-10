@@ -886,6 +886,10 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       - "both": Both / all screens
       - "monitor1": Screen 1 only
       - "monitor2": Screen 2 only
+    - showWidgetsWhenIdle: false
+      #! $showIf: {hideNativeWidgetsButton: true}
+      $name: Show Widgets when nothing plays
+      $description: "Swaps them: the player hides when nothing is playing and the Widgets button (with the weather) shows in its place. The Widgets button has to be on in Windows' taskbar settings."
     $name: Native Widgets button
   #! $hideIf: {settingsView: window}
   $name: Main Settings
@@ -2509,6 +2513,7 @@ struct ModSettings {
     std::wstring artistFormat         = L"";        // empty = artistLineContent
     bool         hideNativeWidgetsButton = false;
     WidgetsHideScope hideNativeWidgetsScope = WidgetsHideScope::Both;
+    bool         showWidgetsWhenIdle  = false;
     int          infoOrder            = 2;
     bool         infoDetached             = false;
     PlayerPosition infoDetachedPosition     = PlayerPosition::TaskbarLeftEdge;
@@ -2835,6 +2840,7 @@ static constexpr SettingSpec SETTINGS[] = {
     SStr(L"MainSettings.AlbumArtSetting.albumArtMargin", L"0 0"),
     SBool(L"MainSettings.NativeWidgetsSetting.hideNativeWidgetsButton", &ModSettings::hideNativeWidgetsButton),
     SStr(L"MainSettings.NativeWidgetsSetting.hideNativeWidgetsScope", L"both"),
+    SBool(L"MainSettings.NativeWidgetsSetting.showWidgetsWhenIdle", &ModSettings::showWidgetsWhenIdle),
     SBool(L"MainSettings.TextAreaSetting.showTrackTitle", &ModSettings::showTrackTitle),
     SBool(L"MainSettings.TextAreaSetting.showTrackArtist", &ModSettings::showTrackArtist),
     SBool(L"MainSettings.TextAreaSetting.showArtistAsTime", &ModSettings::showArtistAsTime),
@@ -3244,15 +3250,6 @@ COLD_UNOPTIMIZED static void LoadSettings() {
             case SettingKind::List:
                 break;
         }
-    }
-
-    if (g_settings.vizOrder == 4 && g_settings.albumArtOrder == 1 && g_settings.infoOrder == 2 &&
-        g_settings.buttonsOrder == 3 && !FindOverride(L"MainSettings.VisualizerFunctionsSettings.vizOrder") &&
-        Str(L"MainSettings.VisualizerFunctionsSettings.vizPosition", L"right") == L"left") {
-        g_settings.vizOrder = 1;
-        g_settings.albumArtOrder = 2;
-        g_settings.infoOrder = 3;
-        g_settings.buttonsOrder = 4;
     }
 
     g_settings.monitor              = GetEffectiveMonitorSetting();
@@ -3779,6 +3776,11 @@ static int              g_playerColumn    = -1;
 // Set by BuildPlayerGrid; lets the mini-player keep the player button visually
 // "active" while the popup is open (Salyts 1.6.0). No-op until wired.
 static std::atomic<bool> g_needsUiUpdate{false};
+
+// "Show Widgets when nothing plays": the player and the Widgets button take turns.
+static bool WidgetsSwapActive() { return g_settings.hideNativeWidgetsButton && g_settings.showWidgetsWhenIdle; }
+// The player is hidden because nothing plays (not for fullscreen).
+static std::atomic<bool> g_playerIdleHidden{false};
 
 // With the main player off (monitor -1) the detached parts still need updates.
 static bool HasAnyPlayerUi() {
@@ -14661,9 +14663,9 @@ static void UpdateVisibility() {
     { std::lock_guard<std::mutex> lk(g_sessionMtx); hasSession = (g_currentSession != nullptr); }
 
     bool hide = false;
-    if (g_settings.hideFullscreen && IsFullscreenActive()) hide = true;
+    const bool fullscreenHide = g_settings.hideFullscreen && IsFullscreenActive();
 
-    if (!hide && g_hiddenByIdle) hide = true;
+    if (g_hiddenByIdle) hide = true;
 
     if (!hide) {
         Wh_Log(L"UpdateVisibility: hasMedia=%d, hasSession=%d, hideWhenNoMedia=%d", hasMedia, hasSession, g_settings.hideWhenNoMedia);
@@ -14672,7 +14674,7 @@ static void UpdateVisibility() {
             g_lastMediaTime = std::chrono::steady_clock::now();
         }
 
-        if (g_settings.hideWhenNoMedia) {
+        if (g_settings.hideWhenNoMedia || WidgetsSwapActive()) {
 
             if (!hasSession) {
                 hide = true;
@@ -14697,6 +14699,11 @@ static void UpdateVisibility() {
             }
         }
     }
+
+    const bool idleHide = hide;
+    if (fullscreenHide) hide = true;
+    if (g_playerIdleHidden.exchange(idleHide) != idleHide && WidgetsSwapActive() && !g_unloading)
+        SpawnTrackedWorker([]() { EnsureWidgetsHideStateApplied(); });
 
     // Detached parts follow `hide`; `hidePlayer` also collapses an empty main bar.
     bool hidePlayer = hide || !PlayerHasInlineContent();
@@ -16894,6 +16901,7 @@ static void ApplyNativeWidgetsHideState(FrameworkElement const& widgetsButton) {
             // -1 means the lookup could not decide; keep whatever state this
             // button is already in rather than guessing (see that function).
             wantHidden = (scope < 0) ? alreadyHidden : (scope > 0);
+            if (WidgetsSwapActive() && g_playerIdleHidden) wantHidden = false;
         }
         if (wantHidden == alreadyHidden) return;
 
@@ -16925,7 +16933,7 @@ static void RestoreStaleHiddenWidgetsOnThisThread() {
             auto dispatcher = el.Dispatcher();
             if (dispatcher && !dispatcher.HasThreadAccess()) continue;  // another taskbar's thread
 
-            bool stillWanted = g_settings.hideNativeWidgetsButton;
+            bool stillWanted = g_settings.hideNativeWidgetsButton && !(WidgetsSwapActive() && g_playerIdleHidden);
             if (stillWanted) {
                 int scope = WidgetsButtonScopeState(el);
                 if (scope == 0) stillWanted = false;   // -1 (undecidable) keeps it hidden
@@ -18804,6 +18812,8 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
         SettingCard nativeWidgets;
         nativeWidgets.rows = {
             RowCombo(L"Hide on which screen", L"MainSettings.NativeWidgetsSetting.hideNativeWidgetsScope", L"both", hideWidgetsScopeOptions),
+            WithDesc(RowBool(L"Show Widgets when nothing plays", L"MainSettings.NativeWidgetsSetting.showWidgetsWhenIdle"),
+                     L"The player hides when nothing is playing and the Widgets button (with the weather) shows in its place."),
         };
         cats.push_back(SettingCategory{ L"Native Widgets", L"\uE8CC", { nativeWidgets } });
         cats.back().enabledRow = WithDesc(
@@ -19908,6 +19918,8 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"Stacks the buttons so they fit the strip.", L"Ставить кнопки стовпчиком, щоб вмістилися.", L"Ставит кнопки столбиком, чтобы поместились.", L"Stapelt die Tasten, damit sie passen.", L"बटनों को ऊपर-नीचे रखता है ताकि वे फ़िट हों।", L"竖向排列按钮以适应窄条。", L"直向排列按鈕以適應窄條。", L"Apila los botones para que quepan.", L"Empile les boutons pour qu'ils tiennent.", L"Empilha os botões para caberem.", L"Impila i pulsanti perché ci stiano.", L"Układa przyciski w kolumnę, by się zmieściły.", L"Düğmeleri sığması için alt alta dizer.", L"ボタンを縦に並べて収めます。", L"버튼을 세로로 쌓아 공간에 맞춥니다." },
     { L"Reads top to bottom instead of bottom to top.", L"Читається згори вниз, а не знизу вгору.", L"Читается сверху вниз, а не снизу вверх.", L"Liest von oben nach unten statt umgekehrt.", L"नीचे से ऊपर की जगह ऊपर से नीचे पढ़ा जाता है।", L"改为从上往下读。", L"改為從上往下讀。", L"Se lee de arriba abajo en vez de al revés.", L"Se lit de haut en bas au lieu de bas en haut.", L"Lê de cima para baixo em vez do contrário.", L"Si legge dall'alto in basso invece del contrario.", L"Czyta się z góry na dół zamiast z dołu do góry.", L"Aşağıdan yukarı yerine yukarıdan aşağı okunur.", L"下から上ではなく上から下に読みます。", L"아래에서 위가 아니라 위에서 아래로 읽힙니다." },
     { L"Shows 2:02/4:24 while playing.", L"Показує 2:02/4:24 під час відтворення.", L"Показывает 2:02/4:24 во время воспроизведения.", L"Zeigt beim Abspielen 2:02/4:24.", L"चलते समय 2:02/4:24 दिखाता है।", L"播放时显示 2:02/4:24。", L"播放時顯示 2:02/4:24。", L"Muestra 2:02/4:24 durante la reproducción.", L"Affiche 2:02/4:24 pendant la lecture.", L"Mostra 2:02/4:24 durante a reprodução.", L"Mostra 2:02/4:24 durante la riproduzione.", L"Pokazuje 2:02/4:24 podczas odtwarzania.", L"Çalarken 2:02/4:24 gösterir.", L"再生中は 2:02/4:24 のように表示します。", L"재생 중 2:02/4:24처럼 표시합니다." },
+    { L"Show Widgets when nothing plays", L"Показувати віджети, коли нічого не грає", L"Показывать виджеты, когда ничего не играет", L"Widgets zeigen, wenn nichts läuft", L"कुछ न चलने पर विजेट्स दिखाएँ", L"没有播放时显示小组件", L"沒有播放時顯示小工具", L"Mostrar Widgets cuando no suena nada", L"Afficher les Widgets quand rien ne joue", L"Mostrar Widgets quando nada estiver tocando", L"Mostra i Widget quando non suona niente", L"Pokaż widżety, gdy nic nie gra", L"Hiçbir şey çalmazken Pencere Öğelerini göster", L"何も再生していないときはウィジェットを表示", L"재생 중이 아닐 때 위젯 표시" },
+    { L"The player hides when nothing is playing and the Widgets button (with the weather) shows in its place.", L"Плеєр ховається, коли нічого не грає, а на його місці з'являється кнопка віджетів (з погодою).", L"Плеер скрывается, когда ничего не играет, а на его месте появляется кнопка виджетов (с погодой).", L"Der Player verschwindet, wenn nichts läuft, und an seiner Stelle erscheint die Widgets-Schaltfläche (mit dem Wetter).", L"कुछ न चलने पर प्लेयर छिप जाता है और उसकी जगह विजेट्स बटन (मौसम के साथ) दिखता है।", L"没有播放时隐藏播放器，并在原位置显示小组件按钮（含天气）。", L"沒有播放時隱藏播放器，並在原位置顯示小工具按鈕（含天氣）。", L"El reproductor se oculta cuando no suena nada y en su lugar aparece el botón de Widgets (con el tiempo).", L"Le lecteur se masque quand rien ne joue et le bouton Widgets (avec la météo) apparaît à sa place.", L"O player some quando nada está tocando e o botão de Widgets (com o clima) aparece no lugar.", L"Il player si nasconde quando non suona niente e al suo posto compare il pulsante Widget (con il meteo).", L"Odtwarzacz chowa się, gdy nic nie gra, a w jego miejscu pojawia się przycisk widżetów (z pogodą).", L"Hiçbir şey çalmazken oynatıcı gizlenir ve yerine Pencere Öğeleri düğmesi (hava durumuyla) gelir.", L"何も再生していないときはプレーヤーを隠し、代わりにウィジェット ボタン（天気付き）を表示します。", L"재생 중인 것이 없으면 플레이어를 숨기고 그 자리에 위젯 버튼(날씨 포함)을 표시합니다." },
     { L"Hides the Windows Widgets button completely.", L"Повністю ховає кнопку віджетів Windows.", L"Полностью скрывает кнопку виджетов Windows.", L"Blendet die Windows-Widgets-Schaltfläche ganz aus.", L"Windows विजेट्स बटन को पूरी तरह छिपाता है।", L"完全隐藏 Windows 小组件按钮。", L"完全隱藏 Windows 小工具按鈕。", L"Oculta por completo el botón de Widgets de Windows.", L"Masque complètement le bouton Widgets de Windows.", L"Oculta totalmente o botão de Widgets do Windows.", L"Nasconde del tutto il pulsante Widget di Windows.", L"Całkowicie ukrywa przycisk widżetów Windows.", L"Windows Pencere Öğeleri düğmesini tamamen gizler.", L"Windows のウィジェット ボタンを完全に隠します。", L"Windows 위젯 버튼을 완전히 숨깁니다." },
     { L"Turns the art with the text (shows on non-square art).", L"Повертає обкладинку разом із текстом (видно на неквадратній).", L"Поворачивает обложку вместе с текстом (видно на неквадратной).", L"Dreht das Cover mit dem Text (sichtbar bei nicht quadratischem).", L"आर्ट को टेक्स्ट के साथ घुमाता है (गैर-वर्ग आर्ट पर दिखता है)।", L"封面随文字一起旋转（非方形封面可见）。", L"封面隨文字一起旋轉（非方形封面可見）。", L"Gira la portada con el texto (se nota si no es cuadrada).", L"Tourne la pochette avec le texte (visible si elle n'est pas carrée).", L"Gira a capa com o texto (aparece se não for quadrada).", L"Ruota la copertina con il testo (si vede se non è quadrata).", L"Obraca okładkę razem z tekstem (widać przy niekwadratowej).", L"Kapağı metinle döndürür (kare olmayan kapakta görünür).", L"テキストと一緒にアートを回転します (正方形以外で見えます)。", L"아트를 텍스트와 함께 돌립니다(정사각형이 아닐 때 보임)." },
     { L"Off hides the player on a left/right taskbar.", L"Вимкнено — програвач ховається на лівій/правій панелі.", L"Выключено — плеер скрыт на левой/правой панели.", L"Aus blendet den Player auf einer linken/rechten Taskleiste aus.", L"बंद होने पर बाएँ/दाएँ टास्कबार पर प्लेयर छिपता है।", L"关闭则在左/右任务栏上隐藏播放器。", L"關閉則在左/右工作列上隱藏播放器。", L"Desactivado oculta el reproductor en una barra lateral.", L"Désactivé masque le lecteur sur une barre latérale.", L"Desligado oculta o player numa barra lateral.", L"Disattivato nasconde il player su una barra laterale.", L"Wyłączone ukrywa odtwarzacz na bocznym pasku.", L"Kapalıyken sol/sağ görev çubuğunda oynatıcı gizlenir.", L"オフにすると左右のタスクバーでは隠します。", L"끄면 왼쪽/오른쪽 작업 표시줄에서는 숨깁니다." },
@@ -21016,6 +21028,7 @@ static const RowRule ROW_RULES[] = {
     { L"MainSettings.VisualizerFunctionsSettings.vizBand6Sensitivity", 108, false, L"MainSettings.VisualizerFunctionsSettings.vizEnabled", L"true" },
     { L"MainSettings.VisualizerFunctionsSettings.vizBand7Sensitivity", 109, false, L"MainSettings.VisualizerFunctionsSettings.vizEnabled", L"true" },
     { L"MainSettings.NativeWidgetsSetting.hideNativeWidgetsScope", 110, false, L"MainSettings.NativeWidgetsSetting.hideNativeWidgetsButton", L"true" },
+    { L"MainSettings.NativeWidgetsSetting.showWidgetsWhenIdle", 5110, false, L"MainSettings.NativeWidgetsSetting.hideNativeWidgetsButton", L"true" },
     { L"AppearanceSettings.BackgroundStyleSettings.solidColor", 111, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"solid|acrylic|mica|mica_alt" },
     { L"AppearanceSettings.BackgroundStyleSettings.solidColor2", 112, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"gradient" },
     { L"AppearanceSettings.BackgroundStyleSettings.gradientColor2", 113, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"gradient" },
