@@ -19966,6 +19966,7 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"Placement", L"Розташування", L"Расположение", L"Platzierung", L"स्थान", L"位置", L"位置", L"Ubicación", L"Emplacement", L"Posição", L"Posizione", L"Umiejscowienie", L"Yerleşim", L"配置", L"배치" },
     { L"Taskbar layout", L"Розташування на панелі завдань", L"Расположение на панели задач", L"Taskleisten-Layout", L"टास्कबार लेआउट", L"任务栏布局", L"工作列配置", L"Diseño de la barra de tareas", L"Disposition de la barre des tâches", L"Layout da barra de tarefas", L"Layout della barra delle applicazioni", L"Układ paska zadań", L"Görev çubuğu düzeni", L"タスク バーのレイアウト", L"작업 표시줄 레이아웃" },
     { L"Drag the player or a part onto a taskbar to move it there. To put a part back, drop it on the player or double-click it.", L"Перетягніть програвач або його частину на панель завдань, щоб перемістити туди. Щоб повернути частину, киньте її на програвач або двічі клацніть її.", L"Перетащите плеер или его часть на панель задач, чтобы переместить туда. Чтобы вернуть часть, бросьте её на плеер или дважды щёлкните по ней.", L"Zieh den Player oder einen Teil auf eine Taskleiste, um ihn dorthin zu verschieben. Um einen Teil zurückzuholen, leg ihn auf den Player oder doppelklick ihn.", L"प्लेयर या उसके किसी हिस्से को टास्कबार पर खींचें, वह वहीं चला जाएगा। किसी हिस्से को वापस लाने के लिए उसे प्लेयर पर छोड़ें या उस पर डबल-क्लिक करें।", L"把播放器或其中一部分拖到任务栏上，即可移到那里。要把某部分放回，把它拖到播放器上或双击它。", L"把播放器或其中一部分拖到工作列上，即可移到那裡。要把某部分放回，把它拖到播放器上或按兩下它。", L"Arrastra el reproductor o una de sus partes a una barra de tareas para moverlo allí. Para devolver una parte, suéltala sobre el reproductor o haz doble clic en ella.", L"Faites glisser le lecteur ou une de ses parties sur une barre des tâches pour l'y déplacer. Pour remettre une partie, déposez-la sur le lecteur ou double-cliquez dessus.", L"Arraste o player ou uma parte dele para uma barra de tarefas para movê-lo para lá. Para devolver uma parte, solte-a no player ou clique duas vezes nela.", L"Trascina il player o una sua parte su una barra delle applicazioni per spostarlo lì. Per rimettere una parte, rilasciala sul player o fai doppio clic su di essa.", L"Przeciągnij odtwarzacz lub jego część na pasek zadań, aby go tam przenieść. Aby przywrócić część, upuść ją na odtwarzacz albo kliknij ją dwukrotnie.", L"Oynatıcıyı veya bir parçasını oraya taşımak için bir görev çubuğuna sürükleyin. Bir parçayı geri koymak için oynatıcının üzerine bırakın veya çift tıklayın.", L"プレーヤーやその一部をタスク バーにドラッグすると、そこに移動します。一部を戻すには、プレーヤーの上にドロップするか、ダブルクリックします。", L"플레이어나 그 일부를 작업 표시줄로 끌어 놓으면 그 위치로 옮겨집니다. 일부를 다시 넣으려면 플레이어 위에 놓거나 두 번 클릭하세요." },
+    { L"Overlay", L"Поверх", L"Поверх", L"Overlay", L"ओवरले", L"悬浮", L"懸浮", L"Superpuesto", L"Superposé", L"Sobreposto", L"Sovrapposto", L"Nakładka", L"Üstte", L"オーバーレイ", L"오버레이" },
     { L"Left edge", L"Лівий край", L"Левый край", L"Linker Rand", L"बायाँ किनारा", L"左边缘", L"左邊緣", L"Borde izquierdo", L"Bord gauche", L"Borda esquerda", L"Bordo sinistro", L"Lewa krawędź", L"Sol kenar", L"左端", L"왼쪽 가장자리" },
     { L"Right edge", L"Правий край", L"Правый край", L"Rechter Rand", L"दायाँ किनारा", L"右边缘", L"右邊緣", L"Borde derecho", L"Bord droit", L"Borda direita", L"Bordo destro", L"Prawa krawędź", L"Sağ kenar", L"右端", L"오른쪽 가장자리" },
     { L"Floats over the taskbar", L"Над панеллю завдань, нічого не зсуває", L"Поверх панели задач, ничего не сдвигает", L"Schwebt über der Taskleiste", L"टास्कबार के ऊपर तैरता है", L"浮在任务栏上方", L"浮在工作列上方", L"Flota sobre la barra de tareas", L"Flotte au-dessus de la barre des tâches", L"Flutua sobre a barra de tarefas", L"Fluttua sopra la barra delle applicazioni", L"Unosi się nad paskiem zadań", L"Görev çubuğunun üzerinde durur", L"タスク バーの上に重ねて表示", L"작업 표시줄 위에 떠 있음" },
@@ -23779,13 +23780,18 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
                 pill.BorderBrush(Brush(0x50, ac.R, ac.G, ac.B));
                 pill.Opacity(0.6);
                 pill.IsHitTestVisible(false);
+                // Fixed at the taskbar's two ends and middle, whatever sits there.
+                const std::wstring text = Loc(L"Overlay") + L" · " + Loc(name);
                 wuxc::TextBlock t;
-                t.Text(hstring{ Loc(name) });
+                t.Text(hstring{ text });
                 t.FontSize(11);
                 t.VerticalAlignment(wux::VerticalAlignment::Center);
                 pill.Child(t);
-                const double pw = 16 + 6.2 * Loc(name).size();
-                wuxc::Canvas::SetLeft(pill, std::clamp(scaled.x - pw / 2, pad, W - pad - pw));
+                const double pw = 16 + 6.2 * text.size();
+                pill.Width(pw);
+                const double left = v == L"taskbar_left_edge" ? pad : v == L"taskbar_center_edge" ? W / 2 - pw / 2 : W - pad - pw;
+                strip.slots.back().x = left + pw / 2;
+                wuxc::Canvas::SetLeft(pill, left);
                 wuxc::Canvas::SetTop(pill, 3);
                 ovRow.Children().Append(pill);
                 strip.markers.push_back(winrt::make_weak(pill.as<wux::FrameworkElement>()));
