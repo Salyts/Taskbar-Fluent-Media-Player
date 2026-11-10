@@ -22820,9 +22820,10 @@ static wuxc::Grid MakeReorderTile(const SettingRow& row, wuxc::Grid& handleOut) 
     return tile;
 }
 
-// ---- Layout preview: drag the player and its parts onto a taskbar sketch ----
-// A drop only writes the position, monitor and detached settings the rows
-// below already have, then applies them live.
+// ---- Layout preview: drag the player and its parts onto a copy of the taskbar ----
+// The copy is read from the real taskbar (what's shown and where). A drop only
+// writes the position, monitor and detached settings the rows below already
+// have, then applies them live.
 
 struct LpPart {
     const wchar_t* label;
@@ -22850,6 +22851,13 @@ static bool LpOn(const wchar_t* key) {
     if (!key) return false;
     std::wstring v = GetSettingOverride(key, RawFetchInt(key) ? L"1" : L"0");
     return !v.empty() && v != L"0";
+}
+static bool LpPartOn(const LpPart& p) {
+    return !p.enableKey || LpOn(p.enableKey) || (p.enableKey2 && LpOn(p.enableKey2));
+}
+static bool LpInPlayer(int part) {
+    const LpPart& p = LP_PARTS[part];
+    return LpPartOn(p) && !LpOn(p.detachKey);
 }
 static std::wstring LpPosition(const LpPart& p) {
     std::wstring v = GetSettingOverride(p.positionKey, RawFetchStr(p.positionKey, p.positionDef));
@@ -22893,47 +22901,150 @@ static std::wstring LpSlotName(const std::wstring& v) {
     return v;
 }
 
-// The sketch: boxes to draw and the drop spots between them, in strip pixels.
-struct LpBox { double x, w; const wchar_t* text; int kind; };  // kind 0 glyph, 1 Start, 2 app, 3 text, 4 thin, 5 two icons
+enum LpKind {
+    LpStart = 1, LpSearchIcon, LpSearchBox, LpTaskView, LpWidgets, LpApp, LpOtherButton,
+    LpChevron = 10, LpTrayIcons, LpLanguage, LpOmni, LpClock, LpShowDesktop, LpOtherTray,
+};
+struct LpItem { int kind; double x, w; };
 struct LpSlot { const wchar_t* value; double x; bool overlay; };
-static constexpr double LP_H = 44;
+struct LpPartRect { int part; double x, w; };
+// One taskbar in its own pixels: read from Explorer, or a sketch when it can't be.
+struct LpSnap {
+    HWND hwnd = nullptr;
+    bool ok = false;
+    double width = 0, height = 0;
+    std::vector<LpItem> items;
+    std::vector<LpSlot> slots;
+    std::vector<LpPartRect> parts;
+};
 
-static void BuildLpSketch(double W, bool centered, std::vector<LpBox>& boxes, std::vector<LpSlot>& slots) {
-    const double trayW = 280, TW = W - trayW, gap = 14, ic = 20, side = 2;
-    auto around = [&](double x, double w, const wchar_t* l, const wchar_t* r) {
-        slots.push_back({ l, x - side, false });
-        slots.push_back({ r, x + w + side, false });
-    };
-    slots.push_back({ L"taskbar_left_edge", 4, true });
-    slots.push_back({ L"taskbar_center_edge", std::min(W / 2, TW - 12), true });
-    slots.push_back({ L"taskbar_right_edge", TW - 4, true });
+// Runs on the taskbar's thread; only plain numbers leave it.
+static void TakeLpSnapOnThread(void* param) {
+    auto* snap = static_cast<LpSnap*>(param);
+    try {
+        auto xr = GetTaskbarXamlRoot(snap->hwnd);
+        auto root = xr ? xr.Content().try_as<FrameworkElement>() : nullptr;
+        auto rootGrid = root ? FindTaskbarRootGrid(root) : nullptr;
+        if (!rootGrid) return;
+        const double W = rootGrid.ActualWidth(), H = rootGrid.ActualHeight();
+        if (W <= 0 || H <= 0 || H > W) return;   // a vertical taskbar gets the sketch
+        snap->width = W;
+        snap->height = H;
 
-    const double groupW = 6 * ic + 5 * gap;
-    double x = centered ? std::min(W / 2, TW - groupW / 2 - 16) - groupW / 2 : 84;
-    boxes.push_back({ x, ic, nullptr, 1 });       around(x, ic, L"taskbar_left_start", L"taskbar_right_start");
-    x += ic + gap;
-    boxes.push_back({ x, ic, L"\uE721", 0 });     around(x, ic, L"taskbar_after_search_left", L"taskbar_after_search_right");
-    x += ic + gap;
-    boxes.push_back({ x, ic, L"\uE7C4", 0 });     around(x, ic, L"taskbar_after_taskview_left", L"taskbar_after_taskview_right");
-    for (int i = 0; i < 3; i++) { x += ic + gap; boxes.push_back({ x, ic, nullptr, 2 }); }
-    const double wx = centered ? 20 : 20;
-    boxes.push_back({ wx, 44, L"\uE706", 3 });    around(wx, 44, L"taskbar_after_widgets_left", L"taskbar_after_widgets_right");
+        auto rectOf = [&](FrameworkElement const& el, double& x, double& w) -> bool {
+            if (!el || el.Visibility() != Visibility::Visible) return false;
+            w = el.ActualWidth();
+            if (w < 1) return false;
+            x = el.TransformToVisual(rootGrid).TransformPoint({ 0, 0 }).X;
+            return x > -w && x < W;
+        };
+        auto ours = [](std::wstring const& name) {
+            return name == GRID_NAME || name.rfind(L"FluentMedia", 0) == 0;
+        };
+        auto slot = [&](PlayerPosition p, double x, bool overlay = false) {
+            snap->slots.push_back({ PositionKey(p), std::clamp(x, 2.0, W - 2.0), overlay });
+        };
 
-    double tx = W - 14;
-    slots.push_back({ L"tray_right", W - 3, false });
-    auto tray = [&](double w, const wchar_t* text, int kind, const wchar_t* l, const wchar_t* r) {
-        tx -= w;
-        boxes.push_back({ tx, w, text, kind });
-        around(tx, w, l, r);
-        tx -= gap;
-    };
-    tray(6,  nullptr,         4, L"tray_after_showdesktop_left", L"tray_after_showdesktop_right");
-    tray(44, L"12:00",        3, L"tray_before_clock", L"tray_after_clock");
-    tray(50, L"\uE701 \uE767", 0, L"tray_before_omni_left", L"tray_before_omni_right");
-    tray(28, L"ENG",          3, L"tray_language_left", L"tray_language_right");
-    tray(34, nullptr,         5, L"tray_icons_left", L"tray_icons_right");
-    tray(16, L"\uE70E",       0, L"tray_hidden_icons_left", L"tray_hidden_icons_right");
-    slots.push_back({ L"tray_left", tx + gap - 10, false });
+        double trayX = W, trayR = W;
+        auto trayFrame = FindChildByName(rootGrid, L"SystemTrayFrameGrid");
+        if (trayFrame) { double x, w; if (rectOf(trayFrame, x, w)) { trayX = x; trayR = x + w; } }
+
+        auto repeater = FindChildByName(rootGrid, L"TaskbarFrameRepeater");
+        if (repeater) {
+            const int n = VisualTreeHelper::GetChildrenCount(repeater);
+            for (int i = 0; i < n; i++) {
+                auto c = VisualTreeHelper::GetChild(repeater, i).try_as<FrameworkElement>();
+                double x, w;
+                if (!c || !rectOf(c, x, w)) continue;
+                const std::wstring name = c.Name().c_str();
+                if (ours(name)) continue;
+                const std::wstring cls = winrt::get_class_name(c).c_str();
+                std::wstring id;
+                try { id = winrt::Windows::UI::Xaml::Automation::AutomationProperties::GetAutomationId(c).c_str(); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+                int kind = LpOtherButton;
+                bool start = id == L"StartButton";
+                for (auto* s : START_BUTTON_NAMES) start = start || name == s;
+                if (start) kind = LpStart;
+                else if (cls == L"Taskbar.TaskbarExtensionElement" || cls.find(L"Search") != std::wstring::npos) kind = w > H * 2.2 ? LpSearchBox : LpSearchIcon;
+                else if (id == L"TaskViewButton") kind = LpTaskView;
+                else if (cls == L"Taskbar.AugmentedEntryPointButton" || name == L"AugmentedEntryPointButton") kind = LpWidgets;
+                else if (cls == L"Taskbar.TaskListButton") kind = LpApp;
+                snap->items.push_back({ kind, x, w });
+            }
+            static const PlayerPosition anchored[] = {
+                PlayerPosition::TaskbarLeftStart, PlayerPosition::TaskbarRightStart,
+                PlayerPosition::TaskbarAfterSearchLeft, PlayerPosition::TaskbarAfterSearchRight,
+                PlayerPosition::TaskbarAfterTaskViewLeft, PlayerPosition::TaskbarAfterTaskViewRight,
+                PlayerPosition::TaskbarAfterWidgetsLeft, PlayerPosition::TaskbarAfterWidgetsRight,
+            };
+            for (PlayerPosition p : anchored) {
+                std::wstring side;
+                auto a = ResolveTrackingAnchor(repeater, p, side);
+                double x, w;
+                if (a && rectOf(a, x, w)) slot(p, side == L"left" ? x - 3 : x + w + 3);
+            }
+        }
+        slot(PlayerPosition::TaskbarLeftEdge, 4, true);
+        slot(PlayerPosition::TaskbarCenterEdge, W / 2, true);
+        slot(PlayerPosition::TaskbarRightEdge, trayX - 6, true);
+
+        if (auto tray = trayFrame ? trayFrame.try_as<Panel>() : nullptr) {
+            struct Named { const wchar_t* name; int kind; };
+            static const Named named[] = {
+                { L"NotifyIconStack", LpChevron }, { L"NotificationAreaIcons", LpTrayIcons },
+                { L"NonActivatableStack", LpLanguage }, { L"ControlCenterButton", LpOmni },
+                { L"NotificationCenterButton", LpClock }, { L"ClockButton", LpClock },
+                { L"ShowDesktopStack", LpShowDesktop },
+            };
+            std::vector<std::pair<FrameworkElement, int>> known;
+            for (auto& nm : named)
+                if (auto d = TrayDirectChild(tray, FindChildByName(tray, nm.name))) known.push_back({ d, nm.kind });
+            double clockX = -1, clockR = -1, sdX = -1, sdR = -1;
+            for (auto const& ch : tray.Children()) {
+                auto c = ch.try_as<FrameworkElement>();
+                double x, w;
+                if (!c || !rectOf(c, x, w) || ours(c.Name().c_str())) continue;
+                int kind = LpOtherTray;
+                for (auto& k : known) if (k.first == c) { kind = k.second; break; }
+                snap->items.push_back({ kind, x, w });
+                if (kind == LpClock && clockX < 0) { clockX = x; clockR = x + w; }
+                if (kind == LpShowDesktop) { sdX = x; sdR = x + w; }
+            }
+            for (PlayerPosition p : { PlayerPosition::TrayBeforeOmniLeft, PlayerPosition::TrayBeforeOmniRight,
+                                      PlayerPosition::TrayLanguageLeft, PlayerPosition::TrayLanguageRight,
+                                      PlayerPosition::TrayHiddenIconsLeft, PlayerPosition::TrayHiddenIconsRight,
+                                      PlayerPosition::TrayIconsLeft, PlayerPosition::TrayIconsRight }) {
+                const TrayAnchor a = TrayAnchorOf(p);
+                auto el = TrayDirectChild(tray, FindChildByName(tray, a.name));
+                double x, w;
+                if (el && rectOf(el, x, w)) slot(p, a.after ? x + w + 3 : x - 3);
+            }
+            if (clockX >= 0) slot(PlayerPosition::TrayBeforeClock, clockX - 3);
+            if (sdX >= 0) {
+                slot(PlayerPosition::TrayAfterShowDesktopLeft, sdX - 3);
+                slot(PlayerPosition::TrayAfterShowDesktopRight, sdR + 1);
+            } else if (clockR >= 0) {
+                slot(PlayerPosition::TrayAfterClock, clockR + 3);
+            }
+        }
+        slot(PlayerPosition::TrayLeft, trayX + 2);
+        slot(PlayerPosition::TrayRight, trayR - 2);
+
+        // Where ours are right now, on this taskbar.
+        auto part = [&](int idx, FrameworkElement const& g, HWND on) {
+            double x, w;
+            if (g && on == snap->hwnd && rectOf(g, x, w)) snap->parts.push_back({ idx, x, w });
+        };
+        part(0, g_playerGrid, g_playerInjectedOnWnd);
+        part(1, g_detachedAlbumArt.grid, g_detachedAlbumArt.injectedOnWnd);
+        part(2, g_detachedInfo.grid, g_detachedInfo.injectedOnWnd);
+        part(3, g_detachedButtons.grid, g_detachedButtons.injectedOnWnd);
+        part(4, g_detachedViz.grid, g_detachedViz.injectedOnWnd);
+        snap->ok = true;
+    } catch (...) {
+        LOG_IGNORED_EXCEPTION();
+        snap->ok = false;
+    }
 }
 
 static bool TaskbarIconsCentered() {
@@ -22943,11 +23054,167 @@ static bool TaskbarIconsCentered() {
     return v != 0;
 }
 
+// Used when a taskbar can't be read: a typical one at 1080p.
+static void BuildLpSketch(LpSnap& s) {
+    const double W = 1920, ic = 40, gap = 4;
+    const bool centered = TaskbarIconsCentered();
+    s = LpSnap{ s.hwnd };
+    s.ok = true; s.width = W; s.height = 48;
+    auto around = [&](double x, double w, PlayerPosition l, PlayerPosition r) {
+        s.slots.push_back({ PositionKey(l), x - 3, false });
+        s.slots.push_back({ PositionKey(r), x + w + 3, false });
+    };
+    double tx = W - 12;
+    s.slots.push_back({ PositionKey(PlayerPosition::TrayRight), W - 2, false });
+    auto tray = [&](int kind, double w, PlayerPosition l, PlayerPosition r) {
+        tx -= w; s.items.push_back({ kind, tx, w }); around(tx, w, l, r); tx -= gap;
+    };
+    tray(LpShowDesktop, 8, PlayerPosition::TrayAfterShowDesktopLeft, PlayerPosition::TrayAfterShowDesktopRight);
+    tray(LpClock, 76, PlayerPosition::TrayBeforeClock, PlayerPosition::TrayAfterClock);
+    tray(LpOmni, 84, PlayerPosition::TrayBeforeOmniLeft, PlayerPosition::TrayBeforeOmniRight);
+    tray(LpLanguage, 40, PlayerPosition::TrayLanguageLeft, PlayerPosition::TrayLanguageRight);
+    tray(LpTrayIcons, 64, PlayerPosition::TrayIconsLeft, PlayerPosition::TrayIconsRight);
+    tray(LpChevron, 28, PlayerPosition::TrayHiddenIconsLeft, PlayerPosition::TrayHiddenIconsRight);
+    const double trayX = tx + gap;
+    s.slots.push_back({ PositionKey(PlayerPosition::TrayLeft), trayX + 2, false });
+    s.slots.push_back({ PositionKey(PlayerPosition::TaskbarLeftEdge), 4, true });
+    s.slots.push_back({ PositionKey(PlayerPosition::TaskbarCenterEdge), W / 2, true });
+    s.slots.push_back({ PositionKey(PlayerPosition::TaskbarRightEdge), trayX - 6, true });
+
+    const double wx = centered ? 12 : trayX - 120;
+    s.items.push_back({ LpWidgets, wx, 96 });
+    around(wx, 96, PlayerPosition::TaskbarAfterWidgetsLeft, PlayerPosition::TaskbarAfterWidgetsRight);
+    const double groupW = 7 * ic + 6 * gap;
+    double x = centered ? W / 2 - groupW / 2 : 12;
+    s.items.push_back({ LpStart, x, ic });      around(x, ic, PlayerPosition::TaskbarLeftStart, PlayerPosition::TaskbarRightStart);
+    x += ic + gap;
+    s.items.push_back({ LpSearchIcon, x, ic }); around(x, ic, PlayerPosition::TaskbarAfterSearchLeft, PlayerPosition::TaskbarAfterSearchRight);
+    x += ic + gap;
+    s.items.push_back({ LpTaskView, x, ic });   around(x, ic, PlayerPosition::TaskbarAfterTaskViewLeft, PlayerPosition::TaskbarAfterTaskViewRight);
+    for (int i = 0; i < 4; i++) { x += ic + gap; s.items.push_back({ LpApp, x, ic }); }
+}
+
+static wuxc::TextBlock LpGlyph(const wchar_t* g, double size) {
+    wuxc::TextBlock t;
+    t.Text(winrt::hstring{ g });
+    t.FontFamily(wuxm::FontFamily(L"Segoe Fluent Icons"));
+    t.FontSize(std::max(6.0, size));
+    t.HorizontalAlignment(wux::HorizontalAlignment::Center);
+    t.VerticalAlignment(wux::VerticalAlignment::Center);
+    return t;
+}
+
+// The player or a part, drawn as a small version of itself.
+static wuxc::Border MakeLpPlaceholder(int part, double w, double h, bool live) {
+    const auto ac = AccentTargetColor();
+    wuxc::Border b;
+    b.Width(w); b.Height(h);
+    b.CornerRadius(wux::CornerRadius{ 4, 4, 4, 4 });
+    b.Background(Brush(live ? 0x48 : 0x26, ac.R, ac.G, ac.B));
+    b.BorderBrush(Brush(live ? 0xFF : 0x99, ac.R, ac.G, ac.B));
+    b.BorderThickness(wux::Thickness{ 1, 1, 1, 1 });
+    wuxm::RectangleGeometry clip;
+    clip.Rect({ 0, 0, (float)w, (float)h });
+    b.Clip(clip);
+    wuxc::ToolTipService::SetToolTip(b, winrt::box_value(winrt::hstring{ Loc(LP_PARTS[part].label) }));
+
+    const double ih = std::max(8.0, h - 8);
+    std::wstring title, artist;
+    { std::lock_guard<std::mutex> lk(g_mediaMtx); title = g_media.title; artist = g_media.artist; }
+    if (title.empty()) title = Loc(LP_PARTS[part].label);
+
+    auto art = [&]() {
+        wuxc::Border a;
+        a.Width(ih); a.Height(ih);
+        a.CornerRadius(wux::CornerRadius{ 3, 3, 3, 3 });
+        a.Background(Brush(0x70, ac.R, ac.G, ac.B));
+        a.Child(LpGlyph(L"\uE8D6", ih * 0.5));
+        return a;
+    };
+    auto text = [&](double maxW) {
+        wuxc::StackPanel t;
+        t.VerticalAlignment(wux::VerticalAlignment::Center);
+        t.MaxWidth(std::max(10.0, maxW));
+        wuxc::TextBlock a; a.Text(winrt::hstring{ title }); a.FontSize(std::max(7.0, ih * 0.36));
+        a.FontWeight(winrt::Windows::UI::Text::FontWeights::SemiBold());
+        a.TextTrimming(wux::TextTrimming::CharacterEllipsis);
+        t.Children().Append(a);
+        if (!artist.empty() && ih >= 18) {
+            wuxc::TextBlock r; r.Text(winrt::hstring{ artist }); r.FontSize(std::max(6.0, ih * 0.3)); r.Opacity(0.7);
+            r.TextTrimming(wux::TextTrimming::CharacterEllipsis);
+            t.Children().Append(r);
+        }
+        return t;
+    };
+    auto buttons = [&]() {
+        wuxc::StackPanel s; s.Orientation(wuxc::Orientation::Horizontal); s.Spacing(ih * 0.2);
+        s.VerticalAlignment(wux::VerticalAlignment::Center);
+        for (auto* g : { L"\uE892", L"\uE768", L"\uE893" }) s.Children().Append(LpGlyph(g, ih * 0.42));
+        return s;
+    };
+    auto viz = [&]() {
+        namespace wsh = winrt::Windows::UI::Xaml::Shapes;
+        wuxc::StackPanel s; s.Orientation(wuxc::Orientation::Horizontal); s.Spacing(std::max(1.0, ih * 0.08));
+        s.VerticalAlignment(wux::VerticalAlignment::Center);
+        for (double f : { 0.35, 0.7, 0.5, 0.95, 0.6, 0.8, 0.4 }) {
+            wsh::Rectangle r;
+            r.Width(std::max(2.0, ih * 0.1)); r.Height(std::max(2.0, ih * 0.8 * f));
+            r.RadiusX(1); r.RadiusY(1);
+            r.Fill(AccentBrush());
+            r.VerticalAlignment(wux::VerticalAlignment::Center);
+            s.Children().Append(r);
+        }
+        return s;
+    };
+
+    wuxc::StackPanel row;
+    row.Orientation(wuxc::Orientation::Horizontal);
+    row.Spacing(std::max(2.0, ih * 0.25));
+    row.VerticalAlignment(wux::VerticalAlignment::Center);
+    row.HorizontalAlignment(wux::HorizontalAlignment::Center);
+    switch (part) {
+        case 0: {
+            const bool a = LpInPlayer(1), i = LpInPlayer(2), bt = LpInPlayer(3), v = LpInPlayer(4);
+            double rest = w - 8 - (a ? ih + 4 : 0) - (bt ? ih * 1.9 + 4 : 0) - (v ? ih * 1.3 + 4 : 0);
+            if (a) row.Children().Append(art());
+            if (i) row.Children().Append(text(rest));
+            if (bt) row.Children().Append(buttons());
+            if (v) row.Children().Append(viz());
+            if (!a && !i && !bt && !v) row.Children().Append(LpGlyph(L"\uE8D6", ih * 0.5));
+            break;
+        }
+        case 1: row.Children().Append(art()); break;
+        case 2: row.Children().Append(text(w - 8)); break;
+        case 3: row.Children().Append(buttons()); break;
+        default: row.Children().Append(viz()); break;
+    }
+    b.Child(row);
+    return b;
+}
+
+// How wide a part is drawn when it isn't on the taskbar to measure.
+static double LpDefaultWidth(int part, double ih) {
+    switch (part) {
+        case 0: {
+            double w = 10;
+            if (LpInPlayer(1)) w += ih + 4;
+            if (LpInPlayer(2)) w += ih * 3.4 + 4;
+            if (LpInPlayer(3)) w += ih * 1.9 + 4;
+            if (LpInPlayer(4)) w += ih * 1.3 + 4;
+            return std::max(w, ih * 1.6);
+        }
+        case 1: return ih + 8;
+        case 2: return ih * 3.4 + 8;
+        case 3: return ih * 1.9 + 10;
+        default: return ih * 1.3 + 10;
+    }
+}
+
 struct LpStrip {
     winrt::weak_ref<wuxc::Canvas> canvas;
-    double width = 0;
+    double width = 0, height = 0;
     int monitor = 0;
-    std::vector<LpSlot> slots;
+    std::vector<LpSlot> slots;   // in strip pixels
     std::vector<winrt::weak_ref<winrt::Windows::UI::Xaml::Shapes::Rectangle>> markers;
 };
 struct LpDrag {
@@ -22958,31 +23225,11 @@ struct LpDrag {
     std::wstring hint;
     int part = -1;
     bool pressed = false, dragging = false;
-    winrt::Windows::Foundation::Point start{};
+    winrt::Windows::Foundation::Point start{}, grab{};
     wuxc::Border ghost{ nullptr };
     winrt::weak_ref<wuxc::Border> source;
-    int tStrip = -1, tSlot = -1, tZone = -1;   // zone 0 a strip spot, 1 in the player, 2 hidden
+    int tStrip = -1, tSlot = -1, tZone = -1;   // zone 0 a taskbar spot, 1 in the player, 2 hidden
 };
-
-static double LpChipWidth(const std::wstring& text) { return 16 + 6.4 * (double)text.size(); }
-
-static wuxc::Border MakeLpChip(const std::wstring& text, bool player) {
-    wuxc::Border chip;
-    chip.CornerRadius(wux::CornerRadius{ 4, 4, 4, 4 });
-    chip.Height(20);
-    chip.Width(LpChipWidth(text));
-    chip.Background(player ? AccentBrush() : (s_light ? Brush(255, 255, 255, 255) : Brush(255, 62, 62, 62)));
-    chip.BorderBrush(AccentBrush());
-    chip.BorderThickness(wux::Thickness{ 1, 1, 1, 1 });
-    wuxc::TextBlock t;
-    t.Text(winrt::hstring{ text });
-    t.FontSize(11);
-    t.HorizontalAlignment(wux::HorizontalAlignment::Center);
-    t.VerticalAlignment(wux::VerticalAlignment::Center);
-    if (player) t.Foreground(AccentForegroundBrush());
-    chip.Child(t);
-    return chip;
-}
 
 static void LpCommit(int part, int zone, int monitor, const std::wstring& position) {
     const LpPart& p = LP_PARTS[part];
@@ -22997,7 +23244,11 @@ static void LpCommit(int part, int zone, int monitor, const std::wstring& positi
         SetOverrideLive(p.monitorKey, std::to_wstring(monitor));
     }
     ApplySettingsLiveNow();
-    if (s_hostWnd) PostMessageW(s_hostWnd, WM_XS_REFRESH, 0, 0);
+    if (s_hostWnd) {
+        PostMessageW(s_hostWnd, WM_XS_REFRESH, 0, 0);
+        // Once the taskbar has laid itself out again, so the copy shows the real result.
+        SetTimer(s_hostWnd, RELAYOUT_TIMER, 450, nullptr);
+    }
 }
 
 static void LpShowMarkers(LpDrag& st, bool on) {
@@ -23005,7 +23256,7 @@ static void LpShowMarkers(LpDrag& st, bool on) {
         for (size_t k = 0; k < st.strips[si].markers.size(); k++)
             if (auto m = st.strips[si].markers[k].get()) {
                 const bool target = on && st.tZone == 0 && (int)si == st.tStrip && (int)k == st.tSlot;
-                m.Opacity(!on ? 0.0 : target ? 1.0 : 0.3);
+                m.Opacity(!on ? 0.0 : target ? 1.0 : 0.28);
                 m.Width(target ? 4 : 2);
                 wuxc::Canvas::SetLeft(m, st.strips[si].slots[k].x - (target ? 2 : 1));
             }
@@ -23014,46 +23265,50 @@ static void LpShowMarkers(LpDrag& st, bool on) {
                                              : (s_light ? Brush(60, 0, 0, 0) : Brush(60, 255, 255, 255)));
 }
 
-static void WireLpChip(wuxc::Border const& chip, int part, std::shared_ptr<LpDrag> st) {
+static void WireLpDrag(wuxc::Border const& el, int part, std::shared_ptr<LpDrag> st) {
     using PtrArgs = wux::Input::PointerRoutedEventArgs;
-    chip.PointerPressed([st, part](winrt::Windows::Foundation::IInspectable const& sender, PtrArgs const& e) {
+    el.PointerPressed([st, part](winrt::Windows::Foundation::IInspectable const& sender, PtrArgs const& e) {
         auto ov = st->overlay.get();
         if (!ov || !e.GetCurrentPoint(nullptr).Properties().IsLeftButtonPressed()) return;
+        auto src = sender.as<wuxc::Border>();
         st->part = part; st->pressed = true; st->dragging = false;
         st->start = e.GetCurrentPoint(ov).Position();
-        st->source = winrt::make_weak(sender.as<wuxc::Border>());
-        sender.as<wux::UIElement>().CapturePointer(e.Pointer());
+        st->grab = e.GetCurrentPoint(src).Position();
+        st->source = winrt::make_weak(src);
+        src.CapturePointer(e.Pointer());
         e.Handled(true);
     });
-    chip.PointerMoved([st](winrt::Windows::Foundation::IInspectable const&, PtrArgs const& e) {
+    el.PointerMoved([st](winrt::Windows::Foundation::IInspectable const&, PtrArgs const& e) {
         if (!st->pressed) return;
         auto ov = st->overlay.get();
         if (!ov) return;
         auto pt = e.GetCurrentPoint(ov).Position();
         if (!st->dragging) {
             if (std::abs(pt.X - st->start.X) < 4 && std::abs(pt.Y - st->start.Y) < 4) return;
+            auto src = st->source.get();
+            if (!src) return;
             st->dragging = true;
-            const std::wstring label = Loc(LP_PARTS[st->part].label);
-            st->ghost = MakeLpChip(label, st->part == 0);
+            st->ghost = MakeLpPlaceholder(st->part, src.ActualWidth(), src.ActualHeight(), true);
             st->ghost.Opacity(0.9);
             st->ghost.IsHitTestVisible(false);
             ov.Children().Append(st->ghost);
-            if (auto src = st->source.get()) src.Opacity(0.35);
+            src.Opacity(0.3);
         }
-        wuxc::Canvas::SetLeft(st->ghost, pt.X - st->ghost.Width() / 2);
-        wuxc::Canvas::SetTop(st->ghost, pt.Y - 10);
+        wuxc::Canvas::SetLeft(st->ghost, pt.X - st->grab.X);
+        wuxc::Canvas::SetTop(st->ghost, pt.Y - st->grab.Y);
 
         st->tZone = -1; st->tStrip = -1; st->tSlot = -1;
         double best = 1e9;
         for (size_t si = 0; si < st->strips.size(); si++) {
             auto cv = st->strips[si].canvas.get();
             if (!cv) continue;
+            const auto& strip = st->strips[si];
             auto lp = e.GetCurrentPoint(cv).Position();
-            if (lp.Y < -16 || lp.Y > LP_H + 16 || lp.X < -20 || lp.X > st->strips[si].width + 20) continue;
-            for (size_t k = 0; k < st->strips[si].slots.size(); k++) {
-                const auto& s = st->strips[si].slots[k];
+            if (lp.Y < -18 || lp.Y > strip.height + 18 || lp.X < -20 || lp.X > strip.width + 20) continue;
+            for (size_t k = 0; k < strip.slots.size(); k++) {
+                const auto& s = strip.slots[k];
                 // Overlay spots answer near the top edge, the rest across the middle.
-                const double sy = s.overlay ? 6.0 : LP_H / 2;
+                const double sy = s.overlay ? 4.0 : strip.height / 2;
                 const double d = std::abs(lp.X - s.x) + 0.6 * std::abs(lp.Y - sy);
                 if (d < best) { best = d; st->tZone = 0; st->tStrip = (int)si; st->tSlot = (int)k; }
             }
@@ -23108,9 +23363,117 @@ static void WireLpChip(wuxc::Border const& chip, int part, std::shared_ptr<LpDra
         }
         LpCommit(st->part, zone, monitor, position);
     };
-    chip.PointerReleased(finish);
-    chip.PointerCanceled(finish);
-    chip.PointerCaptureLost(finish);
+    el.PointerReleased(finish);
+    el.PointerCanceled(finish);
+    el.PointerCaptureLost(finish);
+}
+
+// One taskbar item, drawn at strip size.
+static wux::FrameworkElement MakeLpItem(const LpItem& it, double w, double ih,
+                                       std::wstring const& timeText, std::wstring const& dateText) {
+    using winrt::hstring;
+    const auto dim = s_light ? Brush(255, 196, 196, 196) : Brush(255, 78, 78, 78);
+    wuxc::Border box;
+    box.Width(std::max(2.0, w));
+    box.Height(ih);
+    box.CornerRadius(wux::CornerRadius{ 4, 4, 4, 4 });
+    auto icon = [&](double size) {
+        wuxc::Border s; s.Width(size); s.Height(size);
+        s.CornerRadius(wux::CornerRadius{ size * 0.22, size * 0.22, size * 0.22, size * 0.22 });
+        s.Background(dim);
+        s.HorizontalAlignment(wux::HorizontalAlignment::Center);
+        s.VerticalAlignment(wux::VerticalAlignment::Center);
+        return s;
+    };
+    auto label = [&](std::wstring const& t, double size) {
+        wuxc::TextBlock tb; tb.Text(hstring{ t }); tb.FontSize(std::max(6.0, size)); tb.Opacity(0.85);
+        tb.HorizontalAlignment(wux::HorizontalAlignment::Center);
+        tb.VerticalAlignment(wux::VerticalAlignment::Center);
+        tb.TextTrimming(wux::TextTrimming::Clip);
+        return tb;
+    };
+    auto rowOf = [](double spacing) {
+        wuxc::StackPanel p; p.Orientation(wuxc::Orientation::Horizontal); p.Spacing(spacing);
+        p.HorizontalAlignment(wux::HorizontalAlignment::Center);
+        p.VerticalAlignment(wux::VerticalAlignment::Center);
+        return p;
+    };
+    switch (it.kind) {
+        case LpStart: {
+            const double q = ih * 0.22;
+            wuxc::Grid g; g.Width(q * 2 + 1.5); g.Height(q * 2 + 1.5);
+            g.HorizontalAlignment(wux::HorizontalAlignment::Center);
+            g.VerticalAlignment(wux::VerticalAlignment::Center);
+            for (int k = 0; k < 4; k++) {
+                winrt::Windows::UI::Xaml::Shapes::Rectangle r; r.Width(q); r.Height(q); r.Fill(AccentBrush());
+                r.HorizontalAlignment(k % 2 ? wux::HorizontalAlignment::Right : wux::HorizontalAlignment::Left);
+                r.VerticalAlignment(k / 2 ? wux::VerticalAlignment::Bottom : wux::VerticalAlignment::Top);
+                g.Children().Append(r);
+            }
+            box.Child(g);
+            break;
+        }
+        case LpSearchIcon: box.Child(LpGlyph(L"\uE721", ih * 0.42)); break;
+        case LpSearchBox: {
+            box.Background(s_light ? Brush(255, 255, 255, 255) : Brush(255, 52, 52, 52));
+            box.CornerRadius(wux::CornerRadius{ ih / 2, ih / 2, ih / 2, ih / 2 });
+            box.Height(ih * 0.78);
+            auto r = rowOf(ih * 0.18);
+            r.HorizontalAlignment(wux::HorizontalAlignment::Left);
+            r.Margin(wux::Thickness{ ih * 0.3, 0, 0, 0 });
+            r.Children().Append(LpGlyph(L"\uE721", ih * 0.36));
+            r.Children().Append(label(Loc(L"Search"), ih * 0.32));
+            box.Child(r);
+            break;
+        }
+        case LpTaskView: box.Child(LpGlyph(L"\uE7C4", ih * 0.42)); break;
+        case LpWidgets: {
+            auto r = rowOf(ih * 0.12);
+            r.Children().Append(LpGlyph(L"\uE706", ih * 0.42));
+            if (w > ih * 1.3) r.Children().Append(label(L"18\u00B0", ih * 0.32));
+            box.Child(r);
+            break;
+        }
+        case LpApp: box.Child(icon(ih * 0.6)); break;
+        case LpChevron: box.Child(LpGlyph(L"\uE70E", ih * 0.32)); break;
+        case LpTrayIcons: {
+            const int n = std::clamp((int)std::lround(w / (ih * 0.75)), 1, 12);
+            auto r = rowOf(ih * 0.18);
+            for (int k = 0; k < n; k++) r.Children().Append(icon(ih * 0.4));
+            box.Child(r);
+            break;
+        }
+        case LpLanguage: box.Child(label(L"ENG", ih * 0.3)); break;
+        case LpOmni: {
+            auto r = rowOf(ih * 0.18);
+            r.Children().Append(LpGlyph(L"\uE701", ih * 0.36));
+            r.Children().Append(LpGlyph(L"\uE767", ih * 0.36));
+            box.Child(r);
+            break;
+        }
+        case LpClock: {
+            wuxc::StackPanel two;
+            two.VerticalAlignment(wux::VerticalAlignment::Center);
+            two.HorizontalAlignment(wux::HorizontalAlignment::Right);
+            two.Margin(wux::Thickness{ 0, 0, ih * 0.15, 0 });
+            auto a = label(timeText, ih * 0.3); a.HorizontalAlignment(wux::HorizontalAlignment::Right);
+            auto d = label(dateText, ih * 0.3); d.HorizontalAlignment(wux::HorizontalAlignment::Right);
+            two.Children().Append(a);
+            two.Children().Append(d);
+            box.Child(two);
+            break;
+        }
+        case LpShowDesktop: {
+            winrt::Windows::UI::Xaml::Shapes::Rectangle line;
+            line.Width(1); line.Height(ih * 0.6); line.Fill(dim);
+            line.HorizontalAlignment(wux::HorizontalAlignment::Right);
+            line.VerticalAlignment(wux::VerticalAlignment::Center);
+            box.Child(line);
+            break;
+        }
+        default: box.Child(icon(std::min(w, ih) * 0.5)); break;
+    }
+    return box;
 }
 
 static wuxc::Grid BuildLayoutPreviewAt(double W) {
@@ -23129,15 +23492,16 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
     host.Children().Append(overlay);
     st->overlay = winrt::make_weak(overlay);
 
-    std::vector<LpBox> boxes;
-    std::vector<LpSlot> slots;
-    BuildLpSketch(W, TaskbarIconsCentered(), boxes, slots);
-
-    const auto dim = s_light ? Brush(255, 205, 205, 205) : Brush(255, 70, 70, 70);
+    std::wstring timeText, dateText;
+    {
+        wchar_t buf[64];
+        if (GetTimeFormatEx(LOCALE_NAME_USER_DEFAULT, TIME_NOSECONDS, nullptr, nullptr, buf, 64)) timeText = buf;
+        if (GetDateFormatEx(LOCALE_NAME_USER_DEFAULT, DATE_SHORTDATE, nullptr, nullptr, buf, 64, nullptr)) dateText = buf;
+    }
     const auto stripBg = s_light ? Brush(255, 238, 238, 238) : Brush(255, 28, 28, 28);
     const auto zoneLine = s_light ? Brush(60, 0, 0, 0) : Brush(60, 255, 255, 255);
 
-    // Where each part is now: a strip spot, in the player, or hidden.
+    // Where each part is now: a taskbar spot, in the player, or hidden.
     struct Placed { int part; int monitor; std::wstring position; int zone; };
     std::vector<Placed> placed;
     std::vector<MonitorSlot> monitors;
@@ -23149,7 +23513,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
     };
     for (int i = 0; i < (int)ARRAYSIZE(LP_PARTS); i++) {
         const LpPart& p = LP_PARTS[i];
-        if (p.enableKey && !LpOn(p.enableKey) && !(p.enableKey2 && LpOn(p.enableKey2))) continue;
+        if (!LpPartOn(p)) continue;
         if (p.detachKey && !LpOn(p.detachKey)) { placed.push_back({ i, 0, L"", 1 }); continue; }
         const int mon = LpMonitor(p);
         if (mon == MONITOR_OFF || !onStrip(mon)) { placed.push_back({ i, mon, L"", 2 }); continue; }
@@ -23157,6 +23521,16 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
     }
 
     for (const MonitorSlot& m : monitors) {
+        LpSnap snap;
+        snap.hwnd = FindTaskbarWndForMonitorWithHopBack(m.value);
+        if (snap.hwnd && !g_unloading) RunFromWindowThread(snap.hwnd, TakeLpSnapOnThread, &snap);
+        if (!snap.ok || snap.width <= 0) BuildLpSketch(snap);
+
+        const double s = W / snap.width;
+        const double H = std::clamp(snap.height * s, 34.0, 60.0);
+        const double ih = std::round(H * 0.74);
+        const double y0 = std::round((H - ih) / 2);
+
         wuxc::TextBlock label;
         label.Text(hstring{ Loc(L"Monitor") + L" " + std::to_wstring(m.number) + (m.name.empty() ? L"" : L"  \u00B7  " + m.name) });
         label.FontSize(12);
@@ -23164,101 +23538,67 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         stack.Children().Append(label);
 
         wuxc::Canvas cv;
-        cv.Width(W); cv.Height(LP_H);
+        cv.Width(W); cv.Height(H);
         wuxc::Border bg;
-        bg.Width(W); bg.Height(LP_H);
+        bg.Width(W); bg.Height(H);
         bg.CornerRadius(wux::CornerRadius{ 6, 6, 6, 6 });
         bg.Background(stripBg);
+        bg.BorderBrush(zoneLine);
+        bg.BorderThickness(wux::Thickness{ 1, 1, 1, 1 });
         cv.Children().Append(bg);
 
-        for (const LpBox& b : boxes) {
-            wuxc::Border box;
-            box.Width(b.w);
-            box.Height(b.kind == 4 ? 26 : 22);
-            wuxc::Canvas::SetLeft(box, b.x);
-            wuxc::Canvas::SetTop(box, (LP_H - box.Height()) / 2);
-            box.CornerRadius(wux::CornerRadius{ 4, 4, 4, 4 });
-            if (b.kind == 1) {
-                // Start: four squares
-                wuxc::Grid g; g.Width(12); g.Height(12);
-                for (int q = 0; q < 4; q++) {
-                    wsh::Rectangle r; r.Width(5); r.Height(5); r.Fill(AccentBrush());
-                    r.HorizontalAlignment(q % 2 ? wux::HorizontalAlignment::Right : wux::HorizontalAlignment::Left);
-                    r.VerticalAlignment(q / 2 ? wux::VerticalAlignment::Bottom : wux::VerticalAlignment::Top);
-                    g.Children().Append(r);
-                }
-                box.Child(g);
-            } else if (b.kind == 2 || b.kind == 4) {
-                box.Background(dim);
-            } else if (b.kind == 5) {
-                wuxc::StackPanel two; two.Orientation(wuxc::Orientation::Horizontal); two.Spacing(4);
-                two.HorizontalAlignment(wux::HorizontalAlignment::Center);
-                two.VerticalAlignment(wux::VerticalAlignment::Center);
-                for (int q = 0; q < 2; q++) {
-                    wuxc::Border s; s.Width(14); s.Height(14); s.CornerRadius(wux::CornerRadius{ 3, 3, 3, 3 }); s.Background(dim);
-                    two.Children().Append(s);
-                }
-                box.Child(two);
-            } else {
-                wuxc::TextBlock t;
-                std::wstring text = b.text ? b.text : L"";
-                if (b.kind == 3 && text == L"\uE706") {
-                    // Widgets: a sun and a temperature
-                    wuxc::StackPanel w; w.Orientation(wuxc::Orientation::Horizontal); w.Spacing(3);
-                    w.HorizontalAlignment(wux::HorizontalAlignment::Center);
-                    w.VerticalAlignment(wux::VerticalAlignment::Center);
-                    wuxc::TextBlock sun; sun.Text(L"\uE706"); sun.FontFamily(wuxm::FontFamily(L"Segoe Fluent Icons")); sun.FontSize(12);
-                    wuxc::TextBlock deg; deg.Text(L"18\u00B0"); deg.FontSize(10);
-                    w.Children().Append(sun); w.Children().Append(deg);
-                    box.Child(w);
-                } else {
-                    t.Text(hstring{ text });
-                    t.FontSize(b.kind == 3 ? 10 : 12);
-                    if (b.kind == 0) t.FontFamily(wuxm::FontFamily(L"Segoe Fluent Icons"));
-                    t.Opacity(0.8);
-                    t.HorizontalAlignment(wux::HorizontalAlignment::Center);
-                    t.VerticalAlignment(wux::VerticalAlignment::Center);
-                    box.Child(t);
-                }
-            }
-            cv.Children().Append(box);
+        for (const LpItem& it : snap.items) {
+            auto el = MakeLpItem(it, it.w * s, ih, timeText, dateText);
+            wuxc::Canvas::SetLeft(el, it.x * s);
+            wuxc::Canvas::SetTop(el, y0 + (ih - el.Height()) / 2);
+            cv.Children().Append(el);
         }
 
         LpStrip strip;
         strip.canvas = winrt::make_weak(cv);
         strip.width = W;
+        strip.height = H;
         strip.monitor = m.value;
-        strip.slots = slots;
-        for (const LpSlot& s : slots) {
+        for (const LpSlot& sl : snap.slots) {
+            LpSlot scaled{ sl.value, sl.x * s, sl.overlay };
+            strip.slots.push_back(scaled);
             wsh::Rectangle mk;
-            mk.Width(2); mk.Height(s.overlay ? 10 : 30);
+            mk.Width(2); mk.Height(sl.overlay ? 8 : ih);
+            mk.RadiusX(1); mk.RadiusY(1);
             mk.Fill(AccentBrush());
             mk.Opacity(0.0);
             mk.IsHitTestVisible(false);
-            wuxc::Canvas::SetLeft(mk, s.x - 1);
-            wuxc::Canvas::SetTop(mk, s.overlay ? 1 : (LP_H - 30) / 2);
+            wuxc::Canvas::SetLeft(mk, scaled.x - 1);
+            wuxc::Canvas::SetTop(mk, sl.overlay ? 1 : y0);
+            wuxc::Canvas::SetZIndex(mk, 20);
             cv.Children().Append(mk);
             strip.markers.push_back(winrt::make_weak(mk));
         }
 
-        // The chips on this monitor, side by side where they share a spot.
-        std::map<std::wstring, double> used;
+        // Ours: where they really are, or at their spot when they aren't showing now.
+        std::map<std::wstring, double> stacked;
         for (const Placed& pl : placed) {
             if (pl.zone != 0 || pl.monitor != m.value) continue;
-            double sx = -1;
-            for (const LpSlot& s : slots) if (pl.position == s.value) { sx = s.x; break; }
-            if (sx < 0) continue;
-            const std::wstring text = Loc(LP_PARTS[pl.part].label);
-            auto chip = MakeLpChip(text, pl.part == 0);
-            const double w = chip.Width();
-            double& offset = used[pl.position];
-            double left = std::clamp(sx - w / 2 + offset, 0.0, W - w);
-            offset += w + 4;
-            wuxc::Canvas::SetLeft(chip, left);
-            wuxc::Canvas::SetTop(chip, (LP_H - 20) / 2);
-            wuxc::Canvas::SetZIndex(chip, 10);
-            WireLpChip(chip, pl.part, st);
-            cv.Children().Append(chip);
+            double x = -1, w = 0;
+            bool live = false;
+            for (auto& r : snap.parts) if (r.part == pl.part) { x = r.x * s; w = r.w * s; live = true; break; }
+            if (!live) {
+                double sx = -1;
+                for (auto& sl : strip.slots) if (pl.position == sl.value) { sx = sl.x; break; }
+                if (sx < 0) sx = W / 2;
+                w = LpDefaultWidth(pl.part, ih);
+                double& off = stacked[pl.position];
+                x = sx - w / 2 + off;
+                off += w + 4;
+            }
+            w = std::max(w, ih * 0.8);
+            x = std::clamp(x, 0.0, W - w);
+            auto ph = MakeLpPlaceholder(pl.part, w, ih, live);
+            wuxc::Canvas::SetLeft(ph, x);
+            wuxc::Canvas::SetTop(ph, y0);
+            wuxc::Canvas::SetZIndex(ph, 10);
+            WireLpDrag(ph, pl.part, st);
+            cv.Children().Append(ph);
         }
 
         wuxc::Viewbox vb;
@@ -23270,7 +23610,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         st->strips.push_back(std::move(strip));
     }
 
-    // In the player / hidden: drop zones that also hold the chips that are there.
+    // In the player / hidden: drop zones that also hold what's there.
     wuxc::Grid zones;
     zones.ColumnSpacing(8);
     zones.Margin(wux::Thickness{ 0, 6, 0, 0 });
@@ -23278,6 +23618,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         wuxc::ColumnDefinition col; col.Width(wux::GridLength{ 1.0, wux::GridUnitType::Star });
         zones.ColumnDefinitions().Append(col);
     }
+    const double zih = 30;
     for (int z = 1; z <= 2; z++) {
         wuxc::Border zone;
         zone.CornerRadius(wux::CornerRadius{ 6, 6, 6, 6 });
@@ -23285,18 +23626,18 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         zone.BorderBrush(zoneLine);
         zone.Background(wuxm::SolidColorBrush(winrt::Windows::UI::Colors::Transparent()));
         zone.Padding(wux::Thickness{ 10, 6, 10, 8 });
-        zone.MinHeight(56);
+        zone.MinHeight(64);
         wuxc::StackPanel inner; inner.Spacing(6);
         wuxc::TextBlock t; t.Text(hstring{ Loc(z == 1 ? L"In the player" : L"Hidden") }); t.FontSize(12); t.Opacity(0.7);
         inner.Children().Append(t);
-        wuxc::StackPanel chips; chips.Orientation(wuxc::Orientation::Horizontal); chips.Spacing(4);
+        wuxc::StackPanel items; items.Orientation(wuxc::Orientation::Horizontal); items.Spacing(6);
         for (const Placed& pl : placed) {
             if (pl.zone != z) continue;
-            auto chip = MakeLpChip(Loc(LP_PARTS[pl.part].label), pl.part == 0);
-            WireLpChip(chip, pl.part, st);
-            chips.Children().Append(chip);
+            auto ph = MakeLpPlaceholder(pl.part, LpDefaultWidth(pl.part, zih), zih, false);
+            WireLpDrag(ph, pl.part, st);
+            items.Children().Append(ph);
         }
-        inner.Children().Append(chips);
+        inner.Children().Append(items);
         zone.Child(inner);
         wuxc::Grid::SetColumn(zone, z - 1);
         zones.Children().Append(zone);
