@@ -23431,8 +23431,10 @@ struct LpStrip {
     std::vector<LpSlot> slots;   // in strip pixels
     std::vector<winrt::weak_ref<wux::FrameworkElement>> markers;   // a dot per spot, a pill per overlay spot
     winrt::weak_ref<wuxc::Canvas> ovCanvas;   // the overlay row above the copy
-    double ovH = 0, pad = 0;
+    double ovH = 0, pad = 0, trayX = 0;
     winrt::weak_ref<winrt::Windows::UI::Xaml::Shapes::Rectangle> dropBox;   // dashed outline where it would land
+    struct Mover { winrt::weak_ref<wux::FrameworkElement> el; double x; };
+    std::vector<Mover> movers;   // what slides aside to make room
 };
 struct LpDrag {
     std::vector<LpStrip> strips;
@@ -23452,6 +23454,7 @@ struct LpDrag {
     wuxm::TranslateTransform ghostTr{ nullptr };
     double dropW = 0;        // the dragged part's width on a taskbar copy
     bool landing = false;    // gliding into place after a drop
+    long long shownKey = -2; // the target the room and outline were last made for
 };
 
 static void LpCommit(int part, int zone, int monitor, const std::wstring& position) {
@@ -23513,7 +23516,40 @@ static void LpShowMarkers(LpDrag& st, bool on) {
     for (auto& p : st.players)
         if (auto b = p.get()) b.BorderThickness(on && st.tZone == 1 && st.part != 0 ? wux::Thickness{ 2, 2, 2, 2 } : wux::Thickness{ 1, 1, 1, 1 });
 
-    // The outline: the part's size, on the side of the spot it would take, sliding between spots.
+    // Made again only when the target changes, so moving within one spot doesn't restart it.
+    const long long key = on ? (long long)st.tZone * 1000000 + (long long)st.tStrip * 1000 + st.tSlot : -1;
+    if (key == st.shownKey) return;
+    st.shownKey = key;
+    auto source = st.source.get();
+
+    // Room: on the taskbar what's after the spot slides right; the tray grows
+    // to the left (it hangs off the right end), so what's before it slides left.
+    // An overlay floats and moves nothing.
+    for (size_t si = 0; si < st.strips.size(); si++) {
+        const auto& strip = st.strips[si];
+        const bool here = on && st.tZone == 0 && (int)si == st.tStrip && !strip.slots[st.tSlot].overlay;
+        double gap = 0, slotX = 0;
+        bool inTray = false;
+        if (here) {
+            const auto& slot = strip.slots[st.tSlot];
+            gap = std::max(8.0, st.dropW > 0 ? st.dropW : strip.ih * 2) + 4;
+            slotX = slot.x;
+            inTray = std::wstring(slot.value).rfind(L"tray_", 0) == 0;
+        }
+        for (const auto& mv : strip.movers) {
+            auto el = mv.el.get();
+            if (!el) continue;
+            double off = 0;
+            if (here && !(source && el == source)) {
+                if (inTray) { if (mv.x >= strip.trayX - 1 && mv.x < slotX) off = -gap; }
+                else if (mv.x >= slotX && mv.x < strip.trayX - 1) off = gap;
+            }
+            if (auto tr = el.RenderTransform().try_as<wuxm::TranslateTransform>())
+                if (std::abs(tr.X() - off) > 0.5) AnimateTo(tr, L"X", off, 150);
+        }
+    }
+
+    // The outline: the part's size, in the gap the spot opens, sliding between spots.
     for (size_t si = 0; si < st.strips.size(); si++) {
         const auto& strip = st.strips[si];
         auto box = strip.dropBox.get();
@@ -23525,10 +23561,10 @@ static void LpShowMarkers(LpDrag& st, bool on) {
         double x;
         if (slot.overlay) {
             x = v == L"taskbar_left_edge" ? strip.pad : v == L"taskbar_center_edge" ? strip.width / 2 - w / 2 : strip.width - strip.pad - w;
+        } else if (v.rfind(L"tray_", 0) == 0) {
+            x = slot.x - 2 - w;
         } else {
-            const bool opensRight = slot.besidePart >= 0 ? slot.besideRight
-                                  : (v.find(L"_right") != std::wstring::npos || v == L"tray_left");
-            x = opensRight ? slot.x + 2 : slot.x - 2 - w;
+            x = slot.x + 2;
         }
         x = std::clamp(x, 2.0, std::max(2.0, strip.width - w - 2));
         box.Width(w);
@@ -23953,12 +23989,18 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         bg.BorderThickness(wux::Thickness{ 1, 1, 1, 1 });
         cv.Children().Append(bg);
 
+        std::vector<LpStrip::Mover> movers;
+        double trayX = W;
         for (const LpItem& it : snap.items) {
             if (it.kind == LpApp) continue;
             auto el = MakeLpItem(it, it.w * s, ih, timeText, dateText);
-            wuxc::Canvas::SetLeft(el, pad + it.x * s);
+            const double ex = pad + it.x * s;
+            wuxc::Canvas::SetLeft(el, ex);
             wuxc::Canvas::SetTop(el, y0 + (ih - el.Height()) / 2);
+            el.RenderTransform(wuxm::TranslateTransform());
             cv.Children().Append(el);
+            movers.push_back({ winrt::make_weak(el), ex });
+            if (it.kind >= LpChevron) trayX = std::min(trayX, ex);
         }
 
         LpStrip strip;
@@ -23968,6 +24010,8 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         strip.monitor = m.value;
         strip.ih = ih;
         strip.y0 = y0;
+        strip.trayX = trayX;
+        strip.movers = std::move(movers);
         // Above the copy: the spots that float over the taskbar instead of making room.
         wuxc::Canvas ovRow;
         ovRow.Width(W); ovRow.Height(26);
@@ -24071,7 +24115,9 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
             wuxc::Canvas::SetZIndex(ph, 10);
             WireLpDrag(ph, pl.part, st);
             if (pl.part == 0) st->players.push_back(winrt::make_weak(ph));
+            ph.RenderTransform(wuxm::TranslateTransform());
             cv.Children().Append(ph);
+            strip.movers.push_back({ winrt::make_weak(ph.as<wux::FrameworkElement>()), x });
             const PlayerPosition pos = ParseSettingChoice(pl.position, PLAYER_POSITIONS, PlayerPosition::TrayLeft);
             if (!IsEdgePosition(pos)) beside.push_back({ pl.part, x, live ? w : std::min(w, LpDefaultWidth(pl.part, ih)), PositionKey(pos) });
         }
