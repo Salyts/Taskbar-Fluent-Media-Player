@@ -1,23 +1,20 @@
-Thanks, both points from m417z and the two remaining review items are fixed in the latest push.
+Pushed the rest of the optional list as well:
 
-**@m417z**
-- **windhawk.exe:** the guessed paths are gone. It's now found from the path of the `windhawk.dll` loaded in Explorer (`<Windhawk>\Engine\<version>\<arch>\windhawk.dll`, walking up to the folder that has `windhawk.exe`), so portable Windhawk works too. `%ProgramFiles%\Windhawk\windhawk.exe` is the fallback.
-- **Taskbar.View.dll:** if it isn't loaded at `Wh_ModInit`, the mod hooks `LoadLibraryExW` in kernelbase.dll and hooks the module's symbols once it loads (then `Wh_ApplyHookOperations`). `Wh_ModAfterInit` also checks once, for a load between the check and the hook going live.
+- **Session lock:** `SwitchMediaSession` copies the manager and the current session under `g_sessionMtx`, then calls `GetSessions()` and `IsIgnoredMediaApp` outside it.
+- **Reference cycles:** these now use `sender` or `winrt::make_weak`:
+  - the art fade (`Completed`, `ImageOpened`, `ImageFailed`)
+  - the player's `PointerExited`
+  - `MakeControlButton` and `RunWhenButtonReady`
+  - the mini player's reveal (`doReveal`, `SizeChanged`, `fallbackTimer`, which is now also unregistered) and closing fallback timer
+  - the startup retry timer
+  - the session pill, the sidebar album art and the scrolling text clip
+  - in the settings window: `ColorPickerState` (weak element refs), the color segments, the expand button and the paired number boxes
+- **Threads:**
+  - The timeline is refreshed inline on the timer thread, which now has its own MTA apartment, instead of a new thread every second.
+  - App volume wheel steps add up in a counter, and one worker at a time applies them.
+- **Polling:**
+  - `CheckMonitorTopologyChanged` only runs its full window and monitor walk when a cheap fingerprint changes (monitor count, virtual screen, primary size, taskbar rect), with a full pass every 10 s.
+  - `KeepTrayPlacement` checks every 3 s for the first half minute after the player goes in or something moved, then every 15 s.
+  - `RecoverMissingPlayer` no longer retries when the main player is off on purpose (monitor off, or a vertical taskbar with the sidebar off) and no detached part is wanted.
 
-**Review items**
-1. **`Show()` after unload:** `g_unloading` is checked inside `s_launchMtx` now.
-2. **Windhawk's page showing older values:** the README's "Good to know" section and the `settingsView` description now say that values saved in the settings window aren't shown on the Settings tab, and that a setting changed and saved there still applies. Keeping both stores is the maintainer's call. Happy to change it if you'd rather the Settings tab be the only source.
-
-**Optional items done**
-- The class brush is no longer deleted after `UnregisterClassW`. It's only deleted if registration failed.
-- `AwaitOrCancel` uses `wait_for(50 ms)` instead of polling.
-- Every `ShellExecuteW` is now `ShellExecuteExW` with `SEE_MASK_FLAG_NO_UI | SEE_MASK_NOASYNC`.
-- `g_timerUpdateEvent` stays open across timer restarts and is closed in `Wh_ModUninit` after the last `WaitForTrackedWorkers`.
-- `InitAudioDeviceEnumerator` creates the enumerator under a mutex.
-- `ShowSuccessNotification` shows its box on a tracked worker. Unload closes it if it's open.
-
-The rest of the optional list and the functionality notes are planned for 1.7.1.
-
-**The old webhook** was deleted in Discord before the last push, so the token in the history no longer works.
-
-**The settings-window comment** ("can restart Explorer on open") was left over from early development, when the window was first being built. Testers have used it through the 1.7 alphas without that happening.
+The functionality notes are planned for 1.7.1.

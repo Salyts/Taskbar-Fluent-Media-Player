@@ -1918,7 +1918,7 @@ namespace UI {
     static void AnimateSessionPill(winrt::Windows::UI::Xaml::Shapes::Rectangle const& pill, bool isCurrent, bool animate);
     static winrt::Windows::UI::Xaml::Controls::Button BuildSessionRowButton(const MiniSessionInfo& info, bool isCurrent, HWND taskbarWnd, int rowIndex);
     static void RefreshMiniPlayerSeekPosition();
-    static void RefreshMiniPlayerTimelineAsync();
+    static void RefreshMiniPlayerTimeline();
     static void RefreshMainProgressBar();
     static void RefreshMainArtistTimeText();
     static std::wstring FormatMediaTime(int64_t ticks);
@@ -3762,7 +3762,6 @@ static std::atomic<bool> g_miniPlayerClosingAnimStarted{false};
 static std::atomic<bool> g_miniPlayerExplicitCloseRequested{false};
 // Seek bar (Salyts 1.6.1).
 static std::atomic<bool> g_miniPlayerSeekDragging{false};
-static std::atomic<bool> g_miniPlayerTimelineRefreshInProgress{false};
 
 [[clang::no_destroy]] static Grid             g_playerGrid      = nullptr;
 [[clang::no_destroy]] static FrameworkElement g_injectionParent = nullptr;
@@ -4193,42 +4192,49 @@ static void AttachToSession(GlobalSystemMediaTransportControlsSession session);
 static void SwitchMediaSession();
 
 static void SwitchMediaSession() {
-    GlobalSystemMediaTransportControlsSession nextSession{nullptr};
+    // Copied under the lock; the cross-process calls and the ignore-list check
+    // (which can enumerate windows) run outside it, so the taskbar thread never
+    // waits on them.
+    GlobalSystemMediaTransportControlsSessionManager mgr{nullptr};
+    GlobalSystemMediaTransportControlsSession current{nullptr};
     {
         std::lock_guard<std::mutex> lk(g_sessionMtx);
         if (!g_sessionMgr) return;
         g_userSwitchedSession = true;
-        try {
-            auto sessions = g_sessionMgr.GetSessions();
-            int count = (int)sessions.Size();
-            if (count <= 1) return;
+        mgr = g_sessionMgr;
+        current = g_currentSession;
+    }
+    GlobalSystemMediaTransportControlsSession nextSession{nullptr};
+    try {
+        auto sessions = mgr.GetSessions();
+        int count = (int)sessions.Size();
+        if (count <= 1) return;
 
-            int currentIndex = -1;
-            if (g_currentSession) {
-                auto curId = g_currentSession.SourceAppUserModelId();
-                for (int i = 0; i < count; ++i) {
-                    if (sessions.GetAt(i).SourceAppUserModelId() == curId) {
-                        currentIndex = i;
-                        break;
-                    }
-                }
-            }
-            // The next session that isn't on the ignore list (GitHub #70, #77):
-            // cycling used to land on ignored apps, and on a paused ignored app
-            // it could get stuck there.
-            for (int step = 1; step <= count; ++step) {
-                auto candidate = sessions.GetAt((currentIndex + step + count) % count);
-                if (!IsIgnoredMediaApp(std::wstring(candidate.SourceAppUserModelId()))) {
-                    nextSession = candidate;
+        int currentIndex = -1;
+        if (current) {
+            auto curId = current.SourceAppUserModelId();
+            for (int i = 0; i < count; ++i) {
+                if (sessions.GetAt(i).SourceAppUserModelId() == curId) {
+                    currentIndex = i;
                     break;
                 }
             }
-            if (nextSession && g_currentSession &&
-                nextSession.SourceAppUserModelId() == g_currentSession.SourceAppUserModelId()) {
-                return;   // the current session is the only one not ignored
+        }
+        // The next session that isn't on the ignore list (GitHub #70, #77):
+        // cycling used to land on ignored apps, and on a paused ignored app
+        // it could get stuck there.
+        for (int step = 1; step <= count; ++step) {
+            auto candidate = sessions.GetAt((currentIndex + step + count) % count);
+            if (!IsIgnoredMediaApp(std::wstring(candidate.SourceAppUserModelId()))) {
+                nextSession = candidate;
+                break;
             }
-        } catch (...) { return; }
-    }
+        }
+        if (nextSession && current &&
+            nextSession.SourceAppUserModelId() == current.SourceAppUserModelId()) {
+            return;   // the current session is the only one not ignored
+        }
+    } catch (...) { return; }
     if (nextSession) {
         AttachToSession(nextSession);
     }
@@ -5652,9 +5658,12 @@ static void GoToCommonState(Button const& btn, bool effectEnabled, bool pressed,
 static void RunWhenButtonReady(Button const& btn, std::function<void()> const& action) {
     if (!btn || !action) return;
     auto run = std::make_shared<std::function<void()>>(action);
-    auto invoke = [btn, run]() {
+    winrt::weak_ref<Button> weakBtn = btn;  // ends up in the button's Loaded handler
+    auto invoke = [weakBtn, run]() {
         try {
-            btn.ApplyTemplate();
+            auto b = weakBtn.get();
+            if (!b) return;
+            b.ApplyTemplate();
             (*run)();
         } catch (...) { LOG_IGNORED_EXCEPTION(); }
     };
@@ -6821,6 +6830,38 @@ static bool AdjustAppVolumeByAUMID(const std::wstring& aumid, float volumeDelta)
     }
 
     return found;
+}
+
+// The "app volume" wheel action: steps add up here and one worker at a time
+// applies them, rather than a thread per wheel step.
+static std::atomic<int>  g_appVolumeSteps{0};
+static std::atomic<bool> g_appVolumeWorker{false};
+static void QueueAppVolumeStep(int wheelDelta) {
+    if (wheelDelta == 0) return;
+    g_appVolumeSteps.fetch_add(wheelDelta > 0 ? 1 : -1);
+    if (g_appVolumeWorker.exchange(true)) return;  // the running one picks it up
+    auto work = []() {
+        bool comReady = false;
+        try { winrt::init_apartment(winrt::apartment_type::multi_threaded); comReady = true; } catch (...) { LOG_IGNORED_EXCEPTION(); }
+        for (;;) {
+            const int steps = g_appVolumeSteps.exchange(0);
+            if (steps != 0 && !g_unloading) {
+                std::wstring aumid;
+                {
+                    std::lock_guard<std::mutex> lk(g_sessionMtx);
+                    if (g_currentSession) {
+                        try { aumid = std::wstring(g_currentSession.SourceAppUserModelId()); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+                    }
+                }
+                if (!aumid.empty()) AdjustAppVolumeByAUMID(aumid, 0.02f * (float)steps);
+            }
+            g_appVolumeWorker = false;
+            // Steps that came in meanwhile, unless a new worker took them.
+            if (g_unloading || g_appVolumeSteps.load() == 0 || g_appVolumeWorker.exchange(true)) break;
+        }
+        if (comReady) winrt::uninit_apartment();
+    };
+    if (!SpawnTrackedWorker(work)) g_appVolumeWorker = false;
 }
 
 static void ChangeSystemVolume(bool increase) {
@@ -9018,17 +9059,20 @@ static Button MakeControlButton(MediaCommand cmd, bool isPlaying, winrt::Windows
         auto isPressed = std::make_shared<bool>(false);
         auto isHovered = std::make_shared<bool>(false);
 
-        auto updateBtnVisualState = [btn, isPressed, isHovered]() {
+        // Weak: these end up in the button's own handlers.
+        winrt::weak_ref<Button> weakBtn = btn;
+        auto updateBtnVisualState = [weakBtn, isPressed, isHovered]() {
             try {
-                GoToCommonState(btn, IsHoverEffectEnabled(g_settings.mediaButtonsHoverEffectMode), *isPressed, *isHovered);
+                if (auto b = weakBtn.get())
+                    GoToCommonState(b, IsHoverEffectEnabled(g_settings.mediaButtonsHoverEffectMode), *isPressed, *isHovered);
             } catch (...) {
 
             }
         };
 
-        RunWhenButtonReady(btn, [btn, updateBtnVisualState]() {
+        RunWhenButtonReady(btn, [weakBtn, updateBtnVisualState]() {
             try {
-                SetupMediaButtonCommonStates(btn);
+                if (auto b = weakBtn.get()) SetupMediaButtonCommonStates(b);
                 updateBtnVisualState();
             } catch (...) {
                 Wh_Log(L"MakeControlButton: Exception in RunWhenButtonReady");
@@ -9792,21 +9836,7 @@ COLD_UNOPTIMIZED static Grid BuildAlbumArtContainer() {
             } else if (action == L"system_sound") {
                 ChangeSystemVolume(delta > 0);
             } else if (action == L"app_sound") {
-                SpawnTrackedWorker([delta]() {
-                    std::wstring aumid;
-                    {
-                        std::lock_guard<std::mutex> lk(g_sessionMtx);
-                        if (g_currentSession) {
-                            try {
-                                aumid = std::wstring(g_currentSession.SourceAppUserModelId());
-                            } catch (...) { LOG_IGNORED_EXCEPTION(); }
-                        }
-                    }
-                    if (!aumid.empty()) {
-                        float volumeDelta = (delta > 0) ? 0.02f : -0.02f;
-                        AdjustAppVolumeByAUMID(aumid, volumeDelta);
-                    }
-                });
+                QueueAppVolumeStep(delta);
             }
             e.Handled(true);
         });
@@ -10001,7 +10031,9 @@ COLD_UNOPTIMIZED static Border BuildTextContainer() {
 
             auto geo = winrt::Windows::UI::Xaml::Media::RectangleGeometry();
             scrollView.Clip(geo);
-            block.SizeChanged([scrollView, geo](winrt::Windows::Foundation::IInspectable const&, SizeChangedEventArgs const& e) mutable {
+            block.SizeChanged([weakView = winrt::make_weak(scrollView), geo](winrt::Windows::Foundation::IInspectable const&, SizeChangedEventArgs const& e) mutable {
+                auto scrollView = weakView.get();  // block's parent
+                if (!scrollView) return;
                 try {
                     double h = e.NewSize().Height;
                     if (h < 1.0) h = 16.0;
@@ -10178,9 +10210,13 @@ static FrameworkElement WrapSidebarAlbumArt(Grid const& artEl) {
 
     // Canvas gives its children infinite room, so the art measures at its own
     // natural size and this reports the real one.
-    artEl.SizeChanged([artHolder, artEl](winrt::Windows::Foundation::IInspectable const&,
+    // artHolder is its parent, so it's held weakly; artEl is the sender.
+    artEl.SizeChanged([weakHolder = winrt::make_weak(artHolder)](winrt::Windows::Foundation::IInspectable const& sender,
                                           SizeChangedEventArgs const& e) mutable {
         try {
+            auto artHolder = weakHolder.get();
+            auto artEl = sender.as<FrameworkElement>();
+            if (!artHolder) return;
             double w = e.NewSize().Width, h = e.NewSize().Height;
             if (w <= 0.0 || h <= 0.0) return;
             if (std::abs(artHolder.Width() - h) < 0.5 && std::abs(artHolder.Height() - w) < 0.5) return;
@@ -10493,80 +10529,68 @@ static void RefreshMiniPlayerSeekPosition() {
     } catch (...) { LOG_IGNORED_EXCEPTION(); }
 }
 
-static void RefreshMiniPlayerTimelineAsync() {
-    if (g_miniPlayerTimelineRefreshInProgress.exchange(true)) return;
-    SpawnTrackedWorker([]() {
-        winrt::init_apartment(winrt::apartment_type::multi_threaded);
-        try {
-            GlobalSystemMediaTransportControlsSession session{nullptr};
-            {
-                std::lock_guard<std::mutex> lk(g_sessionMtx);
-                session = g_currentSession;
-            }
-            if (session) {
-                bool actuallyPlaying = false;
-                try {
-                    auto info = session.GetPlaybackInfo();
-                    actuallyPlaying = info &&
-                        info.PlaybackStatus() ==
-                        GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing;
-                } catch (...) { LOG_IGNORED_EXCEPTION(); }
-                auto timeline = session.GetTimelineProperties();
-                if (timeline) {
-                    const int64_t start = timeline.StartTime().count();
-                    const int64_t end = timeline.EndTime().count();
-                    const int64_t duration = std::max<int64_t>(0, end - start);
-                    int64_t rawPosition = 0, lastUpdated = 0;
-                    int64_t position = LiveTimelinePosition(timeline, actuallyPlaying, rawPosition, lastUpdated);
-                    std::lock_guard<std::mutex> lk(g_mediaMtx);
-                    constexpr int64_t TICKS_PER_SECOND = 10000000LL;
-                    const auto now = std::chrono::steady_clock::now();
-                    int64_t predicted = g_media.positionTicks;
-                    if (g_media.isPlaying &&
-                        g_mediaPositionTimestamp.time_since_epoch().count() != 0) {
-                        predicted += static_cast<int64_t>(
-                            std::chrono::duration<double>(now - g_mediaPositionTimestamp).count() *
-                            TICKS_PER_SECOND);
-                    }
-                    predicted = std::clamp<int64_t>(predicted, 0, g_media.durationTicks);
-                    const bool durationChanged = duration > 0 && duration != g_media.durationTicks;
-                    const int64_t positionAhead = position > predicted
-                        ? position - predicted : 0;
-                    const int64_t positionBehind = predicted > position
-                        ? predicted - position : 0;
-                    // Only snap back to a real push (new timestamp and new position): some browsers
-                    // re-send the old position with a fresh time (YouTube stuck at 0:00).
-                    const bool freshPush = lastUpdated != 0 &&
-                        lastUpdated != g_media.timelineLastUpdatedTicks &&
-                        std::abs(rawPosition - g_media.timelineRawPositionTicks) >= TICKS_PER_SECOND / 2;
-                    const bool positionChanged = positionAhead >= TICKS_PER_SECOND ||
-                        (freshPush && positionBehind >= 2 * TICKS_PER_SECOND);
-                    const bool staleEndOfOldTrack = actuallyPlaying && duration > 0 &&
-                        position >= duration && predicted < duration / 2;
-                    const bool willCommit = (durationChanged || positionChanged) && !staleEndOfOldTrack;
-                    if (willCommit) {
-                        g_media.timelineStartTicks = start;
-                        g_media.durationTicks = duration;
-                        g_media.positionTicks = position;
-                        g_mediaPositionTimestamp = now;
-                    }
-                    if (lastUpdated != 0) g_media.timelineLastUpdatedTicks = lastUpdated;
-                    g_media.timelineRawPositionTicks = rawPosition;
-                    g_media.isPlaying = actuallyPlaying;
-                }
-            }
-        } catch (...) { LOG_IGNORED_EXCEPTION(); }
-        g_miniPlayerTimelineRefreshInProgress.store(false);
-        winrt::uninit_apartment();
-
-        HWND taskbarWnd = g_taskbarWnd;
-        if (taskbarWnd) {
-            RunFromWindowThread(taskbarWnd, [](void*) {
-                if (!g_unloading && g_miniPlayerFlyoutOpen)
-                    RefreshMiniPlayerSeekPosition();
-            }, nullptr);
+// Once a second, on the timer thread (no thread of its own each time). With
+// no media session there is nothing to ask for.
+static void RefreshMiniPlayerTimeline() {
+    try {
+        GlobalSystemMediaTransportControlsSession session{nullptr};
+        {
+            std::lock_guard<std::mutex> lk(g_sessionMtx);
+            session = g_currentSession;
         }
-    });
+        if (session) {
+            bool actuallyPlaying = false;
+            try {
+                auto info = session.GetPlaybackInfo();
+                actuallyPlaying = info &&
+                    info.PlaybackStatus() ==
+                    GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing;
+            } catch (...) { LOG_IGNORED_EXCEPTION(); }
+            auto timeline = session.GetTimelineProperties();
+            if (timeline) {
+                const int64_t start = timeline.StartTime().count();
+                const int64_t end = timeline.EndTime().count();
+                const int64_t duration = std::max<int64_t>(0, end - start);
+                int64_t rawPosition = 0, lastUpdated = 0;
+                int64_t position = LiveTimelinePosition(timeline, actuallyPlaying, rawPosition, lastUpdated);
+                std::lock_guard<std::mutex> lk(g_mediaMtx);
+                constexpr int64_t TICKS_PER_SECOND = 10000000LL;
+                const auto now = std::chrono::steady_clock::now();
+                int64_t predicted = g_media.positionTicks;
+                if (g_media.isPlaying &&
+                    g_mediaPositionTimestamp.time_since_epoch().count() != 0) {
+                    predicted += static_cast<int64_t>(
+                        std::chrono::duration<double>(now - g_mediaPositionTimestamp).count() *
+                        TICKS_PER_SECOND);
+                }
+                predicted = std::clamp<int64_t>(predicted, 0, g_media.durationTicks);
+                const bool durationChanged = duration > 0 && duration != g_media.durationTicks;
+                const int64_t positionAhead = position > predicted
+                    ? position - predicted : 0;
+                const int64_t positionBehind = predicted > position
+                    ? predicted - position : 0;
+                // Only snap back to a real push (new timestamp and new position): some browsers
+                // re-send the old position with a fresh time (YouTube stuck at 0:00).
+                const bool freshPush = lastUpdated != 0 &&
+                    lastUpdated != g_media.timelineLastUpdatedTicks &&
+                    std::abs(rawPosition - g_media.timelineRawPositionTicks) >= TICKS_PER_SECOND / 2;
+                const bool positionChanged = positionAhead >= TICKS_PER_SECOND ||
+                    (freshPush && positionBehind >= 2 * TICKS_PER_SECOND);
+                const bool staleEndOfOldTrack = actuallyPlaying && duration > 0 &&
+                    position >= duration && predicted < duration / 2;
+                const bool willCommit = (durationChanged || positionChanged) && !staleEndOfOldTrack;
+                if (willCommit) {
+                    g_media.timelineStartTicks = start;
+                    g_media.durationTicks = duration;
+                    g_media.positionTicks = position;
+                    g_mediaPositionTimestamp = now;
+                }
+                if (lastUpdated != 0) g_media.timelineLastUpdatedTicks = lastUpdated;
+                g_media.timelineRawPositionTicks = rawPosition;
+                g_media.isPlaying = actuallyPlaying;
+            }
+        }
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
 }
 
 [[maybe_unused]] static void SeekMiniPlayer(double ratio) {  // called from a generic lambda
@@ -10697,22 +10721,26 @@ static void SetImageSourceWithFade(Controls::Image const& img, BitmapImage const
     Storyboard::SetTargetProperty(fadeIn, L"Opacity");
     sb.Children().Append(fadeIn);
     // Finished: hand Opacity back to the local value and drop the ghost.
-    sb.Completed([img, panel](auto const& sender, auto const&) {
+    // Weak: the storyboard targets the image, which holds the bitmap.
+    winrt::weak_ref<Controls::Image> weakImg = img;
+    winrt::weak_ref<Panel> weakPanel = panel;
+    sb.Completed([weakImg, weakPanel](auto const& sender, auto const&) {
         try {
-            img.Opacity(1.0);
+            if (auto i = weakImg.get()) i.Opacity(1.0);
             if (auto done = sender.template try_as<Storyboard>()) done.Stop();
-            RemoveArtFadeGhosts(panel);
+            if (auto p = weakPanel.get()) RemoveArtFadeGhosts(p);
         } catch (...) { LOG_IGNORED_EXCEPTION(); }
     });
     running = sb;
 
-    bmp.ImageOpened([sb](auto const&, auto const&) {
-        try { sb.Begin(); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    winrt::weak_ref<Storyboard> weakSb = sb;
+    bmp.ImageOpened([weakSb](auto const&, auto const&) {
+        try { if (auto story = weakSb.get()) story.Begin(); } catch (...) { LOG_IGNORED_EXCEPTION(); }
     });
-    bmp.ImageFailed([img, panel](auto const&, auto const&) {
+    bmp.ImageFailed([weakImg, weakPanel](auto const&, auto const&) {
         try {
-            img.Opacity(1.0);
-            RemoveArtFadeGhosts(panel);
+            if (auto i = weakImg.get()) i.Opacity(1.0);
+            if (auto p = weakPanel.get()) RemoveArtFadeGhosts(p);
         } catch (...) { LOG_IGNORED_EXCEPTION(); }
     });
 }
@@ -11278,8 +11306,9 @@ static Button BuildSessionRowButton(const MiniSessionInfo& info, bool isCurrent,
 
         AnimateSessionPill(pill, isCurrent, /*animate*/ false);
         if (isCurrent) {
-            pill.Loaded([pill](auto const&, auto const&) {
-                AnimateSessionPill(pill, true, /*animate*/ true);
+            pill.Loaded([](auto const& sender, auto const&) {
+                if (auto p = sender.template try_as<std::decay_t<decltype(pill)>>())
+                    AnimateSessionPill(p, true, /*animate*/ true);
             });
         }
 
@@ -12581,11 +12610,13 @@ static void ShowMiniPlayerFlyout(FrameworkElement const& target) {
             transform.TranslateY(0.0);
 
             auto fired = std::make_shared<bool>(false);
-            auto doReveal = [content, transform, fired]() mutable {
+            // Weak: it ends up in content's own SizeChanged handler.
+            auto doReveal = [weakContent = winrt::make_weak(content), transform, fired]() mutable {
                 if (*fired) return;
                 *fired = true;
                 try {
-                    if (!transform) return;
+                    auto content = weakContent.get();
+                    if (!transform || !content) return;
                     bool horizontal = (g_miniPlayerAnimAxis == 1);
                     double size = horizontal ? content.ActualWidth() : content.ActualHeight();
                     if (size <= 0) size = 450.0;
@@ -12617,11 +12648,11 @@ static void ShowMiniPlayerFlyout(FrameworkElement const& target) {
             };
 
             auto token = std::make_shared<winrt::event_token>();
-            *token = content.SizeChanged([content, token, doReveal](
-                winrt::Windows::Foundation::IInspectable const&,
+            *token = content.SizeChanged([token, doReveal](
+                winrt::Windows::Foundation::IInspectable const& sender,
                 winrt::Windows::UI::Xaml::SizeChangedEventArgs const&) mutable
             {
-                try { content.SizeChanged(*token); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+                try { sender.as<FrameworkElement>().SizeChanged(*token); } catch (...) { LOG_IGNORED_EXCEPTION(); }
                 doReveal();
             });
 
@@ -12630,11 +12661,15 @@ static void ShowMiniPlayerFlyout(FrameworkElement const& target) {
             fallbackTimer.Interval(
                 winrt::Windows::Foundation::TimeSpan{std::chrono::milliseconds(80)});
             auto fallbackToken = std::make_shared<winrt::event_token>();
-            *fallbackToken = fallbackTimer.Tick([fallbackTimer, fallbackToken, doReveal](
-                winrt::Windows::Foundation::IInspectable const&,
+            *fallbackToken = fallbackTimer.Tick([fallbackToken, doReveal](
+                winrt::Windows::Foundation::IInspectable const& sender,
                 winrt::Windows::Foundation::IInspectable const&) mutable
             {
-                try { fallbackTimer.Stop(); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+                try {
+                    auto timer = sender.as<DispatcherTimer>();
+                    timer.Stop();
+                    timer.Tick(*fallbackToken);
+                } catch (...) { LOG_IGNORED_EXCEPTION(); }
                 doReveal();
             });
             fallbackTimer.Start();
@@ -12704,9 +12739,10 @@ static void ShowMiniPlayerFlyout(FrameworkElement const& target) {
                     std::chrono::milliseconds(350)});
                 auto closingFallbackToken = std::make_shared<winrt::event_token>();
                 *closingFallbackToken = closingFallback.Tick(
-                    [closingFallback, closingFallbackToken, doHide](
-                        winrt::Windows::Foundation::IInspectable const&,
+                    [closingFallbackToken, doHide](
+                        winrt::Windows::Foundation::IInspectable const& sender,
                         winrt::Windows::Foundation::IInspectable const&) mutable {
+                        auto closingFallback = sender.as<DispatcherTimer>();
                         try { closingFallback.Stop(); } catch (...) { LOG_IGNORED_EXCEPTION(); }
                         closingFallback.Tick(*closingFallbackToken);
                         if (g_miniPlayerClosingAnimStarted.load())
@@ -13478,12 +13514,15 @@ COLD_UNOPTIMIZED static Grid BuildPlayerGrid() {
             updatePlayerVisualState();
         });
 
-        panel.PointerExited([wrapper, isHovered, updatePlayerVisualState](auto const&, PointerRoutedEventArgs const& e) {
+        winrt::weak_ref<std::decay_t<decltype(wrapper)>> weakWrapper = wrapper;  // panel's parent
+        panel.PointerExited([weakWrapper, isHovered, updatePlayerVisualState](auto const&, PointerRoutedEventArgs const& e) {
             bool stillInside = false;
             try {
-                auto pos = e.GetCurrentPoint(wrapper).Position();
-                auto bounds = wrapper.RenderSize();
-                stillInside = pos.X >= 0 && pos.X <= bounds.Width && pos.Y >= 0 && pos.Y <= bounds.Height;
+                if (auto w = weakWrapper.get()) {
+                    auto pos = e.GetCurrentPoint(w).Position();
+                    auto bounds = w.RenderSize();
+                    stillInside = pos.X >= 0 && pos.X <= bounds.Width && pos.Y >= 0 && pos.Y <= bounds.Height;
+                }
             } catch (...) { LOG_IGNORED_EXCEPTION(); }
             if (!stillInside) {
                 *isHovered = false;
@@ -13592,21 +13631,7 @@ COLD_UNOPTIMIZED static Grid BuildPlayerGrid() {
             } else if (action == L"system_sound") {
                 ChangeSystemVolume(delta > 0);
             } else if (action == L"app_sound") {
-                SpawnTrackedWorker([delta]() {
-                    std::wstring aumid;
-                    {
-                        std::lock_guard<std::mutex> lk(g_sessionMtx);
-                        if (g_currentSession) {
-                            try {
-                                aumid = std::wstring(g_currentSession.SourceAppUserModelId());
-                            } catch (...) { LOG_IGNORED_EXCEPTION(); }
-                        }
-                    }
-                    if (!aumid.empty()) {
-                        float volumeDelta = (delta > 0) ? 0.02f : -0.02f;
-                        AdjustAppVolumeByAUMID(aumid, volumeDelta);
-                    }
-                });
+                QueueAppVolumeStep(delta);
             }
             e.Handled(true);
         });
@@ -16599,11 +16624,38 @@ static void ForgetInjectedTreeState() {
     ResetScrollState(g_artistScroll);
 }
 
+// Cheap values that change whenever monitors come, go or move, the primary
+// one changes, or the taskbar changes size or edge.
+static std::array<LONG, 12> DisplayFingerprint(HWND taskbar) {
+    std::array<LONG, 12> f{};
+    f[0] = GetSystemMetrics(SM_CMONITORS);
+    f[1] = GetSystemMetrics(SM_XVIRTUALSCREEN);
+    f[2] = GetSystemMetrics(SM_YVIRTUALSCREEN);
+    f[3] = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+    f[4] = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+    f[5] = GetSystemMetrics(SM_CXSCREEN);
+    f[6] = GetSystemMetrics(SM_CYSCREEN);
+    RECT r{};
+    if (taskbar && GetWindowRect(taskbar, &r)) { f[7] = r.left; f[8] = r.top; f[9] = r.right; f[10] = r.bottom; }
+    f[11] = (taskbar && IsWindow(taskbar)) ? 1 : 0;
+    return f;
+}
+
 static void CheckMonitorTopologyChanged() {
     if (g_unloading || g_applyingSettings.load()) return;
     const bool partInjected = g_detachedAlbumArt.injectionParent || g_detachedInfo.injectionParent ||
                               g_detachedButtons.injectionParent || g_detachedViz.injectionParent;
     if (!g_playerGrid && !g_injectionParent && !partInjected) return;  // nothing injected yet — the init/retry paths own that
+
+    // The full check walks every window and monitor. Skip it while nothing it
+    // looks at can have changed, with a full pass every 10 s anyway.
+    static std::array<LONG, 12> s_lastPrint{};
+    static ULONGLONG s_lastFull = 0;
+    const auto print = DisplayFingerprint(g_taskbarWnd);
+    const ULONGLONG nowMs = GetTickCount64();
+    if (print == s_lastPrint && nowMs - s_lastFull < 10000) return;
+    s_lastPrint = print;
+    s_lastFull = nowMs;
 
     HWND desiredWnd = FindCurrentProcessTaskbarWnd();
     if (!desiredWnd) return;  // no taskbar at all right now — nothing sensible to do
@@ -17203,6 +17255,9 @@ static std::atomic<bool> g_themeChangePending{false};
 
 static DWORD WINAPI TimerThreadProc(void*) {
     static bool lastThemeWasLight = IsSystemLightTheme();
+    // The media timeline is read from here (RefreshMiniPlayerTimeline).
+    bool comReady = false;
+    try { winrt::init_apartment(winrt::apartment_type::multi_threaded); comReady = true; } catch (...) { LOG_IGNORED_EXCEPTION(); }
 
     HKEY hKey = nullptr;
     HANDLE hEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
@@ -17305,7 +17360,7 @@ static DWORD WINAPI TimerThreadProc(void*) {
             if (lastSeekRefresh.time_since_epoch().count() == 0 ||
                 now - lastSeekRefresh >= std::chrono::seconds(1)) {
                 lastSeekRefresh = now;
-                RefreshMiniPlayerTimelineAsync();
+                RefreshMiniPlayerTimeline();
                 RunFromWindowThread(hWnd, [](void*) {
                     if (g_unloading || g_applyingSettings) return;
                     if (g_miniPlayerFlyoutOpen) RefreshMiniPlayerSeekPosition();
@@ -17318,6 +17373,7 @@ static DWORD WINAPI TimerThreadProc(void*) {
 
     if (hKey) RegCloseKey(hKey);
     if (hEvent) CloseHandle(hEvent);
+    if (comReady) winrt::uninit_apartment();
     return 0;
 }
 
@@ -17412,9 +17468,10 @@ static void ApplySettingsWithRetry(FrameworkElement xamlRootContent,
         auto tickToken = std::make_shared<winrt::event_token>();
         int nextAttempt = attempt + 1;
         *tickToken = timer.Tick(
-            [timer, tickToken, xamlRootContent, onApplied, nextAttempt](
-                winrt::Windows::Foundation::IInspectable const&,
+            [tickToken, xamlRootContent, onApplied, nextAttempt](
+                winrt::Windows::Foundation::IInspectable const& sender,
                 winrt::Windows::Foundation::IInspectable const&) {
+                auto timer = sender.as<DispatcherTimer>();
                 timer.Stop();
                 timer.Tick(*tickToken);
                 ApplySettingsWithRetry(xamlRootContent, onApplied, nextAttempt);
@@ -17472,13 +17529,16 @@ static void RecoverMissingPlayer(HWND hWnd) {
     }
     if (g_unloading || g_applyingSettings) return;
 
-    // Nothing is missing when it's all been turned off on purpose.
+    // Nothing is missing when it's all been turned off on purpose: the monitor
+    // set to off, or a vertical taskbar with "show on a vertical taskbar" off.
     const bool partWanted =
         (g_settings.albumArtDetached && g_settings.albumArtDetachedMonitor != MONITOR_OFF) ||
         (g_settings.infoDetached && g_settings.infoDetachedMonitor != MONITOR_OFF) ||
         (g_settings.buttonsDetached && g_settings.buttonsDetachedMonitor != MONITOR_OFF) ||
         (g_settings.vizDetached && g_settings.vizDetachedMonitor != MONITOR_OFF);
-    if (GetEffectiveMonitorSetting() == MONITOR_OFF && !partWanted) return;
+    const bool mainWanted = GetEffectiveMonitorSetting() != MONITOR_OFF &&
+        (g_settings.sidebarEnabled || !IsVerticalTaskbarEdge(GetTaskbarEdgeForWnd(hWnd)));
+    if (!mainWanted && !partWanted) return;
 
     const ULONGLONG now = GetTickCount64();
     if (s_nextTry == 0) { s_nextTry = now + HEAD_START_MS; return; }
@@ -17509,11 +17569,20 @@ static void RecoverMissingPlayer(HWND hWnd) {
 // player then stayed on the wrong side until something rebuilt it, so check
 // every few seconds and do that rebuild. Three failed tries in a row stop it
 // until the placement has been right again.
+// Every 3 s for the first half minute after the player goes in or something
+// moved, then every 15 s while it stays right.
+static std::atomic<int> g_trayPlacementOkStreak{0};
 static void KeepTrayPlacement(HWND hWnd) {
     static ULONGLONG s_nextCheck = 0;
+    static void* s_lastGrid = nullptr;
     const ULONGLONG now = GetTickCount64();
+    if (void* grid = winrt::get_abi(g_playerGrid); grid != s_lastGrid) {  // put in again: watch closely
+        s_lastGrid = grid;
+        g_trayPlacementOkStreak = 0;
+        s_nextCheck = 0;
+    }
     if (now < s_nextCheck) return;
-    s_nextCheck = now + 3000;
+    s_nextCheck = now + (g_trayPlacementOkStreak >= 10 ? 15000 : 3000);
     if (g_unloading || g_applyingSettings) return;
     auto anchored = [](bool used, PlayerPosition p) { return used && TrayAnchorOf(p).name; };
     if (!anchored((bool)g_playerGrid, g_settings.position) &&
@@ -17534,7 +17603,8 @@ static void KeepTrayPlacement(HWND hWnd) {
                   TrayPlacementIsOff(g_detachedButtons.grid, g_settings.buttonsDetachedPosition) ||
                   TrayPlacementIsOff(g_detachedViz.grid, g_settings.vizDetachedPosition);
         } catch (...) { LOG_IGNORED_EXCEPTION(); return; }
-        if (!off) { s_failedRepairs = 0; return; }
+        if (!off) { s_failedRepairs = 0; g_trayPlacementOkStreak++; return; }
+        g_trayPlacementOkStreak = 0;
         if (s_failedRepairs >= 3) return;
         s_failedRepairs++;
 
@@ -21649,12 +21719,13 @@ struct ColorPickerState {
     bool editingDark = false;  // which half the controls edit
     bool syncing = false;      // our own writes to the picker/box, not the user's
     std::wstring      opacityKey;  // set when the picker holds the color's opacity
-    wuxc::Button      btn{ nullptr };
-    wuxc::ColorPicker cp{ nullptr };
-    wuxc::TextBox     box{ nullptr };
-    wuxc::Border      boxDot{ nullptr };
-    std::vector<std::pair<std::wstring, wuxc::Border>> chips;  // preset value, its ring
-    std::vector<wuxc::Border> segments;                        // both, light, dark
+    // Weak: the panel's own handlers hold this state.
+    winrt::weak_ref<wuxc::Button>      btn;
+    winrt::weak_ref<wuxc::ColorPicker> cp;
+    winrt::weak_ref<wuxc::TextBox>     box;
+    winrt::weak_ref<wuxc::Border>      boxDot;
+    std::vector<std::pair<std::wstring, winrt::weak_ref<wuxc::Border>>> chips;  // preset value, its ring
+    std::vector<winrt::weak_ref<wuxc::Border>> segments;                        // both, light, dark
 };
 
 static std::wstring EditedHalf(const ColorPickerState& st) {
@@ -21667,24 +21738,25 @@ static int SelectedSegment(const ColorPickerState& st) { return !st.dual ? 0 : s
 
 // Repaints every part of the panel and its button from st.value.
 static void RepaintColorPicker(ColorPickerState& st) {
-    PaintColorButton(st.btn, st.value, st.opacityKey);
+    if (auto b = st.btn.get()) PaintColorButton(b, st.value, st.opacityKey);
     const int sel = SelectedSegment(st);
     for (int i = 0; i < (int)st.segments.size(); i++) {
-        auto& seg = st.segments[i];
+        auto seg = st.segments[i].get();
+        if (!seg) continue;
         seg.Background(i == sel ? AccentBrush() : Brush(0, 0, 0, 0));
         if (auto t = seg.Child().try_as<wuxc::TextBlock>())
             t.Foreground(i == sel ? AccentForegroundBrush()
                                   : s_light ? Brush(255, 26, 26, 26) : Brush(255, 255, 255, 255));
     }
     const std::wstring half = EditedHalf(st);
-    for (auto& [value, ring] : st.chips)
-        ring.BorderBrush(value == half ? AccentBrush() : Brush(0, 0, 0, 0));
+    for (auto& [value, weakRing] : st.chips)
+        if (auto ring = weakRing.get()) ring.BorderBrush(value == half ? AccentBrush() : Brush(0, 0, 0, 0));
     st.syncing = true;
     try {
-        if (st.box && std::wstring{ st.box.Text() } != half) st.box.Text(winrt::hstring{ half });
-        if (st.boxDot) PaintColorDot(st.boxDot, half);
+        if (auto box = st.box.get(); box && std::wstring{ box.Text() } != half) box.Text(winrt::hstring{ half });
+        if (auto dot = st.boxDot.get()) PaintColorDot(dot, half);
         winrt::Windows::UI::Color c;
-        if (st.cp && ResolveDisplayColor(half, c) && st.cp.Color() != c) st.cp.Color(c);
+        if (auto cp = st.cp.get(); cp && ResolveDisplayColor(half, c) && cp.Color() != c) cp.Color(c);
     } catch (...) { LOG_IGNORED_EXCEPTION(); }
     st.syncing = false;
 }
@@ -22294,7 +22366,11 @@ COLD_UNOPTIMIZED static wux::FrameworkElement BuildControl(const SettingRow& row
     if (row.kind == RowKind::Pair) {
         int l = 0, r = 0; ParseTwoInts(GetSettingOverride(key, L"0 0"), l, r);
         wuxc::TextBox a = MakeValueBox(std::to_wstring(l)), b = MakeValueBox(std::to_wstring(r));
-        auto commit = [key, a, b]() {
+        // Weak: commit ends up in both boxes' own handlers.
+        auto commit = [key, weakA = winrt::make_weak(a), weakB = winrt::make_weak(b)]() {
+            auto a = weakA.get();
+            auto b = weakB.get();
+            if (!a || !b) return;
             int li = _wtoi(std::wstring{ a.Text() }.c_str());
             int ri = _wtoi(std::wstring{ b.Text() }.c_str());
             SetOverrideLive(key, std::to_wstring(li) + L" " + std::to_wstring(ri)); ScheduleApply();
@@ -22405,11 +22481,12 @@ static wuxc::Border MakeColorPickerPanel(const std::wstring& key, wuxc::Button c
                     RepaintColorPicker(*st);
                 }
             });
-            seg.PointerEntered([st, i, seg](auto const&, auto const&) {
-                if (SelectedSegment(*st) != i) seg.Background(s_light ? Brush(18, 0, 0, 0) : Brush(22, 255, 255, 255));
+            seg.PointerEntered([st, i](auto const& sender, auto const&) {
+                if (SelectedSegment(*st) != i)
+                    sender.template as<wuxc::Border>().Background(s_light ? Brush(18, 0, 0, 0) : Brush(22, 255, 255, 255));
             });
-            seg.PointerExited([st, i, seg](auto const&, auto const&) {
-                if (SelectedSegment(*st) != i) seg.Background(Brush(0, 0, 0, 0));
+            seg.PointerExited([st, i](auto const& sender, auto const&) {
+                if (SelectedSegment(*st) != i) sender.template as<wuxc::Border>().Background(Brush(0, 0, 0, 0));
             });
             st->segments.push_back(seg);
             segs.Children().Append(seg);
@@ -23145,7 +23222,10 @@ static void BuildPage(const SettingCategory& cat, bool animate = false) {
                     rowsPanel.Children().Append(expandPanel);
 
                     // Opens with a short fade and slide down from the button; closes at once.
-                    toggleBtn.Click([expandPanel, toggleBtn](auto const&, auto const&) {
+                    toggleBtn.Click([weakPanel = winrt::make_weak(expandPanel)](winrt::Windows::Foundation::IInspectable const& sender, wux::RoutedEventArgs const&) {
+                        auto expandPanel = weakPanel.get();
+                        if (!expandPanel) return;
+                        auto toggleBtn = sender.as<wuxc::Button>();
                         const bool opening = expandPanel.Visibility() != wux::Visibility::Visible;
                         if (opening) {
                             wuxm::TranslateTransform slide;

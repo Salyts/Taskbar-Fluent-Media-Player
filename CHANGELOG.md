@@ -72,6 +72,7 @@
 - Turning the mod off or updating it waits for everything it started, so Explorer no longer crashes or hangs then, or when signing out.
 - Moving the player to another spot no longer leaves a gap or an extra tray column behind.
 - Scrolling text stops using CPU when the title and artist fit.
+- Uses fewer threads and wakes up less often in the background: the progress bar, app volume scrolling and the monitor and tray checks.
 
 **Which app it follows**
 - The player stays on the app that's playing instead of a paused one. (#22)
