@@ -19966,6 +19966,10 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"Placement", L"Розташування", L"Расположение", L"Platzierung", L"स्थान", L"位置", L"位置", L"Ubicación", L"Emplacement", L"Posição", L"Posizione", L"Umiejscowienie", L"Yerleşim", L"配置", L"배치" },
     { L"Taskbar layout", L"Розташування на панелі завдань", L"Расположение на панели задач", L"Taskleisten-Layout", L"टास्कबार लेआउट", L"任务栏布局", L"工作列配置", L"Diseño de la barra de tareas", L"Disposition de la barre des tâches", L"Layout da barra de tarefas", L"Layout della barra delle applicazioni", L"Układ paska zadań", L"Görev çubuğu düzeni", L"タスク バーのレイアウト", L"작업 표시줄 레이아웃" },
     { L"Drag the player or a part onto a taskbar to move it there. To put a part back, drop it on the player or double-click it.", L"Перетягніть програвач або його частину на панель завдань, щоб перемістити туди. Щоб повернути частину, киньте її на програвач або двічі клацніть її.", L"Перетащите плеер или его часть на панель задач, чтобы переместить туда. Чтобы вернуть часть, бросьте её на плеер или дважды щёлкните по ней.", L"Zieh den Player oder einen Teil auf eine Taskleiste, um ihn dorthin zu verschieben. Um einen Teil zurückzuholen, leg ihn auf den Player oder doppelklick ihn.", L"प्लेयर या उसके किसी हिस्से को टास्कबार पर खींचें, वह वहीं चला जाएगा। किसी हिस्से को वापस लाने के लिए उसे प्लेयर पर छोड़ें या उस पर डबल-क्लिक करें।", L"把播放器或其中一部分拖到任务栏上，即可移到那里。要把某部分放回，把它拖到播放器上或双击它。", L"把播放器或其中一部分拖到工作列上，即可移到那裡。要把某部分放回，把它拖到播放器上或按兩下它。", L"Arrastra el reproductor o una de sus partes a una barra de tareas para moverlo allí. Para devolver una parte, suéltala sobre el reproductor o haz doble clic en ella.", L"Faites glisser le lecteur ou une de ses parties sur une barre des tâches pour l'y déplacer. Pour remettre une partie, déposez-la sur le lecteur ou double-cliquez dessus.", L"Arraste o player ou uma parte dele para uma barra de tarefas para movê-lo para lá. Para devolver uma parte, solte-a no player ou clique duas vezes nela.", L"Trascina il player o una sua parte su una barra delle applicazioni per spostarlo lì. Per rimettere una parte, rilasciala sul player o fai doppio clic su di essa.", L"Przeciągnij odtwarzacz lub jego część na pasek zadań, aby go tam przenieść. Aby przywrócić część, upuść ją na odtwarzacz albo kliknij ją dwukrotnie.", L"Oynatıcıyı veya bir parçasını oraya taşımak için bir görev çubuğuna sürükleyin. Bir parçayı geri koymak için oynatıcının üzerine bırakın veya çift tıklayın.", L"プレーヤーやその一部をタスク バーにドラッグすると、そこに移動します。一部を戻すには、プレーヤーの上にドロップするか、ダブルクリックします。", L"플레이어나 그 일부를 작업 표시줄로 끌어 놓으면 그 위치로 옮겨집니다. 일부를 다시 넣으려면 플레이어 위에 놓거나 두 번 클릭하세요." },
+    { L"Left edge", L"Лівий край", L"Левый край", L"Linker Rand", L"बायाँ किनारा", L"左边缘", L"左邊緣", L"Borde izquierdo", L"Bord gauche", L"Borda esquerda", L"Bordo sinistro", L"Lewa krawędź", L"Sol kenar", L"左端", L"왼쪽 가장자리" },
+    { L"Right edge", L"Правий край", L"Правый край", L"Rechter Rand", L"दायाँ किनारा", L"右边缘", L"右邊緣", L"Borde derecho", L"Bord droit", L"Borda direita", L"Bordo destro", L"Prawa krawędź", L"Sağ kenar", L"右端", L"오른쪽 가장자리" },
+    { L"Floats over the taskbar", L"Над панеллю завдань, нічого не зсуває", L"Поверх панели задач, ничего не сдвигает", L"Schwebt über der Taskleiste", L"टास्कबार के ऊपर तैरता है", L"浮在任务栏上方", L"浮在工作列上方", L"Flota sobre la barra de tareas", L"Flotte au-dessus de la barre des tâches", L"Flutua sobre a barra de tarefas", L"Fluttua sopra la barra delle applicazioni", L"Unosi się nad paskiem zadań", L"Görev çubuğunun üzerinde durur", L"タスク バーの上に重ねて表示", L"작업 표시줄 위에 떠 있음" },
+    { L"Makes room on the taskbar", L"Звільняє місце на панелі завдань", L"Освобождает место на панели задач", L"Schafft Platz auf der Taskleiste", L"टास्कबार पर जगह बनाता है", L"在任务栏上腾出空间", L"在工作列上騰出空間", L"Hace sitio en la barra de tareas", L"Se fait de la place dans la barre des tâches", L"Abre espaço na barra de tarefas", L"Si fa spazio sulla barra delle applicazioni", L"Robi miejsce na pasku zadań", L"Görev çubuğunda yer açar", L"タスク バーに場所を空ける", L"작업 표시줄에 자리를 만듦" },
     { L"Hidden", L"Приховано", L"Скрыто", L"Ausgeblendet", L"छिपा हुआ", L"已隐藏", L"已隱藏", L"Oculto", L"Masqué", L"Oculto", L"Nascosto", L"Ukryte", L"Gizli", L"非表示", L"숨김" },
     { L"In the player", L"У програвачі", L"В плеере", L"Im Player", L"प्लेयर में", L"在播放器中", L"在播放器中", L"En el reproductor", L"Dans le lecteur", L"No player", L"Nel player", L"W odtwarzaczu", L"Oynatıcıda", L"プレーヤー内", L"플레이어 안" },
     { L"Micro, next to the artist text", L"Мікро, біля імені виконавця", L"Микро, рядом с именем исполнителя", L"Mikro, neben dem Interpreten", L"माइक्रो, कलाकार के नाम के पास", L"微型，位于艺术家文字旁", L"微型，位於藝人文字旁", L"Micro, junto al artista", L"Micro, à côté de l'artiste", L"Micro, ao lado do artista", L"Micro, accanto all'artista", L"Mikro, obok wykonawcy", L"Mikro, sanatçı adının yanında", L"マイクロ、アーティスト名の横", L"마이크로, 아티스트 이름 옆" },
@@ -23275,11 +23279,13 @@ static wuxc::Border MakeLpPlaceholder(int part, double w, double h, bool live) {
         return s;
     };
 
+    // Laid out like the real player: from the left, with room between the parts.
     wuxc::StackPanel row;
     row.Orientation(wuxc::Orientation::Horizontal);
-    row.Spacing(std::max(2.0, ih * 0.25));
+    row.Spacing(std::max(4.0, ih * 0.4));
     row.VerticalAlignment(wux::VerticalAlignment::Center);
-    row.HorizontalAlignment(wux::HorizontalAlignment::Center);
+    row.HorizontalAlignment(wux::HorizontalAlignment::Left);
+    row.Margin(wux::Thickness{ 4, 0, 4, 0 });
     switch (part) {
         case 0: {
             const bool a = LpInPlayer(1), i = LpInPlayer(2), bt = LpInPlayer(3), v = LpInPlayer(4);
@@ -23323,7 +23329,9 @@ struct LpStrip {
     double width = 0, height = 0, ih = 0, y0 = 0;
     int monitor = 0;
     std::vector<LpSlot> slots;   // in strip pixels
-    std::vector<winrt::weak_ref<winrt::Windows::UI::Xaml::Shapes::Rectangle>> markers;
+    std::vector<winrt::weak_ref<wux::FrameworkElement>> markers;   // a dot per spot, a pill per overlay spot
+    winrt::weak_ref<wuxc::Canvas> ovCanvas;   // the overlay row above the copy
+    double ovH = 0;
 };
 struct LpDrag {
     std::vector<LpStrip> strips;
@@ -23375,12 +23383,19 @@ static void LpShowMarkers(LpDrag& st, bool on) {
                 const auto& strip = st.strips[si];
                 const auto& slot = strip.slots[k];
                 const bool target = on && st.tZone == 0 && (int)si == st.tStrip && (int)k == st.tSlot;
-                const double h = slot.overlay ? 8 : (target ? strip.ih : 4);
+                if (slot.overlay) {
+                    const auto ac = AccentTargetColor();
+                    if (auto pill = m.try_as<wuxc::Border>()) {
+                        pill.Background(Brush(target ? 0x70 : on ? 0x1C : 0x00, ac.R, ac.G, ac.B));
+                        pill.BorderBrush(Brush(target ? 0xFF : on ? 0xA0 : 0x50, ac.R, ac.G, ac.B));
+                    }
+                    m.Opacity(target || on ? 1.0 : 0.6);
+                    continue;
+                }
                 m.Opacity(target ? 1.0 : on ? 0.6 : 0.3);
-                m.Width(target ? 4 : 4);
-                m.Height(h);
+                m.Height(target ? strip.ih : 4);
                 wuxc::Canvas::SetLeft(m, slot.x - 2);
-                wuxc::Canvas::SetTop(m, slot.overlay ? 1 : (target ? strip.y0 : strip.height - 6));
+                wuxc::Canvas::SetTop(m, target ? strip.y0 : strip.height - 6);
             }
     for (auto* z : { &st.attachZone, &st.hiddenZone })
         if (auto b = z->get()) b.BorderBrush(on && st.tZone == (z == &st.attachZone ? 1 : 2) ? AccentBrush()
@@ -23442,15 +23457,18 @@ static void WireLpDrag(wuxc::Border const& el, int part, std::shared_ptr<LpDrag>
         double best = 1e9;
         for (size_t si = 0; si < st->strips.size() && st->tZone < 0; si++) {
             auto cv = st->strips[si].canvas.get();
-            if (!cv) continue;
+            auto ovc = st->strips[si].ovCanvas.get();
+            if (!cv || !ovc) continue;
             const auto& strip = st->strips[si];
+            auto op = e.GetCurrentPoint(ovc).Position();
             auto lp = e.GetCurrentPoint(cv).Position();
-            if (lp.Y < -12 || lp.Y > strip.height + 12 || lp.X < -20 || lp.X > strip.width + 20) continue;
+            bool overlayRow = op.Y >= -8 && op.Y <= strip.ovH + 2 && op.X >= -20 && op.X <= strip.width + 20;
+            bool onCopy = !overlayRow && lp.Y >= -4 && lp.Y <= strip.height + 12 && lp.X >= -20 && lp.X <= strip.width + 20;
+            if (!overlayRow && !onCopy) continue;
             for (size_t k = 0; k < strip.slots.size(); k++) {
                 const auto& s = strip.slots[k];
-                // Overlay spots answer near the top edge, the rest across the middle.
-                const double sy = s.overlay ? 4.0 : strip.height / 2;
-                const double d = std::abs(lp.X - s.x) + 0.6 * std::abs(lp.Y - sy);
+                if (s.overlay != overlayRow) continue;
+                const double d = std::abs((overlayRow ? op.X : lp.X) - s.x);
                 if (d < best) { best = d; st->tZone = 0; st->tStrip = (int)si; st->tSlot = (int)k; }
             }
         }
@@ -23459,8 +23477,9 @@ static void WireLpDrag(wuxc::Border const& el, int part, std::shared_ptr<LpDrag>
             std::wstring text = st->hint;
             if (st->tZone == 0) {
                 const auto& strip = st->strips[st->tStrip];
-                text = LpSlotName(strip.slots[st->tSlot].value) + L" \u00B7 " + Loc(L"Monitor") + L" " +
-                       std::to_wstring(strip.monitor);
+                const auto& slot = strip.slots[st->tSlot];
+                text = LpSlotName(slot.value) + L" \u00B7 " + Loc(L"Monitor") + L" " + std::to_wstring(strip.monitor) +
+                       L" \u00B7 " + Loc(slot.overlay ? L"Floats over the taskbar" : L"Makes room on the taskbar");
             } else if (st->tZone == 1) text = Loc(L"In the player");  // the box or the player itself
             else if (st->tZone == 2) text = Loc(L"Hidden");
             cap.Text(winrt::hstring{ text });
@@ -23728,12 +23747,41 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         strip.monitor = m.value;
         strip.ih = ih;
         strip.y0 = y0;
+        // Above the copy: the spots that float over the taskbar instead of making room.
+        wuxc::Canvas ovRow;
+        ovRow.Width(W); ovRow.Height(26);
+        strip.ovCanvas = winrt::make_weak(ovRow);
+        strip.ovH = 26;
         for (const LpSlot& sl : snap.slots) {
             LpSlot scaled{ sl.value, pad + sl.x * s, sl.overlay };
             bool merged = false;
             for (auto& o : strip.slots) merged = merged || (o.overlay == scaled.overlay && std::abs(o.x - scaled.x) < 7);
             if (merged) continue;
             strip.slots.push_back(scaled);
+            if (scaled.overlay) {
+                const std::wstring v = scaled.value;
+                const wchar_t* name = v == L"taskbar_left_edge" ? L"Left edge" : v == L"taskbar_center_edge" ? L"Center" : L"Right edge";
+                wuxc::Border pill;
+                pill.Height(20);
+                pill.Padding(wux::Thickness{ 8, 0, 8, 0 });
+                pill.CornerRadius(wux::CornerRadius{ 10, 10, 10, 10 });
+                pill.BorderThickness(wux::Thickness{ 1, 1, 1, 1 });
+                const auto ac = AccentTargetColor();
+                pill.BorderBrush(Brush(0x50, ac.R, ac.G, ac.B));
+                pill.Opacity(0.6);
+                pill.IsHitTestVisible(false);
+                wuxc::TextBlock t;
+                t.Text(hstring{ Loc(name) });
+                t.FontSize(11);
+                t.VerticalAlignment(wux::VerticalAlignment::Center);
+                pill.Child(t);
+                const double pw = 16 + 6.2 * Loc(name).size();
+                wuxc::Canvas::SetLeft(pill, std::clamp(scaled.x - pw / 2, pad, W - pad - pw));
+                wuxc::Canvas::SetTop(pill, 3);
+                ovRow.Children().Append(pill);
+                strip.markers.push_back(winrt::make_weak(pill.as<wux::FrameworkElement>()));
+                continue;
+            }
             wsh::Rectangle mk;
             mk.Width(4); mk.Height(sl.overlay ? 8 : 4);
             mk.RadiusX(2); mk.RadiusY(2);
@@ -23741,10 +23789,10 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
             mk.Opacity(0.3);   // where things can go, always shown
             mk.IsHitTestVisible(false);
             wuxc::Canvas::SetLeft(mk, scaled.x - 2);
-            wuxc::Canvas::SetTop(mk, sl.overlay ? 1 : H - 6);
+            wuxc::Canvas::SetTop(mk, H - 6);
             wuxc::Canvas::SetZIndex(mk, 20);
             cv.Children().Append(mk);
-            strip.markers.push_back(winrt::make_weak(mk));
+            strip.markers.push_back(winrt::make_weak(mk.as<wux::FrameworkElement>()));
         }
 
         // Ours: where they really are, or at their spot when they aren't showing now.
@@ -23774,11 +23822,14 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
             cv.Children().Append(ph);
         }
 
+        wuxc::StackPanel pair;
+        pair.Children().Append(ovRow);
+        pair.Children().Append(cv);
         wuxc::Viewbox vb;
         vb.Stretch(wuxm::Stretch::Uniform);
         vb.StretchDirection(wuxc::StretchDirection::DownOnly);
         vb.HorizontalAlignment(wux::HorizontalAlignment::Left);
-        vb.Child(cv);
+        vb.Child(pair);
         stack.Children().Append(vb);
         st->strips.push_back(std::move(strip));
     }
