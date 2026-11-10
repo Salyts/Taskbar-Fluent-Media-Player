@@ -23250,7 +23250,7 @@ static void BuildLpSketch(LpSnap& s) {
     auto tray = [&](int kind, double w, PlayerPosition l, PlayerPosition r) {
         tx -= w; s.items.push_back({ kind, tx, w }); around(tx, w, l, r); tx -= gap;
     };
-    tray(LpShowDesktop, 8, PlayerPosition::TrayAfterShowDesktopLeft, PlayerPosition::TrayAfterShowDesktopRight);
+    tray(LpShowDesktop, 12, PlayerPosition::TrayAfterShowDesktopLeft, PlayerPosition::TrayAfterShowDesktopRight);
     tray(LpClock, 76, PlayerPosition::TrayBeforeClock, PlayerPosition::TrayAfterClock);
     tray(LpOmni, 84, PlayerPosition::TrayBeforeOmniLeft, PlayerPosition::TrayBeforeOmniRight);
     tray(LpLanguage, 40, PlayerPosition::TrayLanguageLeft, PlayerPosition::TrayLanguageRight);
@@ -23419,7 +23419,8 @@ struct LpStrip {
     // tray. Each lays itself out, so room made in one doesn't move the others.
     int Section(double x) const { return x >= trayX - 1 ? 2 : x >= groupX - 6 ? 1 : 0; }
     winrt::weak_ref<winrt::Windows::UI::Xaml::Shapes::Rectangle> dropBox;   // dashed outline where it would land
-    struct Mover { winrt::weak_ref<wux::FrameworkElement> el; double x; bool floats = false; double off = 0; };   // off: where it's slid to
+    struct Mover { winrt::weak_ref<wux::FrameworkElement> el; double x, w; bool floats = false; double off = 0; };   // off: where it's slid to
+    bool roomBack = false;   // room is made backward here (forward would push something out)
     std::vector<Mover> movers;   // what slides aside to make room
 };
 struct LpDrag {
@@ -23519,11 +23520,26 @@ static void LpShowMarkers(LpDrag& st, bool on) {
             strip.slots[st.tSlot].x >= st.srcX - 8 && strip.slots[st.tSlot].x <= st.srcX + st.srcW + 8;
         const double slotX = here ? strip.slots[st.tSlot].x : 0;
         const double gap = std::max(8.0, st.dropW > 0 ? st.dropW : strip.ih * 2) + 4;
+        auto moves = [&](const LpStrip::Mover& mv, wux::FrameworkElement const& el) {
+            return here && !ownPlace && !mv.floats && !(source && el == source) &&
+                   strip.Section(mv.x) == strip.Section(slotX);
+        };
+        // Forward, unless that would push something past the end: then what's
+        // before the spot makes room backward. Nothing leaves the copy.
+        strip.roomBack = false;
+        for (const auto& mv : strip.movers) {
+            auto el = mv.el.get();
+            if (el && moves(mv, el) && mv.x >= slotX && mv.x + mv.w + gap > strip.width - strip.pad) strip.roomBack = true;
+        }
+        if (here && !ownPlace && slotX + 2 + gap > strip.width - strip.pad) strip.roomBack = true;
         for (auto& mv : strip.movers) {
             auto el = mv.el.get();
             if (!el) continue;
-            const double off = (here && !ownPlace && !mv.floats && !(source && el == source) && mv.x >= slotX &&
-                                strip.Section(mv.x) == strip.Section(slotX)) ? gap : 0;
+            double off = 0;
+            if (moves(mv, el)) {
+                if (strip.roomBack) { if (mv.x < slotX) off = -gap; }
+                else if (mv.x >= slotX) off = gap;
+            }
             // Our own record of where it's slid to: an animation doesn't change
             // the local value, so reading that back left things stuck.
             if (std::abs(mv.off - off) < 0.5) continue;
@@ -23547,7 +23563,7 @@ static void LpShowMarkers(LpDrag& st, bool on) {
         } else if ((int)si == st.srcStrip && slot.x >= st.srcX - 8 && slot.x <= st.srcX + st.srcW + 8) {
             x = st.srcX;   // its own place: stays where it is
         } else {
-            x = slot.x + 2;   // in the room that just opened after the spot
+            x = strip.roomBack ? slot.x - 2 - w : slot.x + 2;   // in the room that just opened
         }
         x = std::clamp(x, 2.0, std::max(2.0, strip.width - w - 2));
         box.Width(w);
@@ -23895,7 +23911,7 @@ static wux::FrameworkElement MakeLpItem(const LpItem& it, double w, double ih,
         case LpShowDesktop: {
             winrt::Windows::UI::Xaml::Shapes::Rectangle line;
             line.Width(1); line.Height(ih * 0.6); line.Fill(dim);
-            line.HorizontalAlignment(wux::HorizontalAlignment::Right);
+            line.HorizontalAlignment(wux::HorizontalAlignment::Center);
             line.VerticalAlignment(wux::VerticalAlignment::Center);
             box.Child(line);
             break;
@@ -23993,7 +24009,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
             wuxc::Canvas::SetTop(el, y0 + (ih - el.Height()) / 2);
             el.RenderTransform(wuxm::TranslateTransform());
             cv.Children().Append(el);
-            movers.push_back({ winrt::make_weak(el), ex });
+            movers.push_back({ winrt::make_weak(el), ex, std::max(2.0, it.w * s) });
             if (it.kind >= LpChevron) trayX = std::min(trayX, ex);
             if (it.kind == LpStart || it.kind == LpSearchIcon || it.kind == LpSearchBox || it.kind == LpTaskView || it.kind == LpOtherButton)
                 groupX = std::min(groupX, ex);
@@ -24106,6 +24122,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
             }
             if (pl.part == 1) { const double cx = x + w / 2; w = ih; x = cx - w / 2; }   // always a square
             w = std::max(w, ih * 0.8);
+            if (live && w > ih) { x += 2; w -= 4; }   // a little air from the neighbours
             x = std::clamp(x, pad, W - pad - w);
             auto ph = MakeLpPlaceholder(pl.part, w, ih, live);
             wuxc::Canvas::SetLeft(ph, x);
@@ -24116,7 +24133,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
             ph.RenderTransform(wuxm::TranslateTransform());
             cv.Children().Append(ph);
             const PlayerPosition pos = ParseSettingChoice(pl.position, PLAYER_POSITIONS, PlayerPosition::TrayLeft);
-            strip.movers.push_back({ winrt::make_weak(ph.as<wux::FrameworkElement>()), x, IsEdgePosition(pos) });
+            strip.movers.push_back({ winrt::make_weak(ph.as<wux::FrameworkElement>()), x, w, IsEdgePosition(pos) });
             if (!IsTaskbarPosition(pos)) strip.trayX = std::min(strip.trayX, x);
             if (!IsEdgePosition(pos)) beside.push_back({ pl.part, x, live ? w : std::min(w, LpDefaultWidth(pl.part, ih)), PositionKey(pos) });
         }
