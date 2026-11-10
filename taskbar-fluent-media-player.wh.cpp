@@ -22981,7 +22981,12 @@ static void TakeLpSnapOnThread(void* param) {
                     if (name == L"AugmentedEntryPointButton" && g_settings.hideNativeWidgetsButton) {
                         try {
                             const double hx = c.TransformToVisual(root).TransformPoint({ 0, 0 }).X;
-                            if (hx >= 0 && hx < W) snap->items.push_back({ LpWidgetsHidden, hx, H });
+                            if (hx >= 0 && hx < W) {
+                                snap->items.push_back({ LpWidgetsHidden, hx, H });
+                                // Still a spot either side of it: the mod anchors to the hidden shell.
+                                slot(PlayerPosition::TaskbarAfterWidgetsLeft, hx - 3);
+                                slot(PlayerPosition::TaskbarAfterWidgetsRight, hx + H + 3);
+                            }
                         } catch (...) { LOG_IGNORED_EXCEPTION(); }
                     }
                     continue;
