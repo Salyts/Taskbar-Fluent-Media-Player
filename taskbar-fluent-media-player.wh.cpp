@@ -6576,8 +6576,7 @@ static Brush MakeBackgroundBrush() {
     });
 }
 
-// A detached part's background. "inherit" = the main player's brush. The
-// blurred album cover isn't wired per part, so it becomes a solid fill.
+// A detached part's background. "inherit" = the main player's brush.
 static Brush ResolveDetachedBackgroundBrush(const DetachedBackgroundSettings& bg) {
     if (bg.backgroundType == BackgroundType::Inherit) {
         return MakeBackgroundBrush();
@@ -6586,10 +6585,7 @@ static Brush ResolveDetachedBackgroundBrush(const DetachedBackgroundSettings& bg
         bg.backgroundType, bg.solidColor, bg.solidColor2, bg.gradientColor2,
         bg.solidOpacity, bg.gradientAngle, bg.gradientBalance, bg.acrylicTintOpacity, bg.micaOpacity
     };
-    // Per-widget album-art-blur isn't wired up (no per-widget blur cache/
-    // refresh-on-track-change plumbing exists), so fall back to a plain solid
-    // fill rather than silently rendering fully transparent.
-    if (p.type == BackgroundType::AlbumArtBlur) p.type = BackgroundType::Solid;
+    // The blurred cover is a layer of its own under the part (transparent here).
     return MakeBackgroundBrushFromParams(p);
 }
 
@@ -7956,6 +7952,33 @@ static FrameworkElement FindChildByName(FrameworkElement const& root, std::wstri
 
 // Finds a named element in the main player or any detached part. Elements
 // keep their names wherever they live, so updates don't care which.
+static FrameworkElement FindMediaChild(std::wstring_view name);
+
+// A detached part's blurred-cover layer: the main player's blur (its cache is
+// keyed by the cover, so this costs no extra decode), or its dim fallback.
+static void PaintDetachedBlur(Border const& b) {
+    try {
+        if (g_cachedThumbnailBytes.empty()) {
+            b.Background(MakeBrush(IsSystemLightTheme() ? winrt::Windows::UI::Color{0xCC, 0xF3, 0xF3, 0xF3}
+                                                        : winrt::Windows::UI::Color{0xCC, 0x20, 0x20, 0x20}));
+        } else {
+            b.Background(MakeAlbumBlurBrush(g_cachedThumbnailBytes, std::max(1, (int)b.ActualWidth()), std::max(1, (int)b.ActualHeight())));
+        }
+        b.Opacity(g_settings.blurOpacity / 100.0);
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+}
+
+// Every detached part with a blurred-cover background, after the cover or theme changed.
+static void RefreshDetachedBlurs() {
+    for (DetachedWidgetState* dw : { &g_detachedAlbumArt, &g_detachedInfo, &g_detachedButtons, &g_detachedViz }) {
+        if (!dw->grid) continue;
+        try {
+            if (auto fe = FindChildByName(dw->grid, L"FluentMedia_DetachedBlur"))
+                if (auto b = fe.try_as<Border>()) PaintDetachedBlur(b);
+        } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    }
+}
+
 static FrameworkElement FindMediaChild(std::wstring_view name) {
     if (g_playerGrid) {
         if (auto fe = FindChildByName(g_playerGrid, name)) return fe;
@@ -8949,6 +8972,7 @@ static void RefreshThemeColors() {
                 }
             }
         }
+        RefreshDetachedBlurs();
 
         if (auto fe = FindMediaChild(L"FluentMedia_OuterBorder")) {
             if (auto btn = fe.try_as<Button>()) {
@@ -14412,6 +14436,7 @@ static bool RefreshAlbumArt(const PlayerSnapshot& m) {
                         }
                     }
                 }
+                RefreshDetachedBlurs();
             } else {
                 g_cachedAlbumTitle.clear();
                 g_cachedAlbumArtist.clear();
@@ -16605,6 +16630,18 @@ static FrameworkElement WrapDetachedContent(FrameworkElement content, const Deta
 
     Canvas::SetZIndex(chrome, 1);
     Canvas::SetZIndex(contentPad, 2);
+    const BackgroundType effectiveType = bg.backgroundType == BackgroundType::Inherit ? g_settings.backgroundType : bg.backgroundType;
+    if (effectiveType == BackgroundType::AlbumArtBlur) {
+        Border blur;
+        blur.Name(L"FluentMedia_DetachedBlur");
+        blur.CornerRadius({bg.cornerRadiusTL, bg.cornerRadiusTR, bg.cornerRadiusBR, bg.cornerRadiusBL});
+        blur.HorizontalAlignment(HorizontalAlignment::Stretch);
+        blur.VerticalAlignment(VerticalAlignment::Stretch);
+        blur.IsHitTestVisible(false);
+        Canvas::SetZIndex(blur, 0);
+        PaintDetachedBlur(blur);
+        wrapper.Children().Append(blur);
+    }
     wrapper.Children().Append(chrome);
     wrapper.Children().Append(contentPad);
 
