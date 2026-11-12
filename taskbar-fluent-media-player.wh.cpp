@@ -20797,6 +20797,8 @@ static void UpdateMicaVisual();  // defined with ApplyMica, below BuildUi
 static bool s_micaActive = true;  // window is active: Mica shows; inactive windows show the solid fallback
 
 // The window itself, and the panel that opens inside a card.
+static bool WantedLightTheme();   // with the materials, below
+
 // The "Custom color" material's color, for the current theme.
 static winrt::Windows::UI::Color XsWindowColor() {
     return ParseColorWithSpecialValues(GetSettingOverride(L"SettingsWindowSettings.windowColor", g_settings.settingsWindowColor), 255);
@@ -21197,8 +21199,8 @@ static const RowRule ROW_RULES[] = {
     { L"MainSettings.MediaButtonsSettings.mediaButtonsMargin", 69, false, L"MainSettings.MediaButtonsSettings.showMediaButtons", L"true" },
     { L"MainSettings.MediaButtonsSettings.buttonSize", 70, false, L"MainSettings.MediaButtonsSettings.showMediaButtons", L"true" },
     { L"MainSettings.MediaButtonsSettings.hideUnsupportedButtons", 71, false, L"MainSettings.MediaButtonsSettings.showMediaButtons", L"true" },
-    { L"SettingsWindowSettings.windowTransparency", 148, false, L"SettingsWindowSettings.windowMaterial", L"acrylic|acrylic_thin" },
-    { L"SettingsWindowSettings.windowBlur", 149, false, L"SettingsWindowSettings.windowMaterial", L"acrylic|acrylic_thin" },
+    { L"SettingsWindowSettings.windowTransparency", 148, false, L"SettingsWindowSettings.windowMaterial", L"acrylic|acrylic_thin|color" },
+    { L"SettingsWindowSettings.windowBlur", 149, false, L"SettingsWindowSettings.windowMaterial", L"acrylic|acrylic_thin|color" },
     { L"SettingsWindowSettings.windowTitleBarColor", 150, false, L"SettingsWindowSettings.windowTitleBar", L"color" },
     { L"SettingsWindowSettings.windowColor", 5151, false, L"SettingsWindowSettings.windowMaterial", L"color" },
     { L"MainSettings.VisualizerFunctionsSettings.vizHideWhenPaused", 72, false, L"MainSettings.VisualizerFunctionsSettings.vizEnabled", L"true" },
@@ -22100,10 +22102,13 @@ static void RepaintColorPicker(ColorPickerState& st) {
     st.syncing = false;
 }
 
+static void ApplyWindowColorNow();   // with the window's material code, below
+
 static void CommitColorValue(ColorPickerState& st, const std::wstring& v) {
     st.value = v;
     SetOverrideLive(st.key, v);
     if (st.key == ACCENT_KEY) RefreshAccentBrushes();
+    if (st.key == L"SettingsWindowSettings.windowColor") ApplyWindowColorNow();
     ScheduleApply();
     RepaintColorPicker(st);
 }
@@ -25390,7 +25395,7 @@ COLD_UNOPTIMIZED static void BuildUi() {
     using winrt::hstring;
     g_settingsDraftDirty = false;
     s_cats = CollectSettingsForDisplay();
-    s_light = IsSystemLightTheme();
+    s_light = WantedLightTheme();
     s_uiMotion = MotionOn();
     s_uiLanguage = UiLanguageSetting();
     s_uiReportButton = ReportButtonWanted();
@@ -25566,6 +25571,16 @@ static int WantedMaterial() {
     return XS_MATERIAL_MICA;
 }
 
+// The window's light or dark look: Windows' own setting, except with a custom
+// color, where it goes by that color (dark text on a light one, and so on).
+static bool WantedLightTheme() {
+    if (WantedMaterial() == XS_MATERIAL_COLOR) {
+        const auto c = XsWindowColor();
+        return 0.299 * c.R + 0.587 * c.G + 0.114 * c.B > 150.0;
+    }
+    return IsSystemLightTheme();
+}
+
 static bool XsTransparencyEnabled() {
     DWORD value = 1, size = sizeof(value);
     if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
@@ -25622,7 +25637,10 @@ static void UpdateMicaVisual() {
             s_micaHost.Visibility(wux::Visibility::Collapsed);
         };
         s_micaHost.Background(nullptr);
-        if (s_materialApplied == XS_MATERIAL_COLOR) { clear(); return; }   // the root's own background is the color
+        const int colorTransparency = std::clamp(_wtoi(GetSettingOverride(L"SettingsWindowSettings.windowTransparency",
+                                                       std::to_wstring(g_settings.settingsWindowTransparency)).c_str()), 0, 100);
+        // Solid: the root's own background is the color. See-through: an Acrylic tinted with it.
+        if (s_materialApplied == XS_MATERIAL_COLOR && colorTransparency == 0) { clear(); return; }
         if (s_materialApplied == XS_MATERIAL_ALBUM) {
             clear();
             uint64_t hash = 0;
@@ -25636,8 +25654,13 @@ static void UpdateMicaVisual() {
         s_micaHost.Visibility(wux::Visibility::Visible);
         auto hostVisual = ElementCompositionPreview::GetElementVisual(s_micaHost);
         auto compositor = hostVisual.Compositor();
-        const bool acrylic = s_materialApplied == XS_MATERIAL_ACRYLIC || s_materialApplied == XS_MATERIAL_ACRYLIC_THIN;
+        const bool acrylic = s_materialApplied == XS_MATERIAL_ACRYLIC || s_materialApplied == XS_MATERIAL_ACRYLIC_THIN ||
+                             s_materialApplied == XS_MATERIAL_COLOR;
         XsMicaRecipe recipe = GetXsMaterialRecipe(s_materialApplied, s_light);
+        if (s_materialApplied == XS_MATERIAL_COLOR) {
+            const auto c = XsWindowColor();
+            recipe = XsMicaRecipe{ c.R, c.G, c.B, 1.0f, 1.0f };   // all color; Transparency below thins it
+        }
         float extraBlur = 0.f;
         if (acrylic) {
             const int transparency = _wtoi(GetSettingOverride(L"SettingsWindowSettings.windowTransparency",
@@ -25751,7 +25774,8 @@ static void ApplyMica(HWND hwnd) {
 
     const int wanted = WantedMaterial();
     // Acrylic's brush only sees through with this set, and it also gives the title bar the material.
-    DWORD type = wanted == 5 /*Acrylic Thin*/ ? 3 : (wanted == XS_MATERIAL_ALBUM || wanted == XS_MATERIAL_COLOR) ? 1 : (DWORD)wanted;
+    // Custom color sees through like Acrylic once Transparency is above 0, so it gets Acrylic's backdrop.
+    DWORD type = (wanted == 5 /*Acrylic Thin*/ || wanted == XS_MATERIAL_COLOR) ? 3 : wanted == XS_MATERIAL_ALBUM ? 1 : (DWORD)wanted;
     DwmSetWindowAttribute(hwnd, 38 /*DWMWA_SYSTEMBACKDROP_TYPE*/, &type, sizeof(type));
     s_micaOn = wanted != 1;
     s_materialApplied = wanted;
@@ -25759,6 +25783,17 @@ static void ApplyMica(HWND hwnd) {
     RefreshScrollFades();
     ApplyTitleBar(hwnd);
     InvalidateRect(hwnd, nullptr, TRUE);
+}
+
+// The custom window color changed: the root, the tinted Acrylic over it and the title bar.
+static void ApplyThemeIfChanged(HWND hwnd);
+
+static void ApplyWindowColorNow() {
+    if (s_materialApplied != XS_MATERIAL_COLOR) return;
+    if (s_hostWnd) ApplyThemeIfChanged(s_hostWnd);   // light/dark follows the color
+    try { if (s_root) s_root.Background(WindowBackground()); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    UpdateMicaVisual();
+    if (s_hostWnd) ApplyTitleBar(s_hostWnd);
 }
 
 // The material setting changed: reapply it and recolor the root. Cards are rebuilt by the caller.
@@ -25793,7 +25828,7 @@ static void RebuildWholeUi() {
 }
 
 static void ApplyThemeIfChanged(HWND hwnd) {
-    const bool light = IsSystemLightTheme();
+    const bool light = WantedLightTheme();
     if (light == s_light || !s_root) return;
     s_light = light;
     try {
@@ -26040,7 +26075,7 @@ static DWORD WINAPI ThreadProc(void*) {
         });
 
         Wh_Log(L"[settings] island attached, building UI");
-        s_light = IsSystemLightTheme();
+        s_light = WantedLightTheme();
         ApplyMica(s_hostWnd);  // before BuildUi: the surfaces are built transparent or solid by it
         BuildUi();
         ApplyMica(s_hostWnd);
