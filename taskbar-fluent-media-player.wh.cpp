@@ -24009,6 +24009,32 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         if (snap.hwnd && !g_unloading) RunFromWindowThread(snap.hwnd, TakeLpSnapOnThread, &snap);
         if (!snap.ok || snap.width <= 0) BuildLpSketch(snap);
         CompactLpSnap(snap, TaskbarIconsCentered());
+        {
+            // The player and info show stand-in text, shorter than the song on
+            // the real taskbar: they shrink to it, and what follows them in
+            // their section closes up, so no empty gap is left behind.
+            const double is0 = std::max((W - 24) / snap.width, 0.62);
+            const double ih0 = std::round(std::clamp(snap.height * is0, 34.0, 60.0) * 0.74);
+            double trayS = snap.width, groupS = snap.width;
+            for (const auto& it : snap.items) {
+                if (it.kind >= LpChevron) trayS = std::min(trayS, it.x);
+                if (it.kind == LpStart || it.kind == LpSearchIcon || it.kind == LpSearchBox || it.kind == LpTaskView || it.kind == LpOtherButton)
+                    groupS = std::min(groupS, it.x);
+            }
+            auto section = [&](double x) { return x >= trayS - 1 ? 2 : x >= std::min(groupS, trayS) - 6 ? 1 : 0; };
+            for (auto& r : snap.parts) {
+                if (r.part != 0 && r.part != 2) continue;
+                const double target = LpDefaultWidth(r.part, ih0) / is0;
+                const double delta = r.w - target;
+                if (delta <= 2) continue;
+                const double end = r.x + r.w;
+                const int sec = section(r.x);
+                r.w = target;
+                for (auto& it : snap.items) if (it.x >= end - 1 && section(it.x) == sec) it.x -= delta;
+                for (auto& sl : snap.slots) if (!sl.overlay && sl.x >= end - 1 && section(sl.x) == sec) sl.x -= delta;
+                for (auto& o : snap.parts) if (&o != &r && o.x >= end - 1 && section(o.x) == sec) o.x -= delta;
+            }
+        }
 
         const double pad = 12;   // nothing touches the ends
         // Things keep a readable size; it's the empty stretches between them
