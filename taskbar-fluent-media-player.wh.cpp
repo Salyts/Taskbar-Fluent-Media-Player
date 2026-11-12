@@ -1359,6 +1359,10 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
     - "acrylic": "Acrylic"
     - "acrylic_thin": "Acrylic Thin"
     - "album": "Album cover (blurred)"
+    - "color": "Custom color"
+  - windowColor: "243 243 243$32 32 32"
+    $name: Settings window color (light$dark, R G B)
+    $description: The window's color with "Custom color" as its material.
   - windowTransparency: 0
     $name: Acrylic transparency (%)
     $description: 0 is Windows' own look. Only used with Acrylic.
@@ -1724,7 +1728,8 @@ static winrt::Windows::Graphics::Effects::IGraphicsEffect MakeXsEffect(
 
 // The window's materials (see WantedMaterial).
 static constexpr int XS_MATERIAL_NONE = 1, XS_MATERIAL_MICA = 2, XS_MATERIAL_ACRYLIC = 3, XS_MATERIAL_MICA_ALT = 4,
-                     XS_MATERIAL_ACRYLIC_THIN = 5, XS_MATERIAL_ALBUM = 6;   // album: the blurred cover, drawn by us
+                     XS_MATERIAL_ACRYLIC_THIN = 5, XS_MATERIAL_ALBUM = 6,   // album: the blurred cover, drawn by us
+                     XS_MATERIAL_COLOR = 7;                                  // a color of your own
 
 // Tint, tint opacity and luminosity opacity of Windows App SDK's MicaController (Base, BaseAlt)
 // and DesktopAcrylicController (Base, Thin).
@@ -2633,6 +2638,7 @@ struct ModSettings {
     int          settingsWindowBlur      = 0;
     std::wstring settingsTitleBar        = L"window";       // XAML settings-window title bar: window | default | color
     std::wstring settingsTitleBarColor   = L"32 32 32";
+    std::wstring settingsWindowColor     = L"243 243 243$32 32 32";
     std::wstring settingsMaterial        = L"mica";         // XAML settings-window backdrop: none | mica | mica_alt | acrylic | acrylic_thin
     bool         hideUnsupportedButtons  = false;
     bool         disableAlbumArtClick    = false;
@@ -3048,6 +3054,7 @@ static constexpr SettingSpec SETTINGS[] = {
     SInt(L"SettingsWindowSettings.windowBlur", 0, 100, &ModSettings::settingsWindowBlur),
     SStr(L"SettingsWindowSettings.windowTitleBar", L"window", &ModSettings::settingsTitleBar),
     SStr(L"SettingsWindowSettings.windowTitleBarColor", L"32 32 32", &ModSettings::settingsTitleBarColor),
+    SStr(L"SettingsWindowSettings.windowColor", L"243 243 243$32 32 32", &ModSettings::settingsWindowColor),
     SList(L"ContextMenuSettings.contextMenuItems"),
     SStr(L"ContextMenuSettings.repeatStyle", L"submenu"),
     SStr(L"ContextMenuSettings.shuffleStyle", L"toggle"),
@@ -19401,8 +19408,10 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
                          {L"acrylic", L"Acrylic"},
                          {L"acrylic_thin", L"Acrylic Thin"},
                          {L"album", L"Album cover (blurred)"},
+                         {L"color", L"Custom color"},
                      }),
                      L"Background of this window. Mica follows your Windows wallpaper; Acrylic shows what's behind the window. Needs Windows 11 22H2 or newer; older versions stay solid."),
+            RowColor(L"Window color", L"SettingsWindowSettings.windowColor", L"243 243 243$32 32 32"),
             WithDesc(RowSlider(L"Transparency", L"SettingsWindowSettings.windowTransparency", L"0", 0, 100),
                      L"0 = Windows' own look."),
             WithDesc(RowSlider(L"Extra blur", L"SettingsWindowSettings.windowBlur", L"0", 0, 100),
@@ -20577,6 +20586,7 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"Title bar", L"Рядок заголовка", L"Строка заголовка", L"Titelleiste", L"शीर्षक पट्टी", L"标题栏", L"標題列", L"Barra de título", L"Barre de titre", L"Barra de título", L"Barra del titolo", L"Pasek tytułu", L"Başlık çubuğu", L"タイトル バー", L"제목 표시줄" },
     { L"Match the window", L"Як у вікна", L"Как у окна", L"Wie das Fenster", L"विंडो के अनुसार", L"与窗口一致", L"與視窗一致", L"Igual que la ventana", L"Comme la fenêtre", L"Igual à janela", L"Come la finestra", L"Jak okno", L"Pencereyle aynı", L"ウィンドウに合わせる", L"창과 동일" },
     { L"Windows default", L"За замовчуванням Windows", L"По умолчанию Windows", L"Windows-Standard", L"Windows डिफ़ॉल्ट", L"Windows 默认", L"Windows 預設", L"Predeterminado de Windows", L"Par défaut de Windows", L"Padrão do Windows", L"Predefinito di Windows", L"Domyślny Windows", L"Windows varsayılanı", L"Windows の既定", L"Windows 기본값" },
+    { L"Window color", L"Колір вікна", L"Цвет окна", L"Fensterfarbe", L"विंडो का रंग", L"窗口颜色", L"視窗色彩", L"Color de la ventana", L"Couleur de la fenêtre", L"Cor da janela", L"Colore della finestra", L"Kolor okna", L"Pencere rengi", L"ウィンドウの色", L"창 색상" },
     { L"Custom color", L"Власний колір", L"Свой цвет", L"Eigene Farbe", L"कस्टम रंग", L"自定义颜色", L"自訂色彩", L"Color personalizado", L"Couleur personnalisée", L"Cor personalizada", L"Colore personalizzato", L"Własny kolor", L"Özel renk", L"カスタム色", L"사용자 지정 색" },
     { L"Title bar color", L"Колір рядка заголовка", L"Цвет строки заголовка", L"Farbe der Titelleiste", L"शीर्षक पट्टी का रंग", L"标题栏颜色", L"標題列色彩", L"Color de la barra de título", L"Couleur de la barre de titre", L"Cor da barra de título", L"Colore della barra del titolo", L"Kolor paska tytułu", L"Başlık çubuğu rengi", L"タイトル バーの色", L"제목 표시줄 색" },
     { L"Colour of the sliders and toggles here.", L"Колір повзунків і перемикачів тут.", L"Цвет ползунков и переключателей здесь.", L"Farbe der Regler und Schalter hier.", L"यहाँ के स्लाइडर और टॉगल का रंग।", L"此处滑块和开关的颜色。", L"此處滑桿和開關的色彩。", L"Color de los controles deslizantes e interruptores de aquí.", L"Couleur des curseurs et interrupteurs ici.", L"Cor dos controles deslizantes e botões aqui.", L"Colore di cursori e interruttori qui.", L"Kolor suwaków i przełączników w tym oknie.", L"Buradaki kaydırıcıların ve anahtarların rengi.", L"ここのスライダーとスイッチの色です。", L"여기의 슬라이더와 토글 색입니다." },
@@ -20787,7 +20797,13 @@ static void UpdateMicaVisual();  // defined with ApplyMica, below BuildUi
 static bool s_micaActive = true;  // window is active: Mica shows; inactive windows show the solid fallback
 
 // The window itself, and the panel that opens inside a card.
+// The "Custom color" material's color, for the current theme.
+static winrt::Windows::UI::Color XsWindowColor() {
+    return ParseColorWithSpecialValues(GetSettingOverride(L"SettingsWindowSettings.windowColor", g_settings.settingsWindowColor), 255);
+}
+
 static wuxm::SolidColorBrush WindowBackground() {
+    if (s_micaOn && s_materialApplied == XS_MATERIAL_COLOR) return wuxm::SolidColorBrush(XsWindowColor());
     // Under the Mica visual: MicaController's fallback color, seen if the effect cannot be made
     // (transparency effects off, no wallpaper brush).
     if (s_micaOn && s_materialApplied == 4 && s_light) return Brush(255, 0xE8, 0xE8, 0xE8);
@@ -21184,6 +21200,7 @@ static const RowRule ROW_RULES[] = {
     { L"SettingsWindowSettings.windowTransparency", 148, false, L"SettingsWindowSettings.windowMaterial", L"acrylic|acrylic_thin" },
     { L"SettingsWindowSettings.windowBlur", 149, false, L"SettingsWindowSettings.windowMaterial", L"acrylic|acrylic_thin" },
     { L"SettingsWindowSettings.windowTitleBarColor", 150, false, L"SettingsWindowSettings.windowTitleBar", L"color" },
+    { L"SettingsWindowSettings.windowColor", 5151, false, L"SettingsWindowSettings.windowMaterial", L"color" },
     { L"MainSettings.VisualizerFunctionsSettings.vizHideWhenPaused", 72, false, L"MainSettings.VisualizerFunctionsSettings.vizEnabled", L"true" },
     { L"MainSettings.VisualizerFunctionsSettings.vizOnlyMediaApp", 73, false, L"MainSettings.VisualizerFunctionsSettings.vizEnabled", L"true" },
     { L"MainSettings.VisualizerFunctionsSettings.vizBehindPlayer", 141, false, L"MainSettings.VisualizerFunctionsSettings.vizEnabled", L"true" },
@@ -21297,7 +21314,8 @@ static std::wstring RuleCurrentValue(const wchar_t* key) {
 static bool IsWindowSetting(const std::wstring& key) {
     return key == L"SettingsWindowSettings.settingsLanguage" || key == L"SettingsWindowSettings.animations" ||
            key == L"SettingsWindowSettings.windowMaterial" || key == L"SettingsWindowSettings.reportButtonInSidebar" ||
-           key == L"SettingsWindowSettings.sidebarIconsAboveSave" || key == L"SettingsWindowSettings.windowTitleBar";
+           key == L"SettingsWindowSettings.sidebarIconsAboveSave" || key == L"SettingsWindowSettings.windowTitleBar" ||
+           key == L"SettingsWindowSettings.windowColor";
 }
 
 // A switch covering several settings (key + linkedKeys, like "Show info") is on
@@ -25544,6 +25562,7 @@ static int WantedMaterial() {
     if (v == L"acrylic") return XS_MATERIAL_ACRYLIC;
     if (v == L"acrylic_thin") return XS_MATERIAL_ACRYLIC_THIN;
     if (v == L"album") return XS_MATERIAL_ALBUM;
+    if (v == L"color") return XS_MATERIAL_COLOR;
     return XS_MATERIAL_MICA;
 }
 
@@ -25603,6 +25622,7 @@ static void UpdateMicaVisual() {
             s_micaHost.Visibility(wux::Visibility::Collapsed);
         };
         s_micaHost.Background(nullptr);
+        if (s_materialApplied == XS_MATERIAL_COLOR) { clear(); return; }   // the root's own background is the color
         if (s_materialApplied == XS_MATERIAL_ALBUM) {
             clear();
             uint64_t hash = 0;
@@ -25696,6 +25716,12 @@ static void ApplyTitleBar(HWND hwnd) {
         caption = RGB(c.R, c.G, c.B);
         text = RGB(t.R, t.G, t.B);
         darkMode = (t.R + t.G + t.B) > 3 * 127;   // white text wanted: light glyphs
+    } else if (mode != L"default" && s_micaOn && s_materialApplied == XS_MATERIAL_COLOR) {
+        const auto c = XsWindowColor();
+        const auto t = ContrastColor(c);
+        caption = RGB(c.R, c.G, c.B);
+        text = RGB(t.R, t.G, t.B);
+        darkMode = (t.R + t.G + t.B) > 3 * 127;
     } else if (mode != L"default" && s_micaOn && s_materialApplied == XS_MATERIAL_ALBUM) {
         caption = s_light ? RGB(243, 243, 243) : RGB(32, 32, 32);   // the cover can't reach the title bar
     } else if (mode != L"default" && s_micaOn) {
@@ -25725,7 +25751,7 @@ static void ApplyMica(HWND hwnd) {
 
     const int wanted = WantedMaterial();
     // Acrylic's brush only sees through with this set, and it also gives the title bar the material.
-    DWORD type = wanted == 5 /*Acrylic Thin*/ ? 3 : wanted == XS_MATERIAL_ALBUM ? 1 : (DWORD)wanted;
+    DWORD type = wanted == 5 /*Acrylic Thin*/ ? 3 : (wanted == XS_MATERIAL_ALBUM || wanted == XS_MATERIAL_COLOR) ? 1 : (DWORD)wanted;
     DwmSetWindowAttribute(hwnd, 38 /*DWMWA_SYSTEMBACKDROP_TYPE*/, &type, sizeof(type));
     s_micaOn = wanted != 1;
     s_materialApplied = wanted;
@@ -25737,7 +25763,10 @@ static void ApplyMica(HWND hwnd) {
 
 // The material setting changed: reapply it and recolor the root. Cards are rebuilt by the caller.
 static void ApplyMaterialIfChanged(HWND hwnd) {
-    if (WantedMaterial() == s_materialApplied) return;
+    if (WantedMaterial() == s_materialApplied) {
+        if (s_materialApplied == XS_MATERIAL_COLOR) try { if (s_root) s_root.Background(WindowBackground()); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+        return;
+    }
     ApplyMica(hwnd);
     try { if (s_root) s_root.Background(WindowBackground()); } catch (...) { LOG_IGNORED_EXCEPTION(); }
 }
