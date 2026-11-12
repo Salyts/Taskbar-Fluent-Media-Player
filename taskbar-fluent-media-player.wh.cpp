@@ -24097,7 +24097,9 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         if (GetTimeFormatEx(LOCALE_NAME_USER_DEFAULT, TIME_NOSECONDS, nullptr, nullptr, buf, 64)) timeText = buf;
         if (GetDateFormatEx(LOCALE_NAME_USER_DEFAULT, DATE_SHORTDATE, nullptr, nullptr, buf, 64, nullptr)) dateText = buf;
     }
-    const auto stripBg = s_light ? Brush(255, 238, 238, 238) : Brush(255, 28, 28, 28);
+    // Over a see-through window (Mica, Acrylic, the album cover) the copy is a tint like the cards, not a solid slab.
+    const auto stripBg = s_micaOn ? (s_light ? Brush(0x8C, 255, 255, 255) : Brush(0x59, 0, 0, 0))
+                                  : (s_light ? Brush(255, 238, 238, 238) : Brush(255, 28, 28, 28));
     const auto zoneLine = s_light ? Brush(60, 0, 0, 0) : Brush(60, 255, 255, 255);
 
     // Where each part is now: a taskbar spot, in the player, or hidden.
