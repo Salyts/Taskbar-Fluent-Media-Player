@@ -25677,22 +25677,34 @@ static void HideTitleBarText(HWND hwnd) {
     setAttribute(hwnd, 1 /*WTA_NONCLIENT*/, &options, sizeof(options));
 }
 
+static BOOL s_darkModeApplied = -1;   // the window's dark-mode flag as last set
+
 // The title bar: left alone it stays black over Acrylic. With no caption color at all
 // Windows draws the window's material there; or any color, with readable text.
 static void ApplyTitleBar(HWND hwnd) {
     static constexpr COLORREF COLOR_DEFAULT = 0xFFFFFFFF, COLOR_NONE = 0xFFFFFFFE;
     const std::wstring mode = GetSettingOverride(L"SettingsWindowSettings.windowTitleBar", g_settings.settingsTitleBar);
     COLORREF caption = COLOR_DEFAULT, text = COLOR_DEFAULT;
+    // Windows draws the minimize/maximize/close glyphs light or dark by the
+    // window's dark-mode flag, not by the caption color: on a custom color the
+    // flag follows that color, so the glyphs contrast with it like the text.
+    BOOL darkMode = !s_light;
     if (mode == L"color") {
         const auto c = ParseColorWithSpecialValues(
             GetSettingOverride(L"SettingsWindowSettings.windowTitleBarColor", g_settings.settingsTitleBarColor), 255);
         const auto t = ContrastColor(c);
         caption = RGB(c.R, c.G, c.B);
         text = RGB(t.R, t.G, t.B);
+        darkMode = (t.R + t.G + t.B) > 3 * 127;   // white text wanted: light glyphs
     } else if (mode != L"default" && s_micaOn && s_materialApplied == XS_MATERIAL_ALBUM) {
         caption = s_light ? RGB(243, 243, 243) : RGB(32, 32, 32);   // the cover can't reach the title bar
     } else if (mode != L"default" && s_micaOn) {
         caption = COLOR_NONE;
+    }
+    // ApplyMica sets the flag for the theme; this one has the last word.
+    if (darkMode != s_darkModeApplied) {
+        DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &darkMode, sizeof(darkMode));
+        s_darkModeApplied = darkMode;
     }
     static HWND s_wnd = nullptr;
     static COLORREF s_caption = 0, s_text = 0;
@@ -25709,6 +25721,7 @@ static void ApplyTitleBar(HWND hwnd) {
 static void ApplyMica(HWND hwnd) {
     BOOL dark = !s_light;
     DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &dark, sizeof(dark));
+    s_darkModeApplied = dark;
 
     const int wanted = WantedMaterial();
     // Acrylic's brush only sees through with this set, and it also gives the title bar the material.
