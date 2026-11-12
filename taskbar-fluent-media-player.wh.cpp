@@ -24010,9 +24010,9 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         if (!snap.ok || snap.width <= 0) BuildLpSketch(snap);
         CompactLpSnap(snap, TaskbarIconsCentered());
         {
-            // The player and info show stand-in text, shorter than the song on
-            // the real taskbar: they shrink to it, and what follows them in
-            // their section closes up, so no empty gap is left behind.
+            // The parts show stand-ins, smaller than the real ones (the real song,
+            // their margins): each shrinks to its stand-in, and what follows it
+            // in its section closes up, so no empty gap is left behind.
             const double is0 = std::max((W - 24) / snap.width, 0.62);
             const double ih0 = std::round(std::clamp(snap.height * is0, 34.0, 60.0) * 0.74);
             double trayS = snap.width, groupS = snap.width;
@@ -24023,13 +24023,15 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
             }
             auto section = [&](double x) { return x >= trayS - 1 ? 2 : x >= std::min(groupS, trayS) - 6 ? 1 : 0; };
             for (auto& r : snap.parts) {
-                if (r.part != 0 && r.part != 2) continue;
+                // Every part: its real box has the real song and margins in it.
                 const double target = LpDefaultWidth(r.part, ih0) / is0;
                 const double delta = r.w - target;
                 if (delta <= 2) continue;
                 const double end = r.x + r.w;
                 const int sec = section(r.x);
                 r.w = target;
+                // An overlay takes no room on the taskbar, so nothing follows it.
+                if (IsEdgePosition(ParseSettingChoice(LpPosition(LP_PARTS[r.part]), PLAYER_POSITIONS, PlayerPosition::TrayLeft))) continue;
                 for (auto& it : snap.items) if (it.x >= end - 1 && section(it.x) == sec) it.x -= delta;
                 for (auto& sl : snap.slots) if (!sl.overlay && sl.x >= end - 1 && section(sl.x) == sec) sl.x -= delta;
                 for (auto& o : snap.parts) if (&o != &r && o.x >= end - 1 && section(o.x) == sec) o.x -= delta;
