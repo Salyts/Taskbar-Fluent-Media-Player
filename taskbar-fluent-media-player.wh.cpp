@@ -5752,6 +5752,21 @@ static Brush MakeElevationBorderBrush(HoverEffect mode) {
     }
 }
 
+// A hover or pressed tint over a solid background: the tint mixed into that
+// color. Used in its place, the near-transparent tint made the background
+// vanish on hover (a black hole on a dark taskbar). Null: not a solid color.
+static Brush TintOverSolid(Brush const& base, winrt::Windows::UI::Color tint) {
+    auto sb = base ? base.try_as<SolidColorBrush>() : nullptr;
+    if (!sb) return nullptr;
+    const auto b = sb.Color();
+    if (b.A == 0) return nullptr;
+    const double a = tint.A / 255.0;
+    auto mix = [a](BYTE x, BYTE t) { return (BYTE)std::lround(x * (1.0 - a) + t * a); };
+    SolidColorBrush out(winrt::Windows::UI::Color{ b.A, mix(b.R, tint.R), mix(b.G, tint.G), mix(b.B, tint.B) });
+    out.Opacity(sb.Opacity());
+    return out;
+}
+
 static void SetupPlayerCommonStates(Button const& btn, Brush const& normalBg) {
     auto transparent = MakeBrush({0x00, 0, 0, 0});
     if (!IsHoverEffectEnabled(g_settings.playerHoverEffectMode)) {
@@ -5764,11 +5779,13 @@ static void SetupPlayerCommonStates(Button const& btn, Brush const& normalBg) {
     EnsureHoverBrushes();
     auto elevBorder        = MakeElevationBorderBrush(g_settings.playerHoverEffectMode);
     auto elevBorderPressed = MakeBrush(GetSystemButtonBorderPressedColor(g_settings.playerHoverEffectMode));
+    Brush hover   = TintOverSolid(normalBg, GetSystemButtonHoverColor(g_settings.playerHoverEffectMode));
+    Brush pressed = TintOverSolid(normalBg, GetSystemButtonPressedColor(g_settings.playerHoverEffectMode));
     SetupCommonStates(
         btn,
         normalBg,
-        g_playerHoverBrush,
-        g_playerPressedBrush,
+        hover ? hover : Brush(g_playerHoverBrush),
+        pressed ? pressed : Brush(g_playerPressedBrush),
         normalBg,
         transparent,
         elevBorder,
@@ -5794,8 +5811,10 @@ static void SetupHoverCommonStatesForMode(Button const& btn, Brush const& normal
             transparent, transparent, transparent, transparent);
         return;
     }
-    auto hoverBrush        = MakeBrush(GetSystemButtonHoverColor(hoverMode));
-    auto pressedBrush       = MakeBrush(GetSystemButtonPressedColor(hoverMode));
+    Brush hoverBrush   = TintOverSolid(normalBg, GetSystemButtonHoverColor(hoverMode));
+    Brush pressedBrush = TintOverSolid(normalBg, GetSystemButtonPressedColor(hoverMode));
+    if (!hoverBrush)   hoverBrush   = MakeBrush(GetSystemButtonHoverColor(hoverMode));
+    if (!pressedBrush) pressedBrush = MakeBrush(GetSystemButtonPressedColor(hoverMode));
     auto elevBorder         = MakeElevationBorderBrush(hoverMode);
     auto elevBorderPressed  = MakeBrush(GetSystemButtonBorderPressedColor(hoverMode));
     SetupCommonStates(
@@ -20025,6 +20044,7 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"Right edge", L"Правий край", L"Правый край", L"Rechter Rand", L"दायाँ किनारा", L"右边缘", L"右邊緣", L"Borde derecho", L"Bord droit", L"Borda direita", L"Bordo destro", L"Prawa krawędź", L"Sağ kenar", L"右端", L"오른쪽 가장자리" },
     { L"Floats over the taskbar", L"Над панеллю завдань, нічого не зсуває", L"Поверх панели задач, ничего не сдвигает", L"Schwebt über der Taskleiste", L"टास्कबार के ऊपर तैरता है", L"浮在任务栏上方", L"浮在工作列上方", L"Flota sobre la barra de tareas", L"Flotte au-dessus de la barre des tâches", L"Flutua sobre a barra de tarefas", L"Fluttua sopra la barra delle applicazioni", L"Unosi się nad paskiem zadań", L"Görev çubuğunun üzerinde durur", L"タスク バーの上に重ねて表示", L"작업 표시줄 위에 떠 있음" },
     { L"Makes room on the taskbar", L"Звільняє місце на панелі завдань", L"Освобождает место на панели задач", L"Schafft Platz auf der Taskleiste", L"टास्कबार पर जगह बनाता है", L"在任务栏上腾出空间", L"在工作列上騰出空間", L"Hace sitio en la barra de tareas", L"Se fait de la place dans la barre des tâches", L"Abre espaço na barra de tarefas", L"Si fa spazio sulla barra delle applicazioni", L"Robi miejsce na pasku zadań", L"Görev çubuğunda yer açar", L"タスク バーに場所を空ける", L"작업 표시줄에 자리를 만듦" },
+    { L"Weather", L"Погода", L"Погода", L"Wetter", L"मौसम", L"天气", L"天氣", L"Tiempo", L"Météo", L"Clima", L"Meteo", L"Pogoda", L"Hava durumu", L"天気", L"날씨" },
     { L"Hidden", L"Приховано", L"Скрыто", L"Ausgeblendet", L"छिपा हुआ", L"已隐藏", L"已隱藏", L"Oculto", L"Masqué", L"Oculto", L"Nascosto", L"Ukryte", L"Gizli", L"非表示", L"숨김" },
     { L"In the player", L"У програвачі", L"В плеере", L"Im Player", L"प्लेयर में", L"在播放器中", L"在播放器中", L"En el reproductor", L"Dans le lecteur", L"No player", L"Nel player", L"W odtwarzaczu", L"Oynatıcıda", L"プレーヤー内", L"플레이어 안" },
     { L"Micro, next to the artist text", L"Мікро, біля імені виконавця", L"Микро, рядом с именем исполнителя", L"Mikro, neben dem Interpreten", L"माइक्रो, कलाकार के नाम के पास", L"微型，位于艺术家文字旁", L"微型，位於藝人文字旁", L"Micro, junto al artista", L"Micro, à côté de l'artiste", L"Micro, ao lado do artista", L"Micro, accanto all'artista", L"Mikro, obok wykonawcy", L"Mikro, sanatçı adının yanında", L"マイクロ、アーティスト名の横", L"마이크로, 아티스트 이름 옆" },
@@ -22975,7 +22995,7 @@ enum LpKind {
     LpStart = 1, LpSearchIcon, LpSearchBox, LpTaskView, LpWidgets, LpApp, LpOtherButton, LpWidgetsHidden,
     LpChevron = 10, LpTrayIcons, LpLanguage, LpOmni, LpClock, LpShowDesktop, LpOtherTray,
 };
-struct LpItem { int kind; double x, w; std::wstring t1, t2, icon; };   // the Widgets button's text and weather icon
+struct LpItem { int kind; double x, w; };
 struct LpSlot {
     const wchar_t* value; double x; bool overlay;
     // Beside one of ours: who shares the spot (left to right), whose side, and
@@ -22992,45 +23012,6 @@ struct LpSnap {
     std::vector<LpSlot> slots;
     std::vector<LpPartRect> parts;
 };
-
-// The first two lines of text under `n` (the Widgets button's weather).
-static void CollectLpTexts(winrt::Windows::UI::Xaml::DependencyObject const& n, std::vector<std::wstring>& out, int depth) {
-    if (!n || depth > 16 || out.size() >= 2) return;
-    if (auto t = n.try_as<wuxc::TextBlock>()) {
-        std::wstring s = t.Text().c_str();
-        bool plain = !s.empty() && t.Visibility() == Visibility::Visible;
-        for (wchar_t ch : s) plain = plain && !(ch >= 0xE000 && ch <= 0xF8FF);   // icon glyphs
-        if (plain) out.push_back(s);
-    }
-    const int c = VisualTreeHelper::GetChildrenCount(n);
-    for (int i = 0; i < c && out.size() < 2; i++) CollectLpTexts(VisualTreeHelper::GetChild(n, i), out, depth + 1);
-}
-
-// Where the first image under `n` comes from (the weather icon), or empty.
-static std::wstring FindLpIconUri(winrt::Windows::UI::Xaml::DependencyObject const& n, int depth) {
-    if (!n || depth > 16) return {};
-    if (auto img = n.try_as<wuxc::Image>()) {
-        try {
-            auto src = img.Source();
-            if (auto bmp = src.try_as<wuxm::Imaging::BitmapImage>(); bmp && bmp.UriSource()) return bmp.UriSource().ToString().c_str();
-            if (auto svg = src.try_as<wuxm::Imaging::SvgImageSource>(); svg && svg.UriSource()) return svg.UriSource().ToString().c_str();
-        } catch (...) { LOG_IGNORED_EXCEPTION(); }
-    }
-    const int c = VisualTreeHelper::GetChildrenCount(n);
-    for (int i = 0; i < c; i++) {
-        auto r = FindLpIconUri(VisualTreeHelper::GetChild(n, i), depth + 1);
-        if (!r.empty()) return r;
-    }
-    return {};
-}
-
-static void ReadLpWeather(FrameworkElement const& widgets, LpItem& item) {
-    std::vector<std::wstring> texts;
-    CollectLpTexts(widgets, texts, 0);
-    if (texts.size() > 0) item.t1 = texts[0];
-    if (texts.size() > 1) item.t2 = texts[1];
-    item.icon = FindLpIconUri(widgets, 0);
-}
 
 // Runs on the taskbar's thread; only plain values leave it.
 static void TakeLpSnapOnThread(void* param) {
@@ -23078,9 +23059,7 @@ static void TakeLpSnapOnThread(void* param) {
                         try {
                             const double hx = c.TransformToVisual(root).TransformPoint({ 0, 0 }).X;
                             if (hx >= 0 && hx < W) {
-                                LpItem item{ LpWidgetsHidden, hx, H };
-                                ReadLpWeather(c, item);
-                                if (!item.t1.empty()) item.w = H * 0.8 + 7.5 * (double)std::max(item.t1.size(), item.t2.size());
+                                LpItem item{ LpWidgetsHidden, hx, H * 2.4 };
                                 snap->items.push_back(item);
                                 // Still a spot either side of it: the mod anchors to the hidden shell.
                                 slot(PlayerPosition::TaskbarAfterWidgetsLeft, hx - 3);
@@ -23101,9 +23080,7 @@ static void TakeLpSnapOnThread(void* param) {
                 else if (id == L"TaskViewButton") kind = LpTaskView;
                 else if (cls == L"Taskbar.AugmentedEntryPointButton" || name == L"AugmentedEntryPointButton") kind = LpWidgets;
                 else if (cls == L"Taskbar.TaskListButton") kind = LpApp;
-                LpItem item{ kind, x, w };
-                if (kind == LpWidgets) ReadLpWeather(c, item);
-                snap->items.push_back(item);
+                snap->items.push_back({ kind, x, w });
             }
             static const PlayerPosition anchored[] = {
                 PlayerPosition::TaskbarLeftStart, PlayerPosition::TaskbarRightStart,
@@ -23869,47 +23846,19 @@ static wux::FrameworkElement MakeLpItem(const LpItem& it, double w, double ih,
             auto r = rowOf(ih * 0.22);
             r.HorizontalAlignment(wux::HorizontalAlignment::Left);
             r.Margin(wux::Thickness{ ih * 0.1, 0, 0, 0 });
-            // The real weather icon when it's a local file, a sun until it loads
-            // (or for good: an online icon isn't fetched, mods don't go online).
-            wuxc::Grid icon;
-            icon.Width(ih * 0.72); icon.Height(ih * 0.72);
-            icon.VerticalAlignment(wux::VerticalAlignment::Center);
-            auto sun = LpGlyph(L"\uE706", ih * 0.5);
-            icon.Children().Append(sun);
-            const bool online = it.icon.rfind(L"http", 0) == 0;
-            if (!it.icon.empty() && !online) {
-                try {
-                    winrt::Windows::Foundation::Uri uri{ winrt::hstring{ it.icon } };
-                    wuxc::Image img;
-                    auto weakSun = winrt::make_weak(sun);
-                    auto hideSun = [weakSun](auto const&, auto const&) { if (auto s2 = weakSun.get()) s2.Visibility(wux::Visibility::Collapsed); };
-                    if (it.icon.find(L".svg") != std::wstring::npos) {
-                        wuxm::Imaging::SvgImageSource svg(uri);
-                        svg.Opened(hideSun);
-                        img.Source(svg);
-                    } else {
-                        wuxm::Imaging::BitmapImage bmp(uri);
-                        bmp.ImageOpened(hideSun);
-                        img.Source(bmp);
-                    }
-                    icon.Children().Append(img);
-                } catch (...) { LOG_IGNORED_EXCEPTION(); }
-            }
-            r.Children().Append(icon);
-            const std::wstring t1 = it.t1.empty() ? L"--\u00B0" : it.t1;
+            // Stand-ins, like the player's: the real button shows weather or news.
+            r.Children().Append(LpGlyph(L"\uE706", ih * 0.5));
             if (w > ih * 1.2) {
                 wuxc::StackPanel two;
                 two.VerticalAlignment(wux::VerticalAlignment::Center);
-                auto a = label(t1, ih * 0.32);
+                auto a = label(L"18\u00B0", ih * 0.32);
                 a.FontWeight(winrt::Windows::UI::Text::FontWeights::SemiBold());
                 a.HorizontalAlignment(wux::HorizontalAlignment::Left);
                 two.Children().Append(a);
-                if (!it.t2.empty()) {
-                    auto b2 = label(it.t2, ih * 0.29);
-                    b2.Opacity(0.75);
-                    b2.HorizontalAlignment(wux::HorizontalAlignment::Left);
-                    two.Children().Append(b2);
-                }
+                auto b2 = label(Loc(L"Weather"), ih * 0.29);
+                b2.Opacity(0.75);
+                b2.HorizontalAlignment(wux::HorizontalAlignment::Left);
+                two.Children().Append(b2);
                 r.Children().Append(two);
             }
             box.Child(r);
@@ -24022,6 +23971,19 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
                     groupS = std::min(groupS, it.x);
             }
             auto section = [&](double x) { return x >= trayS - 1 ? 2 : x >= std::min(groupS, trayS) - 6 ? 1 : 0; };
+            // Widgets: the stand-in's width; a long headline made the real one wide.
+            for (auto& it : snap.items) {
+                if (it.kind != LpWidgets) continue;
+                const double target = snap.height * 2.4;
+                const double delta = it.w - target;
+                if (delta <= 2) continue;
+                const double end = it.x + it.w;
+                const int sec = section(it.x);
+                it.w = target;
+                for (auto& o : snap.items) if (&o != &it && o.x >= end - 1 && section(o.x) == sec) o.x -= delta;
+                for (auto& sl : snap.slots) if (!sl.overlay && sl.x >= end - 1 && section(sl.x) == sec) sl.x -= delta;
+                for (auto& p : snap.parts) if (p.x >= end - 1 && section(p.x) == sec) p.x -= delta;
+            }
             for (auto& r : snap.parts) {
                 // Every part: its real box has the real song and margins in it.
                 const double target = LpDefaultWidth(r.part, ih0) / is0;
