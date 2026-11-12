@@ -20675,6 +20675,7 @@ static void UnregisterWindowClass() {
 static const UINT WM_XS_REFRESH = WM_APP + 7;   // rebuild the current page from live values
 static constexpr UINT_PTR RELAYOUT_TIMER = 0x4C41;  // re-lay out the page after a toggle's slide
 static constexpr UINT_PTR MATERIAL_TIMER = 0x4C43;  // a material slider moved: several moves make one rebuild
+static constexpr UINT_PTR SETTLE_TIMER = 0x4C44;    // the layout preview again, once the taskbar's own animations are done
 static constexpr UINT_PTR WATCH_TIMER = 0x4C42;  // what changes outside this window: the cover behind an album accent, and monitors
 static constexpr UINT WATCH_TIMER_MS = 500;
 static constexpr int WATCH_MONITORS_EVERY = 4;  // ticks
@@ -23593,8 +23594,10 @@ static void LpCommit(int part, int zone, int monitor, const std::wstring& positi
     ApplySettingsLiveNow();
     if (s_hostWnd) {
         PostMessageW(s_hostWnd, WM_XS_REFRESH, 0, 0);
-        // Once the taskbar has laid itself out again, so the copy shows the real result.
+        // Once the taskbar has laid itself out again, so the copy shows the real
+        // result, and again once its animations (a part sliding in or out) are done.
         SetTimer(s_hostWnd, RELAYOUT_TIMER, 450, nullptr);
+        SetTimer(s_hostWnd, SETTLE_TIMER, 1300, nullptr);
     }
 }
 
@@ -25753,6 +25756,11 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (w == RELAYOUT_TIMER) {
                 KillTimer(h, RELAYOUT_TIMER);
                 try { RebuildPageInPlace(); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+                return 0;
+            }
+            if (w == SETTLE_TIMER) {
+                KillTimer(h, SETTLE_TIMER);
+                if (s_layoutPreviewShown) { try { RebuildPageInPlace(); } catch (...) { LOG_IGNORED_EXCEPTION(); } }
                 return 0;
             }
             if (w == MATERIAL_TIMER) {
