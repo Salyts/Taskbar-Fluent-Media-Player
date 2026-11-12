@@ -23487,6 +23487,8 @@ static wuxc::Border MakeLpPlaceholder(int part, double w, double h, bool live) {
         case 3: row.Children().Append(buttons()); break;
         default: row.Children().Append(viz()); break;
     }
+    // Only the box takes the pointer: the art, text and icons inside are decoration.
+    row.IsHitTestVisible(false);
     b.Child(row);
     return b;
 }
