@@ -23397,9 +23397,7 @@ static wuxc::Border MakeLpPlaceholder(int part, double w, double h, bool live) {
     const auto ac = AccentTargetColor();
     const auto fg = s_light ? Brush(255, 20, 20, 20) : Brush(255, 255, 255, 255);
     wuxc::Border b;
-    // The player hugs what's in it (its real width at most); a part fills its box.
-    if (part == 0 || part == 2) { b.MaxWidth(w); b.MinWidth(std::min(w, h)); }
-    else b.Width(w);
+    b.Width(w);   // exactly the room it's given: what's reserved is what's drawn
     b.Height(h);
     b.CornerRadius(wux::CornerRadius{ 5, 5, 5, 5 });
     b.Background(s_light ? Brush(live ? 0x18 : 0x0C, 0, 0, 0) : Brush(live ? 0x1C : 0x0E, 255, 255, 255));
@@ -23493,6 +23491,13 @@ static wuxc::Border MakeLpPlaceholder(int part, double w, double h, bool live) {
     return b;
 }
 
+// How wide the stand-in text is ("Name" over "Artist", at MakeLpPlaceholder's sizes).
+static double LpTextWidth(double ih) {
+    const double title = (double)Loc(L"Name").size() * ih * 0.36 * 0.62;
+    const double artist = (double)Loc(L"Artist").size() * ih * 0.30 * 0.60;
+    return std::max(title, artist) + 4;
+}
+
 // How wide a part is drawn when it isn't on the taskbar to measure, for a
 // box `h` tall: its contents plus some room at the ends, like MakeLpPlaceholder.
 static double LpDefaultWidth(int part, double h) {
@@ -23501,7 +23506,7 @@ static double LpDefaultWidth(int part, double h) {
         case 0: {
             std::vector<double> items;
             if (LpInPlayer(1)) items.push_back(ih);
-            if (LpInPlayer(2)) items.push_back(ih * 3.4);
+            if (LpInPlayer(2)) items.push_back(LpTextWidth(ih));
             if (LpInPlayer(3)) items.push_back(ih * 2.3);
             if (LpInPlayer(4)) items.push_back(ih * 1.2);
             if (items.empty()) return h;
@@ -23510,7 +23515,7 @@ static double LpDefaultWidth(int part, double h) {
             return w;
         }
         case 1: return h;   // a square, the cover 4 px in from every side
-        case 2: return ih * 3.4 + 18;
+        case 2: return LpTextWidth(ih) + 18;
         case 3: return ih * 2.3 + 20;
         default: return ih * 1.2 + 20;
     }
