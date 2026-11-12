@@ -23995,8 +23995,38 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         CompactLpSnap(snap, TaskbarIconsCentered());
 
         const double pad = 12;   // nothing touches the ends
-        const double s = (W - 2 * pad) / snap.width;
-        const double H = std::clamp(snap.height * s, 34.0, 60.0);
+        // Things keep a readable size; it's the empty stretches between them
+        // that shrink to fit. Only when even the things don't fit does all of it scale.
+        const double avail = W - 2 * pad;
+        const double s = avail / snap.width;
+        std::vector<std::pair<double, double>> solid;   // [start, end) of what's drawn, merged
+        for (const auto& it : snap.items) if (it.kind != LpApp) solid.push_back({ it.x, it.x + it.w });
+        for (const auto& r : snap.parts) solid.push_back({ r.x, r.x + r.w });
+        std::sort(solid.begin(), solid.end());
+        std::vector<std::pair<double, double>> merged;
+        for (auto& iv : solid) {
+            if (!merged.empty() && iv.first <= merged.back().second) merged.back().second = std::max(merged.back().second, iv.second);
+            else merged.push_back(iv);
+        }
+        double solidW = 0;
+        for (auto& iv : merged) solidW += iv.second - iv.first;
+        const double emptyW = std::max(1.0, snap.width - solidW);
+        double is = std::max(s, 0.62);                                  // scale for the things
+        if (solidW * is > avail * 0.9) is = std::max(s, avail * 0.9 / std::max(1.0, solidW));
+        const double gs = std::max(0.0, (avail - solidW * is) / emptyW);  // scale for the gaps
+        auto MX = [&](double x) {
+            double out = pad, at = 0;
+            for (auto& iv : merged) {
+                if (x <= iv.first) return out + (x - at) * gs;
+                out += (iv.first - at) * gs;
+                if (x <= iv.second) return out + (x - iv.first) * is;
+                out += (iv.second - iv.first) * is;
+                at = iv.second;
+            }
+            return out + (x - at) * gs;
+        };
+        auto MW = [&](double x, double w) { return std::max(0.0, MX(x + w) - MX(x)); };
+        const double H = std::clamp(snap.height * is, 34.0, 60.0);
         const double ih = std::round(H * 0.74);
         const double y0 = std::round((H - ih) / 2);
 
@@ -24025,13 +24055,13 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         double trayX = W, groupX = W;
         for (const LpItem& it : snap.items) {
             if (it.kind == LpApp) continue;
-            auto el = MakeLpItem(it, it.w * s, ih, timeText, dateText);
-            const double ex = pad + it.x * s;
+            auto el = MakeLpItem(it, MW(it.x, it.w), ih, timeText, dateText);
+            const double ex = MX(it.x);
             wuxc::Canvas::SetLeft(el, ex);
             wuxc::Canvas::SetTop(el, y0 + (ih - el.Height()) / 2);
             el.RenderTransform(wuxm::TranslateTransform());
             cv.Children().Append(el);
-            movers.push_back({ winrt::make_weak(el), ex, std::max(2.0, it.w * s) });
+            movers.push_back({ winrt::make_weak(el), ex, std::max(2.0, MW(it.x, it.w)) });
             if (it.kind >= LpChevron) trayX = std::min(trayX, ex);
             if (it.kind == LpStart || it.kind == LpSearchIcon || it.kind == LpSearchBox || it.kind == LpTaskView || it.kind == LpOtherButton)
                 groupX = std::min(groupX, ex);
@@ -24053,7 +24083,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         strip.ovCanvas = winrt::make_weak(ovRow);
         strip.ovH = 26;
         for (const LpSlot& sl : snap.slots) {
-            LpSlot scaled{ sl.value, pad + sl.x * s, sl.overlay };
+            LpSlot scaled{ sl.value, MX(sl.x), sl.overlay };
             bool merged = false;
             for (auto& o : strip.slots) merged = merged || (o.overlay == scaled.overlay && std::abs(o.x - scaled.x) < 7);
             if (merged) continue;
@@ -24132,7 +24162,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
             if (pl.zone != 0 || pl.monitor != m.value) continue;
             double x = -1, w = 0;
             bool live = false;
-            for (auto& r : snap.parts) if (r.part == pl.part) { x = pad + r.x * s; w = r.w * s; live = true; break; }
+            for (auto& r : snap.parts) if (r.part == pl.part) { x = MX(r.x); w = MW(r.x, r.w); live = true; break; }
             if (!live) {
                 double sx = -1;
                 for (auto& sl : strip.slots) if (pl.position == sl.value) { sx = sl.x; break; }
