@@ -20045,6 +20045,7 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"Repeat one", L"Повторювати один", L"Повторять один", L"Titel wiederholen", L"एक दोहराएँ", L"单曲重复", L"單曲重複", L"Repetir una", L"Répéter un titre", L"Repetir uma", L"Ripeti uno", L"Powtarzaj jeden", L"Birini tekrarla", L"1 曲リピート", L"한 곡 반복" },
     { L"Shuffle off", L"Перемішування вимк.", L"Перемешивание выкл.", L"Zufall aus", L"शफ़ल बंद", L"关闭随机", L"關閉隨機", L"Aleatorio: desactivado", L"Lecture aléatoire désactivée", L"Aleatório desativado", L"Casuale disattivato", L"Losowo wyłączone", L"Karıştırma kapalı", L"シャッフル オフ", L"셔플 끔" },
     { L"Shuffle on", L"Перемішування увімк.", L"Перемешивание вкл.", L"Zufall ein", L"शफ़ल चालू", L"开启随机", L"開啟隨機", L"Aleatorio: activado", L"Lecture aléatoire activée", L"Aleatório ativado", L"Casuale attivato", L"Losowo włączone", L"Karıştırma açık", L"シャッフル オン", L"셔플 켬" },
+    { L"Back", L"Назад", L"Назад", L"Zurück", L"वापस", L"返回", L"返回", L"Atrás", L"Retour", L"Voltar", L"Indietro", L"Wstecz", L"Geri", L"戻る", L"뒤로" },
     { L"Settings", L"Налаштування", L"Настройки", L"Einstellungen", L"सेटिंग्स", L"设置", L"設定", L"Configuración", L"Paramètres", L"Configurações", L"Impostazioni", L"Ustawienia", L"Ayarlar", L"設定", L"설정" },
     { L"Restart Player", L"Перезапустити програвач", L"Перезапустить плеер", L"Player neu starten", L"प्लेयर पुनः आरंभ करें", L"重启播放器", L"重新启动播放器", L"Reiniciar reproductor", L"Redémarrer le lecteur", L"Reiniciar player", L"Riavvia player", L"Uruchom ponownie odtwarzacz", L"Oynatıcıyı yeniden başlat", L"プレーヤーを再起動", L"플레이어 다시 시작" },
     { L"Open widgets board", L"Відкрити панель віджетів", L"Открыть панель виджетов", L"Widget-Board öffnen", L"विजेट बोर्ड खोलें", L"打开小组件面板", L"開啟小工具面板", L"Abrir el panel de widgets", L"Ouvrir le tableau des widgets", L"Abrir o painel de widgets", L"Apri la bacheca dei widget", L"Otwórz tablicę widżetów", L"Pencere öğeleri panosunu aç", L"ウィジェット ボードを開く", L"위젯 보드 열기" },
@@ -20637,6 +20638,8 @@ static std::mutex  s_launchMtx;
 static std::vector<SettingCategory> s_cats;
 [[clang::no_destroy]] static wuxc::StackPanel s_pagePanel{ nullptr };
 [[clang::no_destroy]] static wuxc::StackPanel s_navItems{ nullptr };  // the sidebar's page buttons, in s_cats order
+[[clang::no_destroy]] static wuxc::Button s_navBack{ nullptr };       // the header's back button
+static std::vector<int> s_navHistory;                                  // pages visited before this one
 [[clang::no_destroy]] static wuxc::Border s_navPill{ nullptr };
 [[clang::no_destroy]] static winrt::Windows::UI::Xaml::Media::Animation::Storyboard s_navPillAnim{ nullptr };
 static int s_navSel = -1;
@@ -25005,6 +25008,74 @@ static void SwitchToPage(int idx) {
     sb.Completed([land](winrt::Windows::Foundation::IInspectable const&, winrt::Windows::Foundation::IInspectable const&) { land(); });
 }
 
+// Back is there once there's somewhere to go back to, like Windows' Settings.
+static void UpdateNavBack() {
+    if (!s_navBack) return;
+    const bool any = !s_navHistory.empty();
+    s_navBack.IsEnabled(any);
+    s_navBack.Opacity(any ? 1.0 : 0.4);
+}
+
+// Opens page `idx`; `remember` puts the page being left on the back stack.
+static void GoToPage(int idx, bool remember) {
+    if (idx == s_navSel || idx < 0 || idx >= (int)s_cats.size()) return;
+    if (remember && s_navSel >= 0) {
+        s_navHistory.push_back(s_navSel);
+        if (s_navHistory.size() > 32) s_navHistory.erase(s_navHistory.begin());
+    }
+    NavSelect(idx, true);
+    s_selectedIdx = idx;
+    SwitchToPage(idx);
+    UpdateNavBack();
+}
+
+static void NavGoBack() {
+    while (!s_navHistory.empty()) {
+        const int idx = s_navHistory.back();
+        s_navHistory.pop_back();
+        if (idx >= 0 && idx < (int)s_cats.size() && idx != s_navSel) { GoToPage(idx, false); return; }
+    }
+    UpdateNavBack();
+}
+
+// The sidebar's header: a back arrow and the window's name, as in Windows' Settings.
+static wuxc::Grid BuildNavHeader() {
+    using winrt::hstring;
+    wuxc::Grid g;
+    g.Margin(wux::Thickness{ 4, 0, 4, 10 });
+    g.ColumnSpacing(10);
+    wuxc::ColumnDefinition c0; c0.Width(wux::GridLength{ 1, wux::GridUnitType::Auto });
+    wuxc::ColumnDefinition c1; c1.Width(wux::GridLength{ 1, wux::GridUnitType::Star });
+    g.ColumnDefinitions().Append(c0);
+    g.ColumnDefinitions().Append(c1);
+
+    wuxc::Button back;
+    StyleButton(back, ButtonLook::Subtle);
+    back.Width(36); back.Height(32);
+    back.Padding(wux::Thickness{ 0, 0, 0, 0 });
+    back.HorizontalContentAlignment(wux::HorizontalAlignment::Center);
+    back.VerticalContentAlignment(wux::VerticalAlignment::Center);
+    wuxc::FontIcon arrow;
+    arrow.Glyph(hstring{ L"\uE72B" });   // Back
+    arrow.FontSize(12);
+    back.Content(arrow);
+    wuxc::ToolTipService::SetToolTip(back, winrt::box_value(hstring{ Loc(L"Back") }));
+    wux::Automation::AutomationProperties::SetName(back, hstring{ Loc(L"Back") });
+    back.Click([](winrt::Windows::Foundation::IInspectable const&, wux::RoutedEventArgs const&) { NavGoBack(); });
+    s_navBack = back;
+    g.Children().Append(back);
+
+    wuxc::TextBlock title;
+    title.Text(hstring{ Loc(L"Settings") });
+    title.FontSize(12);
+    title.VerticalAlignment(wux::VerticalAlignment::Center);
+    title.TextTrimming(wux::TextTrimming::CharacterEllipsis);
+    wuxc::Grid::SetColumn(title, 1);
+    g.Children().Append(title);
+    UpdateNavBack();
+    return g;
+}
+
 static wuxc::Button MakeNavItem(int i) {
     using winrt::hstring;
     wuxc::StackPanel content;
@@ -25030,12 +25101,7 @@ static wuxc::Button MakeNavItem(int i) {
     b.HorizontalAlignment(wux::HorizontalAlignment::Stretch);
     b.HorizontalContentAlignment(wux::HorizontalAlignment::Left);
     b.VerticalContentAlignment(wux::VerticalAlignment::Center);
-    b.Click([i](winrt::Windows::Foundation::IInspectable const&, wux::RoutedEventArgs const&) {
-        if (i == s_navSel || i >= (int)s_cats.size()) return;
-        NavSelect(i, true);
-        s_selectedIdx = i;
-        SwitchToPage(i);
-    });
+    b.Click([i](winrt::Windows::Foundation::IInspectable const&, wux::RoutedEventArgs const&) { GoToPage(i, true); });
     return b;
 }
 
@@ -25205,12 +25271,18 @@ COLD_UNOPTIMIZED static void BuildUi() {
         shell.ColumnDefinitions().Append(page);
     }
     wuxc::Grid pane;
-    pane.Padding(wux::Thickness{ 4, 12, 4, 0 });
-    for (auto h : { wux::GridUnitType::Star, wux::GridUnitType::Auto }) {
+    pane.Padding(wux::Thickness{ 4, 4, 4, 0 });
+    for (auto h : { wux::GridUnitType::Auto, wux::GridUnitType::Star, wux::GridUnitType::Auto }) {
         wuxc::RowDefinition r; r.Height(wux::GridLength{ 1, h });
         pane.RowDefinitions().Append(r);
     }
-    pane.Children().Append(BuildNavList());
+    s_navHistory.clear();
+    pane.Children().Append(BuildNavHeader());
+    {
+        auto list = BuildNavList();
+        wuxc::Grid::SetRow(list, 1);
+        pane.Children().Append(list);
+    }
     shell.Children().Append(pane);
 
     {
@@ -25278,7 +25350,7 @@ COLD_UNOPTIMIZED static void BuildUi() {
         credits.HorizontalAlignment(wux::HorizontalAlignment::Center);
         credits.Margin(wux::Thickness{ 0, 8, 0, 0 });
         footer.Children().Append(credits);
-        wuxc::Grid::SetRow(footer, 1);
+        wuxc::Grid::SetRow(footer, 2);
         pane.Children().Append(footer);
     }
 
@@ -25469,7 +25541,8 @@ static void SetMicaActive(bool active) {
     } catch (...) { LOG_IGNORED_EXCEPTION(); }
 }
 
-// The title bar shows just the icon; the name stays for the taskbar and Alt+Tab.
+// The title bar shows neither name nor icon (the window's own header has them);
+// both stay for the taskbar and Alt+Tab.
 static void HideTitleBarText(HWND hwnd) {
     using SetAttributeFn = HRESULT(WINAPI*)(HWND, int, void*, DWORD);
     static const SetAttributeFn setAttribute = [] {
@@ -25477,7 +25550,7 @@ static void HideTitleBarText(HWND hwnd) {
         return theme ? reinterpret_cast<SetAttributeFn>(GetProcAddress(theme, "SetWindowThemeAttribute")) : nullptr;
     }();
     if (!setAttribute) return;
-    struct { DWORD flags, mask; } options{ 1, 1 };  // WTA_OPTIONS: WTNCA_NODRAWCAPTION
+    struct { DWORD flags, mask; } options{ 3, 3 };  // WTA_OPTIONS: WTNCA_NODRAWCAPTION | WTNCA_NODRAWICON
     setAttribute(hwnd, 1 /*WTA_NONCLIENT*/, &options, sizeof(options));
 }
 
@@ -25679,6 +25752,8 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             s_src = nullptr;
             s_pagePanel = nullptr;
             s_navItems = nullptr;
+            s_navBack = nullptr;
+            s_navHistory.clear();
             s_navPill = nullptr;
             s_navPillAnim = nullptr;
             s_pageFade = nullptr;
