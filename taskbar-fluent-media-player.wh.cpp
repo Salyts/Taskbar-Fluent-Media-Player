@@ -1894,6 +1894,8 @@ struct DetachedWidgetState {
     // The PlayerPosition it went in with (after any fallback), for removal:
     // the setting may already hold the next position by then.
     int              injectedPosition    = -1;
+    // Its taskbar is vertical: g_sidebarMode only holds that while it's built.
+    bool             vertical            = false;
 };
 
 [[clang::no_destroy]] static DetachedWidgetState g_detachedAlbumArt{ .markerName = L"FluentMediaDetachedAlbumArt" };
@@ -1944,6 +1946,7 @@ namespace Taskbar {
     static HWND FindCurrentProcessTaskbarWnd();
     static void EnsureWidgetsHideStateApplied();
     static void ForgetHiddenWidgetsBookkeeping();
+    static FrameworkElement WidgetsInnerPanelOf(FrameworkElement const& outer);
     static void RemovePlayerGrid();
     static bool InjectPlayerGrid();
     static void CheckMonitorTopologyChanged();
@@ -4806,7 +4809,9 @@ static void FetchMediaPropertiesAsync() {
                     std::lock_guard<std::mutex> lk(g_sessionMtx);
                     forceIconRefresh = g_userSwitchedSession;
                 }
+                bool iconTried = false;   // an app with no icon counts as done too
                 if (g_settings.showAppIcon && (aumid != appIconKey || appIconBytes.empty() || forceIconRefresh || g_cachedAppIconSize != g_settings.appIconSize)) {
+                    iconTried = true;
                     try {
                         appIconBytes = FetchAppIconBytes(aumid, g_settings.appIconSize);
                         appIconKey   = aumid;
@@ -4816,7 +4821,7 @@ static void FetchMediaPropertiesAsync() {
                     }
                 }
 
-                const bool iconDone = !appIconBytes.empty() || !g_settings.showAppIcon;
+                const bool iconDone = iconTried || !appIconBytes.empty() || !g_settings.showAppIcon;
                 {
                     std::lock_guard<std::mutex> lk(g_mediaMtx);
                     try {
@@ -5101,8 +5106,8 @@ static GlobalSystemMediaTransportControlsSession PickBestSession() {
 // handlers twice, so the whole check-detach-attach runs as one.
 static std::recursive_mutex g_attachMtx;
 
-static void AttachToSession(GlobalSystemMediaTransportControlsSession session) {
-    std::lock_guard<std::recursive_mutex> attachLock(g_attachMtx);
+// 0: nothing more; 1: the state was cleared, update the UI; 2: fetch the new session's data.
+static int AttachToSessionLocked(GlobalSystemMediaTransportControlsSession session) {
     if (!session) {
         Wh_Log(L"AttachToSession: No session provided, detaching current session");
         DetachCurrentSession();
@@ -5111,8 +5116,7 @@ static void AttachToSession(GlobalSystemMediaTransportControlsSession session) {
             g_media = MediaState{};
             Wh_Log(L"AttachToSession: Cleared media state (hasMedia=false)");
         }
-        DispatchMediaUpdate();
-        return;
+        return 1;
     }
 
     {
@@ -5122,7 +5126,7 @@ static void AttachToSession(GlobalSystemMediaTransportControlsSession session) {
                 Wh_Log(L"AttachToSession: Same session but events not attached, reattaching");
             } else {
                 Wh_Log(L"AttachToSession: Same session already attached, fetching data");
-                goto fetch;
+                return 2;
             }
         }
     }
@@ -5165,12 +5169,25 @@ static void AttachToSession(GlobalSystemMediaTransportControlsSession session) {
         } catch (...) {
             Wh_Log(L"AttachToSession: Failed to attach event handlers");
             g_currentSession = nullptr;
-            return;
+            return 0;
         }
     }
-fetch:
-    FetchMediaPropertiesAsync();
-    FetchPlaybackInfoAsync();
+    return 2;
+}
+
+static void AttachToSession(GlobalSystemMediaTransportControlsSession session) {
+    int next = 0;
+    {
+        std::lock_guard<std::recursive_mutex> attachLock(g_attachMtx);
+        next = AttachToSessionLocked(session);
+    }
+    // Outside the lock: the UI update waits for the taskbar's thread, which
+    // can itself be waiting for this lock (switching sessions from the player).
+    if (next == 1) DispatchMediaUpdate();
+    if (next == 2) {
+        FetchMediaPropertiesAsync();
+        FetchPlaybackInfoAsync();
+    }
 }
 
 // Some apps drop out of GetSessions() for a moment while changing tracks, so
@@ -6388,25 +6405,7 @@ static winrt::Windows::UI::Color ParseColorWithSpecialValues(const std::wstring&
 }
 
 static winrt::Windows::UI::Color ParseColorWithThemeSupport(const std::wstring& colorStr, BYTE alpha) {
-    size_t dollarPos = colorStr.find(L'$');
-
-    if (dollarPos != std::wstring::npos) {
-        std::wstring lightColorStr = colorStr.substr(0, dollarPos);
-        std::wstring darkColorStr = colorStr.substr(dollarPos + 1);
-
-        lightColorStr.erase(0, lightColorStr.find_first_not_of(L" \t"));
-        lightColorStr.erase(lightColorStr.find_last_not_of(L" \t") + 1);
-        darkColorStr.erase(0, darkColorStr.find_first_not_of(L" \t"));
-        darkColorStr.erase(darkColorStr.find_last_not_of(L" \t") + 1);
-
-        if (IsSystemLightTheme()) {
-            return ParseColorWithSpecialValues(lightColorStr, alpha);
-        } else {
-            return ParseColorWithSpecialValues(darkColorStr, alpha);
-        }
-    } else {
-        return ParseColorWithSpecialValues(colorStr, alpha);
-    }
+    return ParseColorWithSpecialValues(colorStr, alpha);   // takes the theme's half of a light$dark pair itself
 }
 
 static winrt::Windows::UI::Color TextColor() {
@@ -7958,18 +7957,28 @@ static FrameworkElement FindMediaChild(std::wstring_view name);
 // keyed by the cover, so this costs no extra decode), or its dim fallback.
 static void PaintDetachedBlur(Border const& b) {
     try {
-        if (g_cachedThumbnailBytes.empty()) {
+        std::vector<BYTE> cover;
+        { std::lock_guard<std::mutex> lk(g_mediaMtx); cover = g_media.thumbnailBytes; }
+        if (cover.empty()) {
             b.Background(MakeBrush(IsSystemLightTheme() ? winrt::Windows::UI::Color{0xCC, 0xF3, 0xF3, 0xF3}
                                                         : winrt::Windows::UI::Color{0xCC, 0x20, 0x20, 0x20}));
         } else {
-            b.Background(MakeAlbumBlurBrush(g_cachedThumbnailBytes, std::max(1, (int)b.ActualWidth()), std::max(1, (int)b.ActualHeight())));
+            b.Background(MakeAlbumBlurBrush(cover, std::max(1, (int)b.ActualWidth()), std::max(1, (int)b.ActualHeight())));
         }
         b.Opacity(g_settings.blurOpacity / 100.0);
     } catch (...) { LOG_IGNORED_EXCEPTION(); }
 }
 
-// Every detached part with a blurred-cover background, after the cover or theme changed.
-static void RefreshDetachedBlurs() {
+// Every detached part with a blurred-cover background, when the cover, the
+// theme or the opacity changed (or `force`); otherwise nothing is rebuilt.
+static void RefreshDetachedBlurs(bool force = false) {
+    static uint64_t s_key = 0;
+    uint64_t key = 0;
+    { std::lock_guard<std::mutex> lk(g_mediaMtx); key = g_media.thumbnailHash; }
+    key = key * 31 + (IsSystemLightTheme() ? 1 : 2);
+    key = key * 31 + (uint64_t)g_settings.blurOpacity;
+    if (!force && key == s_key) return;
+    s_key = key;
     for (DetachedWidgetState* dw : { &g_detachedAlbumArt, &g_detachedInfo, &g_detachedButtons, &g_detachedViz }) {
         if (!dw->grid) continue;
         try {
@@ -8356,7 +8365,9 @@ namespace UI {
 static bool ShouldVizBarsBeVertical() {
     if (g_settings.vizBarOrientation == VizBarOrientation::Vertical) return true;
     if (g_settings.vizBarOrientation == VizBarOrientation::Horizontal) return false;
-    // The axis the bars were built for, not a live query.
+    // The axis the bars were built for, not a live query. A detached
+    // visualizer goes by its own taskbar, not the main player's.
+    if (g_settings.vizDetached && g_detachedViz.grid) return g_detachedViz.vertical;
     return IsSidebarMode();
 }
 
@@ -8972,7 +8983,7 @@ static void RefreshThemeColors() {
                 }
             }
         }
-        RefreshDetachedBlurs();
+        RefreshDetachedBlurs(true);
 
         if (auto fe = FindMediaChild(L"FluentMedia_OuterBorder")) {
             if (auto btn = fe.try_as<Button>()) {
@@ -12514,6 +12525,9 @@ struct MiniPlayerAnchor {
 // another monitor than the player.
 static HWND g_miniPlayerHostWnd = nullptr;
 
+// The taskbar the open mini player belongs to: its updates run on that thread.
+static HWND MiniPlayerWnd() { return (g_miniPlayerHostWnd && IsWindow(g_miniPlayerHostWnd)) ? g_miniPlayerHostWnd : g_taskbarWnd; }
+
 static HWND TaskbarWndForElement(FrameworkElement const& el) {
     try {
         for (DependencyObject cur = el; cur; cur = VisualTreeHelper::GetParent(cur)) {
@@ -12694,7 +12708,7 @@ static void ShowMiniPlayerFlyout(FrameworkElement const& target) {
             }
             RefreshMiniPlayerFlyoutUI();
             if (!g_settings.hideMediaSessionsList) {
-                FetchMiniSessionInfosAsync(g_taskbarWnd);
+                FetchMiniSessionInfosAsync(MiniPlayerWnd());
             }
 
             try {
@@ -14436,7 +14450,6 @@ static bool RefreshAlbumArt(const PlayerSnapshot& m) {
                         }
                     }
                 }
-                RefreshDetachedBlurs();
             } else {
                 g_cachedAlbumTitle.clear();
                 g_cachedAlbumArtist.clear();
@@ -14678,6 +14691,7 @@ static void RefreshPlayerContents() {
     RefreshMediaButtons(m);
     RefreshPauseOverlay(m);
     if (RefreshAlbumArt(m)) ApplyPaletteColors();
+    RefreshDetachedBlurs();
     RefreshAppIcon(m.appIconBytes);
 }
 
@@ -15643,8 +15657,7 @@ static bool AttachTrackingMember(HWND hWnd, PlayerPosition position, Grid const&
         (position == PlayerPosition::TaskbarAfterWidgetsLeft || position == PlayerPosition::TaskbarAfterWidgetsRight)) {
         bool shown = false;
         try {
-            auto inner = FindChildByName(anchor, L"ExperienceToggleButtonRootPanel");
-            if (!inner) inner = FindChildByClassName(anchor, L"Taskbar.TaskListButtonPanel");
+            auto inner = WidgetsInnerPanelOf(anchor);
             shown = inner && inner.Visibility() == Visibility::Visible && inner.ActualWidth() > 0 && anchor.ActualWidth() > 0;
         } catch (...) { LOG_IGNORED_EXCEPTION(); }
         if (!shown) {
@@ -15665,9 +15678,7 @@ static bool AttachTrackingMember(HWND hWnd, PlayerPosition position, Grid const&
         grp.targetGrid = targetGrid;
         if (position == PlayerPosition::TaskbarAfterWidgetsLeft || position == PlayerPosition::TaskbarAfterWidgetsRight) {
             // Read only: writing this element fights Windows (see FindWidgetsAnchorElement).
-            auto inner = FindChildByName(anchor, L"ExperienceToggleButtonRootPanel");
-            if (!inner) inner = FindChildByClassName(anchor, L"Taskbar.TaskListButtonPanel");
-            grp.positionReferenceElement = inner;
+            grp.positionReferenceElement = WidgetsInnerPanelOf(anchor);
         }
         grp.startButtonModActive = IsStartButtonModActive(root);
         if (grp.startButtonModActive &&
@@ -16369,6 +16380,7 @@ static void InjectDetachedWidgetOnThread(void* p) {
     // so the main player's taskbar keeps deciding it.
     struct SidebarRestore { bool v; ~SidebarRestore() { g_sidebarMode = v; } } sidebarRestore{ g_sidebarMode };
     g_sidebarMode = IsVerticalTaskbarEdge(GetTaskbarEdgeForWnd(hWnd));
+    state.vertical = g_sidebarMode;
     if (g_sidebarMode && !g_settings.sidebarEnabled) {
         Wh_Log(L"InjectDetachedWidgetOnThread: Taskbar is vertical and sidebar mode is disabled - skipping injection");
         return;
@@ -17437,10 +17449,9 @@ static void DispatchMediaUpdate() {
     }
 
     // Keep the mini player popup live while it's open (Salyts 1.6.0).
-    if (g_miniPlayerFlyoutOpen && g_taskbarWnd) {
+    if (HWND tw = MiniPlayerWnd(); g_miniPlayerFlyoutOpen && tw) {
         if (!g_settings.hideMediaSessionsList)
-            FetchMiniSessionInfosAsync(g_taskbarWnd);
-        HWND tw = g_taskbarWnd;
+            FetchMiniSessionInfosAsync(tw);
         RunFromWindowThread(tw, [](void*) {
             if (g_miniPlayerFlyoutOpen) RefreshMiniPlayerFlyoutUI();
         }, nullptr);
@@ -17559,9 +17570,12 @@ static DWORD WINAPI TimerThreadProc(void*) {
                 now - lastSeekRefresh >= std::chrono::seconds(1)) {
                 lastSeekRefresh = now;
                 RefreshMiniPlayerTimeline();
+                if (HWND mw = MiniPlayerWnd(); g_miniPlayerFlyoutOpen && mw)
+                    RunFromWindowThread(mw, [](void*) {
+                        if (!g_unloading && !g_applyingSettings && g_miniPlayerFlyoutOpen) RefreshMiniPlayerSeekPosition();
+                    }, nullptr);
                 RunFromWindowThread(hWnd, [](void*) {
                     if (g_unloading || g_applyingSettings) return;
-                    if (g_miniPlayerFlyoutOpen) RefreshMiniPlayerSeekPosition();
                     if (g_settings.showProgressBar) RefreshMainProgressBar();
                     if (g_settings.showTrackArtist && g_settings.showArtistAsTime) RefreshMainArtistTimeText();
                 }, nullptr);
@@ -17640,7 +17654,8 @@ static void ApplySettings() {
         try { InjectAllDetachedContainers(); } catch (...) { Wh_Log(L"ApplySettings: Exception in InjectAllDetachedContainers"); }
         // Every rebuild comes through here, and each one can mean a new Widgets
         // button, so the hide state is re-applied here.
-        HookTaskbarViewIfWanted();
+        // Off this thread: the symbols may have to be downloaded first.
+        if (g_settings.hideNativeWidgetsButton) SpawnTrackedWorker([]() { HookTaskbarViewIfWanted(); });
         try { EnsureWidgetsHideStateApplied(); } catch (...) { Wh_Log(L"ApplySettings: Exception in EnsureWidgetsHideStateApplied"); }
         // The text may have moved to another taskbar's thread.
         if (g_settings.enableTitleScrolling || g_settings.enableArtistScrolling) StartScrollTimer();
@@ -23473,7 +23488,9 @@ static wuxc::Border MakeLpPlaceholder(int part, double w, double h, bool live) {
     switch (part) {
         case 0: {
             const bool a = LpInPlayer(1), i = LpInPlayer(2), bt = LpInPlayer(3), v = LpInPlayer(4);
-            double rest = w - 8 - (a ? ih + 4 : 0) - (bt ? ih * 2.4 + 4 : 0) - (v ? ih * 1.3 + 4 : 0);
+            // The text gives way (ellipsis) so the buttons and bars always fit.
+            const double gap = std::max(4.0, ih * 0.4);
+            double rest = w - 16 - (a ? ih + gap : 0) - (bt ? ih * 2.3 + gap : 0) - (v ? ih * 1.2 + gap : 0);
             if (a) row.Children().Append(art());
             if (i) row.Children().Append(text(rest));
             if (bt) row.Children().Append(buttons());
@@ -24097,8 +24114,17 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         const LpPart& p = LP_PARTS[i];
         if (!LpPartOn(p)) { placed.push_back({ i, 0, L"", 2 }); continue; }
         if (p.detachKey && !LpOn(p.detachKey)) { placed.push_back({ i, 0, L"", 1 }); continue; }
-        const int mon = LpMonitor(p);
-        if (mon == MONITOR_OFF || !onStrip(mon)) { placed.push_back({ i, mon, L"", 2 }); continue; }
+        int mon = LpMonitor(p);
+        if (mon == MONITOR_OFF) { placed.push_back({ i, mon, L"", 2 }); continue; }
+        if (!onStrip(mon)) {
+            // Not connected: it shows on the monitor it falls back to.
+            const HWND wnd = FindTaskbarWndForMonitorWithHopBack(mon);
+            int shown = 0;
+            for (auto& m2 : monitors)
+                if (wnd && FindTaskbarWndForMonitorWithHopBack(m2.value) == wnd) { shown = m2.value; break; }
+            if (!shown) { placed.push_back({ i, mon, L"", 2 }); continue; }
+            mon = shown;
+        }
         placed.push_back({ i, mon, LpPosition(p), 0 });
     }
 
@@ -24451,8 +24477,7 @@ static wuxc::Grid BuildLayoutPreview() {
         *lastW = w;
         if (auto g = sender.try_as<wuxc::Grid>()) FillLayoutPreview(g, std::max(520.0, w));
     });
-    FillLayoutPreview(outer, 680);
-    return outer;
+    return outer;   // built once its width is known (each build reads every taskbar)
 }
 
 static wuxc::StackPanel BuildReorderList(const SettingCard& card) {
