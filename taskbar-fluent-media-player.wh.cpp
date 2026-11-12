@@ -23409,7 +23409,10 @@ static wuxc::Border MakeLpPlaceholder(int part, double w, double h, bool live) {
     wuxc::ToolTipService::SetToolTip(b, winrt::box_value(winrt::hstring{ Loc(LP_PARTS[part].label) }));
 
     const double ih = std::max(8.0, h - 8);
-    const std::wstring title = Loc(L"Name"), artist = Loc(L"Artist");
+    // The song playing, so a part is drawn as wide as it really is.
+    std::wstring title, artist;
+    { std::lock_guard<std::mutex> lk(g_mediaMtx); title = g_media.title; artist = g_media.artist; }
+    if (title.empty()) { title = Loc(L"Name"); artist = Loc(L"Artist"); }
 
     // Stand-ins, not the song playing: the preview shows the layout, not the music.
     auto art = [&]() {
@@ -23491,10 +23494,14 @@ static wuxc::Border MakeLpPlaceholder(int part, double w, double h, bool live) {
     return b;
 }
 
-// How wide the stand-in text is ("Name" over "Artist", at MakeLpPlaceholder's sizes).
+// Roughly how wide the song text is at MakeLpPlaceholder's sizes, for a part
+// that isn't on the taskbar to measure.
 static double LpTextWidth(double ih) {
-    const double title = (double)Loc(L"Name").size() * ih * 0.36 * 0.62;
-    const double artist = (double)Loc(L"Artist").size() * ih * 0.30 * 0.60;
+    std::wstring t, a;
+    { std::lock_guard<std::mutex> lk(g_mediaMtx); t = g_media.title; a = g_media.artist; }
+    if (t.empty()) { t = Loc(L"Name"); a = Loc(L"Artist"); }
+    const double title = (double)std::min<size_t>(t.size(), 32) * ih * 0.36 * 0.58;
+    const double artist = (double)std::min<size_t>(a.size(), 32) * ih * 0.30 * 0.56;
     return std::max(title, artist) + 4;
 }
 
@@ -24099,11 +24106,9 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         if (snap.hwnd && !g_unloading) RunFromWindowThread(snap.hwnd, TakeLpSnapOnThread, &snap);
         if (!snap.ok || snap.width <= 0) BuildLpSketch(snap);
         {
-            // The parts show stand-ins, smaller than the real ones (the real song,
-            // their margins): each shrinks to its stand-in, and what follows it
-            // in its section closes up, so no empty gap is left behind.
-            const double is0 = std::max((W - 24) / snap.width, 0.62);
-            const double ih0 = std::round(std::clamp(snap.height * is0, 34.0, 60.0) * 0.74);
+            // Widgets shows a stand-in (it can hold news), so it gets the
+            // stand-in's width and what follows it in its section closes up.
+            // The parts show the real song, so they keep their real width.
             double trayS = snap.width, groupS = snap.width;
             for (const auto& it : snap.items) {
                 if (it.kind >= LpChevron) trayS = std::min(trayS, it.x);
@@ -24124,22 +24129,8 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
                 for (auto& sl : snap.slots) if (!sl.overlay && sl.x >= end - 1 && section(sl.x) == sec) sl.x -= delta;
                 for (auto& p : snap.parts) if (p.x >= end - 1 && section(p.x) == sec) p.x -= delta;
             }
-            for (auto& r : snap.parts) {
-                // Every part: its real box has the real song and margins in it.
-                const double target = LpDefaultWidth(r.part, ih0) / is0;
-                const double delta = r.w - target;
-                if (delta <= 2) continue;
-                const double end = r.x + r.w;
-                const int sec = section(r.x);
-                r.w = target;
-                // An overlay takes no room on the taskbar, so nothing follows it.
-                if (IsEdgePosition(ParseSettingChoice(LpPosition(LP_PARTS[r.part]), PLAYER_POSITIONS, PlayerPosition::TrayLeft))) continue;
-                for (auto& it : snap.items) if (it.x >= end - 1 && section(it.x) == sec) it.x -= delta;
-                for (auto& sl : snap.slots) if (!sl.overlay && sl.x >= end - 1 && section(sl.x) == sec) sl.x -= delta;
-                for (auto& o : snap.parts) if (&o != &r && o.x >= end - 1 && section(o.x) == sec) o.x -= delta;
-            }
         }
-        CompactLpSnap(snap, TaskbarIconsCentered());   // after the shrink: centers what's really drawn
+        CompactLpSnap(snap, TaskbarIconsCentered());
         PackLpSnap(snap);
 
         const double pad = 12;   // nothing touches the ends
