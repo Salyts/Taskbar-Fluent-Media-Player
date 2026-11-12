@@ -8305,9 +8305,74 @@ static double GetAvailableScrollTextAreaWidth() {
 }
 
 
+// Soft ends on scrolling text: the text is painted with a gradient pinned to
+// its view (not to the moving text), so letters fade in and out over the last
+// few pixels at each edge, on any taskbar background. 0/0 puts the plain color back.
+static void ApplyEdgeFade(TextBlock const& tb, double viewW, double left, double fadeL, double fadeR) {
+    try {
+        auto fg = tb.Foreground();
+        auto lg = fg ? fg.try_as<LinearGradientBrush>() : nullptr;
+        winrt::Windows::UI::Color c{};
+        if (auto sb = fg ? fg.try_as<SolidColorBrush>() : nullptr) c = sb.Color();
+        else if (lg && lg.GradientStops().Size() == 4) c = lg.GradientStops().GetAt(1).Color();
+        else return;
+        if (viewW <= 0 || (fadeL <= 0.5 && fadeR <= 0.5)) {
+            if (lg) tb.Foreground(MakeBrush(c));
+            return;
+        }
+        if (!lg) {
+            lg = LinearGradientBrush();
+            lg.MappingMode(BrushMappingMode::Absolute);
+            auto clear = c;
+            clear.A = 0;
+            for (auto col : { clear, c, c, clear }) {
+                GradientStop gs;
+                gs.Color(col);
+                lg.GradientStops().Append(gs);
+            }
+            lg.Transform(TranslateTransform());
+            tb.Foreground(lg);
+        }
+        lg.StartPoint({ 0, 0 });
+        lg.EndPoint({ (float)viewW, 0 });
+        auto stops = lg.GradientStops();
+        stops.GetAt(0).Offset(0.0);
+        stops.GetAt(1).Offset(std::clamp(fadeL / viewW, 0.0, 0.5));
+        stops.GetAt(2).Offset(std::clamp(1.0 - fadeR / viewW, 0.5, 1.0));
+        stops.GetAt(3).Offset(1.0);
+        if (auto tr = lg.Transform().try_as<TranslateTransform>()) tr.X(-left);   // the brush stays put while the text moves
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+}
+
+// The text's own color as a plain brush: a copy must not share the edge-fade
+// gradient, which is positioned per text block.
+static Brush PlainForeground(TextBlock const& tb) {
+    try {
+        auto fg = tb.Foreground();
+        if (auto lg = fg ? fg.try_as<LinearGradientBrush>() : nullptr; lg && lg.GradientStops().Size() == 4)
+            return MakeBrush(lg.GradientStops().GetAt(1).Color());
+        return fg;
+    } catch (...) { return nullptr; }
+}
+
+// How much each end of a scrolling line fades: both always in a loop; in
+// bounce only the side that has more text past it.
+static void EdgeFadeAmounts(const TextScrollState& s, double& fadeL, double& fadeR) {
+    fadeL = fadeR = 0;
+    if (!s.active || s.viewWidth <= 0) return;
+    const double f = std::min(14.0, s.viewWidth / 4);
+    if (g_settings.scrollMode == TextScrollMode::Loop) { fadeL = fadeR = f; return; }
+    fadeL = std::min(f, std::max(0.0, s.offset));
+    fadeR = std::min(f, std::max(0.0, s.textWidth - s.viewWidth - s.offset));
+}
+
 static void UpdateScrollTransforms() {
-    if (!g_playerGrid || (!g_settings.enableTitleScrolling && !g_settings.enableArtistScrolling)) return;
+    // Detached text scrolls too when the main player is off.
+    if (!HasAnyPlayerUi() || (!g_settings.enableTitleScrolling && !g_settings.enableArtistScrolling)) return;
     bool isLoop = (g_settings.scrollMode == TextScrollMode::Loop);
+    double tfL = 0, tfR = 0, afL = 0, afR = 0;
+    EdgeFadeAmounts(g_titleScroll, tfL, tfR);
+    EdgeFadeAmounts(g_artistScroll, afL, afR);
 
     if (g_settings.enableTitleScrolling) {
         try {
@@ -8320,9 +8385,11 @@ static void UpdateScrollTransforms() {
                             auto name = tb.Name();
                             if (name == TITLE_BLOCK_NAME) {
                                 Canvas::SetLeft(tb, -g_titleScroll.offset);
+                                ApplyEdgeFade(tb, g_titleScroll.viewWidth, -g_titleScroll.offset, tfL, tfR);
                             } else if (isLoop && name == TITLE_CLONE_NAME) {
                                 double gap = g_titleScroll.textWidth + g_settings.loopGap;
                                 Canvas::SetLeft(tb, gap - g_titleScroll.offset);
+                                ApplyEdgeFade(tb, g_titleScroll.viewWidth, gap - g_titleScroll.offset, tfL, tfR);
                             }
                         }
                     }
@@ -8342,9 +8409,11 @@ static void UpdateScrollTransforms() {
                             auto name = ab.Name();
                             if (name == ARTIST_BLOCK_NAME) {
                                 Canvas::SetLeft(ab, -g_artistScroll.offset);
+                                ApplyEdgeFade(ab, g_artistScroll.viewWidth, -g_artistScroll.offset, afL, afR);
                             } else if (isLoop && name == ARTIST_CLONE_NAME) {
                                 double gap = g_artistScroll.textWidth + g_settings.loopGap;
                                 Canvas::SetLeft(ab, gap - g_artistScroll.offset);
+                                ApplyEdgeFade(ab, g_artistScroll.viewWidth, gap - g_artistScroll.offset, afL, afR);
                             }
                         }
                     }
@@ -10129,7 +10198,7 @@ COLD_UNOPTIMIZED static Border BuildTextContainer() {
                 clone.FontWeight(block.FontWeight());
                 clone.FontStyle(block.FontStyle());
                 clone.CharacterSpacing(block.CharacterSpacing());
-                clone.Foreground(block.Foreground());
+                clone.Foreground(PlainForeground(block));
                 clone.TextWrapping(TextWrapping::NoWrap);
                 clone.TextTrimming(TextTrimming::None);
                 clone.TextAlignment(block.TextAlignment());
@@ -13921,6 +13990,7 @@ static void UpdateMarqueeLine(TextBlock const& tb, TextScrollState& scroll, bool
                     scroll.offset = 0.0;
                     scroll.forward = true;
                     Canvas::SetLeft(tb, 0.0);
+                    ApplyEdgeFade(tb, viewW, 0, 0, 0);
                 } else if (!wasActive) {
                     scroll.offset = 0.0;
                     scroll.forward = true;
@@ -13936,7 +14006,7 @@ static void UpdateMarqueeLine(TextBlock const& tb, TextScrollState& scroll, bool
                 if (auto cloneFe = FindMediaChild(cloneName)) {
                     if (auto clone = cloneFe.try_as<TextBlock>()) {
                         clone.Text(tb.Text());
-                        clone.Foreground(tb.Foreground());
+                        clone.Foreground(PlainForeground(tb));
                         clone.Visibility(g_settings.scrollMode == TextScrollMode::Loop && scroll.active
                             ? Visibility::Visible : Visibility::Collapsed);
                     }
