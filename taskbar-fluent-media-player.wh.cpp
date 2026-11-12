@@ -23656,12 +23656,14 @@ static void LpShowMarkers(LpDrag& st, bool on) {
             if (!el || mv.floats) continue;
             if (mv.group) { gL = std::min(gL, mv.x); gR = std::max(gR, mv.x + mv.w); }
             if (on && source && el == source) continue;   // lifted out
-            if (mv.group) group.push_back({ &mv, mv.x, mv.w, mv.x, false, true, mv.x });
-            else { const double p = on ? strip.V(mv.x) : mv.x; row.push_back({ &mv, p, mv.w, p, false, false, p }); }
+            // Ordered by their middles, so the outline goes in front of whatever's
+            // middle is past the spot (a clock box that starts a bit early included).
+            if (mv.group) group.push_back({ &mv, mv.x, mv.w, mv.x + mv.w / 2, false, true, mv.x });
+            else { const double p = on ? strip.V(mv.x) : mv.x; row.push_back({ &mv, p, mv.w, p + mv.w / 2, false, false, p }); }
         }
         if (here) {
             const double sx = slotInGroup ? strip.slots[st.tSlot].x : strip.V(strip.slots[st.tSlot].x);
-            (slotInGroup ? group : row).push_back({ nullptr, sx + 2, boxW, sx - 0.001, true, slotInGroup, sx + 2 });
+            (slotInGroup ? group : row).push_back({ nullptr, sx + 2, boxW, sx, true, slotInGroup, sx + 2 });
         }
         // The group: side by side in its order, around its anchor.
         if (on && !group.empty() && gL < gR) {
@@ -23675,7 +23677,7 @@ static void LpShowMarkers(LpDrag& st, bool on) {
                 at += group[i].w;
             }
         }
-        for (auto& g : group) { g.key = g.np; row.push_back(g); }
+        for (auto& g : group) { g.key = g.np + g.w / 2; row.push_back(g); }
         // The rest, around the group.
         std::sort(row.begin(), row.end(), [](const Entry& a, const Entry& b) { return a.key < b.key; });
         auto space = [](const Entry& a, const Entry& b) { return (a.box || b.box) && !(a.fixed && b.fixed) ? 4.0 : 0.0; };
@@ -23802,7 +23804,7 @@ static void WireLpDrag(wuxc::Border const& el, int part, std::shared_ptr<LpDrag>
             const auto& strip = st->strips[si];
             auto op = e.GetCurrentPoint(ovc).Position();
             auto lp = e.GetCurrentPoint(cv).Position();
-            bool overlayRow = op.Y >= -8 && op.Y <= strip.ovH + 2 && op.X >= -20 && op.X <= strip.width + 20;
+            bool overlayRow = op.Y >= -8 && op.Y <= strip.ovH - 6 && op.X >= -20 && op.X <= strip.width + 20;
             bool onCopy = !overlayRow && lp.Y >= -4 && lp.Y <= strip.height + 12 && lp.X >= -20 && lp.X <= strip.width + 20;
             if (!overlayRow && !onCopy) continue;
             for (size_t k = 0; k < strip.slots.size(); k++) {
