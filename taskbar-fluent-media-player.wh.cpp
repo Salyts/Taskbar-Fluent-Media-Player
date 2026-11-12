@@ -23476,7 +23476,7 @@ struct LpStrip {
     double V(double x) const { return (gapW > 0 && x >= gapFrom - 1 && Section(x) == Section(gapFrom - 1)) ? x - gapW : x; }
     winrt::weak_ref<winrt::Windows::UI::Xaml::Shapes::Rectangle> dropBox;   // dashed outline where it would land
     struct Mover { winrt::weak_ref<wux::FrameworkElement> el; double x, w; bool floats = false; double off = 0; };   // off: where it's slid to
-    bool roomBack = false;   // room is made backward here (forward would push something out)
+    double roomShift = 0;    // how far the section is pulled back so the room fits inside the copy
     std::vector<Mover> movers;   // what slides aside to make room
 };
 struct LpDrag {
@@ -23579,22 +23579,21 @@ static void LpShowMarkers(LpDrag& st, bool on) {
             return here && !ownPlace && !mv.floats && !(source && el == source) &&
                    strip.Section(mv.x) == strip.Section(strip.slots[st.tSlot].x);
         };
-        // Forward, unless that would push something past the end: then what's
-        // before the spot makes room backward. Nothing leaves the copy.
-        strip.roomBack = false;
+        // One rule: the room opens at the spot, what's after it slides forward,
+        // and whatever that would push past the end is taken back from the whole
+        // section (what's before the spot slides back by that much). So the
+        // things on both sides always move together and nothing leaves the copy.
+        double rightmost = here ? slotX + 2 + gap : 0;
         for (const auto& mv : strip.movers) {
             auto el = mv.el.get();
-            if (el && moves(mv, el) && strip.V(mv.x) >= slotX && strip.V(mv.x) + mv.w + gap > strip.width - strip.pad) strip.roomBack = true;
+            if (el && moves(mv, el) && strip.V(mv.x) >= slotX) rightmost = std::max(rightmost, strip.V(mv.x) + mv.w + gap);
         }
-        if (here && !ownPlace && slotX + 2 + gap > strip.width - strip.pad) strip.roomBack = true;
+        strip.roomShift = here && !ownPlace ? std::clamp(rightmost - (strip.width - strip.pad), 0.0, gap) : 0.0;
         for (auto& mv : strip.movers) {
             auto el = mv.el.get();
             if (!el) continue;
             double off = on && !mv.floats ? strip.V(mv.x) - mv.x : 0;   // closing the lifted part's gap
-            if (moves(mv, el)) {
-                if (strip.roomBack) { if (strip.V(mv.x) < slotX) off -= gap; }
-                else if (strip.V(mv.x) >= slotX) off += gap;
-            }
+            if (moves(mv, el)) off += strip.V(mv.x) >= slotX ? gap - strip.roomShift : -strip.roomShift;
             // Our own record of where it's slid to: an animation doesn't change
             // the local value, so reading that back left things stuck.
             if (std::abs(mv.off - off) < 0.5) continue;
@@ -23616,8 +23615,7 @@ static void LpShowMarkers(LpDrag& st, bool on) {
         if (slot.overlay) {
             x = v == L"taskbar_left_edge" ? strip.pad : v == L"taskbar_center_edge" ? strip.width / 2 - w / 2 : strip.width - strip.pad - w;
         } else {
-            const double sx = strip.V(slot.x);
-            x = strip.roomBack ? sx - 2 - w : sx + 2;   // in the room that just opened
+            x = strip.V(slot.x) + 2 - strip.roomShift;   // in the room that just opened
         }
         x = std::clamp(x, 2.0, std::max(2.0, strip.width - w - 2));
         box.Width(w);
