@@ -23448,7 +23448,7 @@ static wuxc::Border MakeLpPlaceholder(int part, double w, double h, bool live) {
     if (part == 0 || part == 2) {
         row.Spacing(std::max(4.0, ih * 0.4));
         row.HorizontalAlignment(wux::HorizontalAlignment::Left);
-        row.Margin(part == 2 ? wux::Thickness{ 7, 0, 7, 0 } : wux::Thickness{ 4, 0, 4, 0 });
+        row.Margin(part == 2 ? wux::Thickness{ 9, 0, 9, 0 } : wux::Thickness{ 8, 0, 8, 0 });
     } else {
         row.Spacing(std::max(2.0, ih * 0.25));
         row.HorizontalAlignment(wux::HorizontalAlignment::Center);
@@ -23474,7 +23474,7 @@ static wuxc::Border MakeLpPlaceholder(int part, double w, double h, bool live) {
 }
 
 // How wide a part is drawn when it isn't on the taskbar to measure, for a
-// box `h` tall. Its contents get 4 px all round, like MakeLpPlaceholder.
+// box `h` tall: its contents plus some room at the ends, like MakeLpPlaceholder.
 static double LpDefaultWidth(int part, double h) {
     const double ih = std::max(8.0, h - 8);
     switch (part) {
@@ -23485,14 +23485,14 @@ static double LpDefaultWidth(int part, double h) {
             if (LpInPlayer(3)) items.push_back(ih * 2.3);
             if (LpInPlayer(4)) items.push_back(ih * 1.2);
             if (items.empty()) return h;
-            double w = 8 + std::max(4.0, ih * 0.4) * (double)(items.size() - 1);
+            double w = 16 + std::max(4.0, ih * 0.4) * (double)(items.size() - 1);
             for (double x : items) w += x;
             return w;
         }
         case 1: return h;   // a square, the cover 4 px in from every side
-        case 2: return ih * 3.4 + 14;
-        case 3: return ih * 2.3 + 8;
-        default: return ih * 1.2 + 8;
+        case 2: return ih * 3.4 + 18;
+        case 3: return ih * 2.3 + 20;
+        default: return ih * 1.2 + 20;
     }
 }
 
