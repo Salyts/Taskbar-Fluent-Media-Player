@@ -6264,7 +6264,19 @@ static bool TryParsePlainColor(const std::wstring& v, winrt::Windows::UI::Color&
 static BYTE OpacityToAlpha(int percent) { return (BYTE)(std::clamp(percent, 0, 100) * 255 / 100); }
 
 // Every color form but -3 -3 -3, the settings accent, which is built from these.
+// "light$dark": the half for the theme Windows is in now (a single color is
+// both). Every color reader goes through this, so none uses the wrong half.
+static std::wstring ThemeHalf(const std::wstring& v) {
+    const size_t d = v.find(L'$');
+    if (d == std::wstring::npos) return v;
+    std::wstring s = IsSystemLightTheme() ? v.substr(0, d) : v.substr(d + 1);
+    s.erase(0, s.find_first_not_of(L" \t"));
+    s.erase(s.find_last_not_of(L" \t") + 1);
+    return s;
+}
+
 static winrt::Windows::UI::Color ParseColorExceptSettingsAccent(const std::wstring& colorStr, BYTE alpha) {
+    if (colorStr.find(L'$') != std::wstring::npos) return ParseColorExceptSettingsAccent(ThemeHalf(colorStr), alpha);
     {
         BYTE hr, hg, hb;
         if (TryParseHexColor(colorStr, hr, hg, hb)) return {alpha, hr, hg, hb};
@@ -6331,7 +6343,8 @@ static winrt::Windows::UI::Color ParseColorExceptSettingsAccent(const std::wstri
 // The mod's own "Settings accent color" (not the Windows accent). Defined
 // before its first use: forward-declared, the -O2 build failed to link it.
 static winrt::Windows::UI::Color AccentColorValue() {
-    std::wstring c = GetSettingOverride(L"SettingsWindowSettings.accentColor", g_settings.settingsAccentColor);
+    // A light$dark pair used to reach the parser whole, which read the light half in both themes.
+    std::wstring c = ThemeHalf(GetSettingOverride(L"SettingsWindowSettings.accentColor", g_settings.settingsAccentColor));
     winrt::Windows::UI::Color parsed;
     if (!c.empty() && TryParsePlainColor(c, parsed)) return parsed;
     // Album color and the Windows accent's shades. -3 -3 -3 would mean itself.
@@ -6346,6 +6359,7 @@ static winrt::Windows::UI::Color AccentColorValue() {
 }
 
 static winrt::Windows::UI::Color ParseColorWithSpecialValues(const std::wstring& colorStr, BYTE alpha = 255) {
+    if (colorStr.find(L'$') != std::wstring::npos) return ParseColorWithSpecialValues(ThemeHalf(colorStr), alpha);
     int r = 0, g = 0, b = 0;
     if (swscanf_s(colorStr.c_str(), L"%d %d %d", &r, &g, &b) == 3 && r == -3 && g == -3 && b == -3) {
         auto c = AccentColorValue();
@@ -20647,7 +20661,7 @@ static winrt::Windows::UI::Color s_accentShown{};  // what the brushes are at, o
 static winrt::Windows::UI::Color AccentTargetColor() {
     auto c = AccentColorValue();
     // Any cover can be picked here, so a very dark one is lifted enough to see.
-    if (GetSettingOverride(ACCENT_KEY, g_settings.settingsAccentColor) == L"-2 -2 -2") c = VizEnsureContrast(c);
+    if (ThemeHalf(GetSettingOverride(ACCENT_KEY, g_settings.settingsAccentColor)) == L"-2 -2 -2") c = VizEnsureContrast(c);
     return c;
 }
 
