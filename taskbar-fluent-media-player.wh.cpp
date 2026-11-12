@@ -23198,6 +23198,17 @@ static void TakeLpSnapOnThread(void* param) {
     }
 }
 
+// Next to Start, Search or Task View: such a part joins the icon group, which
+// Windows keeps centered (or at the left) as a whole.
+static bool LpIsGroupPosition(const std::wstring& v) {
+    return v == L"taskbar_left_start" || v == L"taskbar_right_start" ||
+           v == L"taskbar_after_search_left" || v == L"taskbar_after_search_right" ||
+           v == L"taskbar_after_taskview_left" || v == L"taskbar_after_taskview_right";
+}
+static bool LpIsGroupKind(int kind) {
+    return kind == LpStart || kind == LpSearchIcon || kind == LpSearchBox || kind == LpTaskView || kind == LpOtherButton;
+}
+
 // Apps aren't drawn, so the buttons (and ours among them) close up: centered
 // like Windows does when nothing is pinned, or from where the group starts.
 static void CompactLpSnap(LpSnap& s, bool centered) {
@@ -23213,6 +23224,7 @@ static void CompactLpSnap(LpSnap& s, bool centered) {
         if (inGroup(s.items[i].kind)) ms.push_back({ s.items[i].x, s.items[i].w, (int)i, -1, s.items[i].kind == LpApp, 0 });
     for (size_t i = 0; i < s.parts.size(); i++) {
         const auto& p = s.parts[i];
+        if (!LpIsGroupPosition(LpPosition(LP_PARTS[p.part]))) continue;   // overlays float over it, others sit elsewhere
         if (p.x + p.w > gl - 4 && p.x < gr + 4) ms.push_back({ p.x, p.w, -1, (int)i, false, 0 });
     }
     std::sort(ms.begin(), ms.end(), [](const Member& a, const Member& b) { return a.x < b.x; });
@@ -23285,22 +23297,28 @@ static bool LpOrderFor(const LpSlot& slot, int moved, std::wstring& outOrder) {
 // overlaps is pushed along, then pulled back from the end if it runs past it.
 // Spots move with what they sit against. Overlays float and aren't part of it.
 static void PackLpSnap(LpSnap& s) {
-    struct Entry { double x, w; int item, part; double nx; };
+    // fixed: the icon group, already laid out (and centered) by CompactLpSnap.
+    struct Entry { double x, w; int item, part; bool fixed; double nx; };
     std::vector<Entry> row;
     for (size_t i = 0; i < s.items.size(); i++)
-        if (s.items[i].kind != LpApp) row.push_back({ s.items[i].x, s.items[i].w, (int)i, -1, 0 });
+        if (s.items[i].kind != LpApp) row.push_back({ s.items[i].x, s.items[i].w, (int)i, -1, LpIsGroupKind(s.items[i].kind), 0 });
     for (size_t i = 0; i < s.parts.size(); i++) {
-        const PlayerPosition pos = ParseSettingChoice(LpPosition(LP_PARTS[s.parts[i].part]), PLAYER_POSITIONS, PlayerPosition::TrayLeft);
-        if (!IsEdgePosition(pos)) row.push_back({ s.parts[i].x, s.parts[i].w, -1, (int)i, 0 });
+        const std::wstring v = LpPosition(LP_PARTS[s.parts[i].part]);
+        if (!IsEdgePosition(ParseSettingChoice(v, PLAYER_POSITIONS, PlayerPosition::TrayLeft)))
+            row.push_back({ s.parts[i].x, s.parts[i].w, -1, (int)i, LpIsGroupPosition(v), 0 });
     }
     // Same start: the taskbar's own thing first, ours after it.
     std::sort(row.begin(), row.end(), [](const Entry& a, const Entry& b) { return a.x != b.x ? a.x < b.x : a.item > b.item; });
-    for (size_t i = 0; i < row.size(); i++) {
-        row[i].nx = row[i].x;
-        if (i > 0) row[i].nx = std::max(row[i].nx, row[i - 1].nx + row[i - 1].w);
+    double prevEnd = -1e9;
+    for (auto& r : row) {
+        r.nx = r.fixed ? r.x : std::max(r.x, prevEnd);
+        prevEnd = std::max(prevEnd, r.nx + r.w);
     }
     double limit = s.width;
-    for (size_t i = row.size(); i-- > 0;) { row[i].nx = std::min(row[i].nx, limit - row[i].w); limit = row[i].nx; }
+    for (size_t i = row.size(); i-- > 0;) {
+        if (!row[i].fixed) row[i].nx = std::min(row[i].nx, limit - row[i].w);
+        limit = std::min(limit, row[i].nx);
+    }
     for (auto& sl : s.slots) {
         if (sl.overlay) continue;
         const Entry* best = nullptr;
@@ -23512,7 +23530,8 @@ struct LpStrip {
     double gapFrom = 1e9, gapW = 0;
     double V(double x) const { return (gapW > 0 && x >= gapFrom - 1 && Section(x) == Section(gapFrom - 1)) ? x - gapW : x; }
     winrt::weak_ref<winrt::Windows::UI::Xaml::Shapes::Rectangle> dropBox;   // dashed outline where it would land
-    struct Mover { winrt::weak_ref<wux::FrameworkElement> el; double x, w; bool floats = false; double off = 0; };   // off: where it's slid to
+    struct Mover { winrt::weak_ref<wux::FrameworkElement> el; double x, w; bool floats = false; double off = 0; bool group = false; };   // off: where it's slid to; group: in the icon group
+    bool centered = true;    // the icon group is centered (else at the left)
     double boxX = 0;         // where the dashed outline goes, from the layout pass
     std::vector<Mover> movers;   // what slides aside to make room
 };
@@ -23604,40 +23623,60 @@ static void LpShowMarkers(LpDrag& st, bool on) {
     st.shownKey = key;
     auto source = st.source.get();
 
-    // Room: a real layout pass. Everything on the copy is lined up with the
-    // outline at the spot; whatever would overlap it (or a neighbour it pushed)
-    // is pushed forward, then pulled back from the end if that runs past it.
-    // Nothing can sit inside the outline or on top of anything else, and only
-    // what's in the way moves. Overlays float and take part in none of it.
+    // Room: a real layout pass. The icon group (Start, Search, Task View and
+    // what's placed next to them) is laid out together and kept centered, or
+    // at the left, like Windows does; a spot next to it opens the outline
+    // inside it. The rest is lined up around that: whatever would overlap is
+    // pushed along, then pulled back from the end if that runs past it.
+    // Nothing sits inside the outline or on anything else. Overlays float.
     for (size_t si = 0; si < st.strips.size(); si++) {
         auto& strip = st.strips[si];
         const bool here = on && st.tZone == 0 && (int)si == st.tStrip && !strip.slots[st.tSlot].overlay;
+        const bool slotInGroup = here && LpIsGroupPosition(strip.slots[st.tSlot].value);
         const double boxW = std::clamp(st.dropW > 0 ? st.dropW : strip.ih * 2, 8.0, std::max(8.0, strip.width - 4));
-        struct Entry { LpStrip::Mover* mv; double p, w, key; bool box; double np; };
-        std::vector<Entry> row;
+        struct Entry { LpStrip::Mover* mv; double p, w, key; bool box, fixed; double np; };
+        std::vector<Entry> group, row;
+        double gL = 1e9, gR = -1e9;
         for (auto& mv : strip.movers) {
             auto el = mv.el.get();
-            if (!el || mv.floats || (source && el == source)) continue;
-            const double p = on ? strip.V(mv.x) : mv.x;   // the lifted part's gap closed
-            row.push_back({ &mv, p, mv.w, p, false, p });
+            if (!el || mv.floats) continue;
+            if (mv.group) { gL = std::min(gL, mv.x); gR = std::max(gR, mv.x + mv.w); }
+            if (on && source && el == source) continue;   // lifted out
+            if (mv.group) group.push_back({ &mv, mv.x, mv.w, mv.x, false, true, mv.x });
+            else { const double p = on ? strip.V(mv.x) : mv.x; row.push_back({ &mv, p, mv.w, p, false, false, p }); }
         }
         if (here) {
-            const double sx = strip.V(strip.slots[st.tSlot].x);
-            row.push_back({ nullptr, sx + 2, boxW, sx - 0.001, true, sx + 2 });   // before what starts at the spot
+            const double sx = slotInGroup ? strip.slots[st.tSlot].x : strip.V(strip.slots[st.tSlot].x);
+            (slotInGroup ? group : row).push_back({ nullptr, sx + 2, boxW, sx - 0.001, true, slotInGroup, sx + 2 });
         }
+        // The group: side by side in its order, around its anchor.
+        if (on && !group.empty() && gL < gR) {
+            std::sort(group.begin(), group.end(), [](const Entry& a, const Entry& b) { return a.key < b.key; });
+            double total = 0;
+            for (size_t i = 0; i < group.size(); i++) total += group[i].w + (i > 0 && (group[i].box || group[i - 1].box) ? 4 : 0);
+            double at = strip.centered ? (gL + gR) / 2 - total / 2 : gL;
+            for (size_t i = 0; i < group.size(); i++) {
+                if (i > 0 && (group[i].box || group[i - 1].box)) at += 4;
+                group[i].np = at;
+                at += group[i].w;
+            }
+        }
+        for (auto& g : group) { g.key = g.np; row.push_back(g); }
+        // The rest, around the group.
         std::sort(row.begin(), row.end(), [](const Entry& a, const Entry& b) { return a.key < b.key; });
-        auto space = [](const Entry& a, const Entry& b) { return a.box || b.box ? 4.0 : 0.0; };
-        for (size_t i = 0; i < row.size(); i++) {
-            row[i].np = row[i].p;
-            if (i > 0) row[i].np = std::max(row[i].np, row[i - 1].np + row[i - 1].w + space(row[i - 1], row[i]));
+        auto space = [](const Entry& a, const Entry& b) { return (a.box || b.box) && !(a.fixed && b.fixed) ? 4.0 : 0.0; };
+        double prevEnd = -1e9;
+        const Entry* prev = nullptr;
+        for (auto& r : row) {
+            if (!r.fixed) r.np = std::max(r.p, prev ? prevEnd + space(*prev, r) : r.p);
+            prevEnd = std::max(prevEnd, r.np + r.w);
+            prev = &r;
         }
         double limit = strip.width - strip.pad;
         for (size_t i = row.size(); i-- > 0;) {
-            row[i].np = std::min(row[i].np, limit - row[i].w);
-            if (i > 0) limit = row[i].np - space(row[i - 1], row[i]);
+            if (!row[i].fixed) row[i].np = std::min(row[i].np, limit - row[i].w);
+            limit = std::min(limit, row[i].np - (i > 0 ? space(row[i - 1], row[i]) : 0.0));
         }
-        double floor = strip.pad;   // too crowded to fit: keep the start in, let the end go
-        for (auto& r : row) { r.np = std::max(r.np, floor); floor = r.np + r.w; }
         strip.boxX = 0;
         for (auto& r : row) {
             if (r.box) { strip.boxX = r.np; continue; }
@@ -24052,7 +24091,6 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         snap.hwnd = FindTaskbarWndForMonitorWithHopBack(m.value);
         if (snap.hwnd && !g_unloading) RunFromWindowThread(snap.hwnd, TakeLpSnapOnThread, &snap);
         if (!snap.ok || snap.width <= 0) BuildLpSketch(snap);
-        CompactLpSnap(snap, TaskbarIconsCentered());
         {
             // The parts show stand-ins, smaller than the real ones (the real song,
             // their margins): each shrinks to its stand-in, and what follows it
@@ -24094,6 +24132,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
                 for (auto& o : snap.parts) if (&o != &r && o.x >= end - 1 && section(o.x) == sec) o.x -= delta;
             }
         }
+        CompactLpSnap(snap, TaskbarIconsCentered());   // after the shrink: centers what's really drawn
         PackLpSnap(snap);
 
         const double pad = 12;   // nothing touches the ends
@@ -24163,7 +24202,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
             wuxc::Canvas::SetTop(el, y0 + (ih - el.Height()) / 2);
             el.RenderTransform(wuxm::TranslateTransform());
             cv.Children().Append(el);
-            movers.push_back({ winrt::make_weak(el), ex, std::max(2.0, MW(it.x, it.w)) });
+            movers.push_back({ winrt::make_weak(el), ex, std::max(2.0, MW(it.x, it.w)), false, 0, LpIsGroupKind(it.kind) });
             if (it.kind >= LpChevron) trayX = std::min(trayX, ex);
             if (it.kind == LpStart || it.kind == LpSearchIcon || it.kind == LpSearchBox || it.kind == LpTaskView || it.kind == LpOtherButton)
                 groupX = std::min(groupX, ex);
@@ -24177,6 +24216,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         strip.ih = ih;
         strip.y0 = y0;
         strip.trayX = trayX;
+        strip.centered = TaskbarIconsCentered();
         strip.groupX = std::min(groupX, trayX);
         strip.movers = std::move(movers);
         // Above the copy: the spots that float over the taskbar instead of making room.
@@ -24287,7 +24327,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
             ph.RenderTransform(wuxm::TranslateTransform());
             cv.Children().Append(ph);
             const PlayerPosition pos = ParseSettingChoice(pl.position, PLAYER_POSITIONS, PlayerPosition::TrayLeft);
-            strip.movers.push_back({ winrt::make_weak(ph.as<wux::FrameworkElement>()), x, w, IsEdgePosition(pos) });
+            strip.movers.push_back({ winrt::make_weak(ph.as<wux::FrameworkElement>()), x, w, IsEdgePosition(pos), 0, LpIsGroupPosition(PositionKey(pos)) });
             if (!IsTaskbarPosition(pos)) strip.trayX = std::min(strip.trayX, x);
             if (!IsEdgePosition(pos)) beside.push_back({ pl.part, x, live ? w : std::min(w, LpDefaultWidth(pl.part, ih)), PositionKey(pos) });
         }
