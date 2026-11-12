@@ -23280,6 +23280,43 @@ static bool LpOrderFor(const LpSlot& slot, int moved, std::wstring& outOrder) {
     return true;
 }
 
+// Nothing on the copy overlaps: the copy draws some things wider than the
+// taskbar has them (the hidden Widgets shell is zero wide there), so whatever
+// overlaps is pushed along, then pulled back from the end if it runs past it.
+// Spots move with what they sit against. Overlays float and aren't part of it.
+static void PackLpSnap(LpSnap& s) {
+    struct Entry { double x, w; int item, part; double nx; };
+    std::vector<Entry> row;
+    for (size_t i = 0; i < s.items.size(); i++)
+        if (s.items[i].kind != LpApp) row.push_back({ s.items[i].x, s.items[i].w, (int)i, -1, 0 });
+    for (size_t i = 0; i < s.parts.size(); i++) {
+        const PlayerPosition pos = ParseSettingChoice(LpPosition(LP_PARTS[s.parts[i].part]), PLAYER_POSITIONS, PlayerPosition::TrayLeft);
+        if (!IsEdgePosition(pos)) row.push_back({ s.parts[i].x, s.parts[i].w, -1, (int)i, 0 });
+    }
+    // Same start: the taskbar's own thing first, ours after it.
+    std::sort(row.begin(), row.end(), [](const Entry& a, const Entry& b) { return a.x != b.x ? a.x < b.x : a.item > b.item; });
+    for (size_t i = 0; i < row.size(); i++) {
+        row[i].nx = row[i].x;
+        if (i > 0) row[i].nx = std::max(row[i].nx, row[i - 1].nx + row[i - 1].w);
+    }
+    double limit = s.width;
+    for (size_t i = row.size(); i-- > 0;) { row[i].nx = std::min(row[i].nx, limit - row[i].w); limit = row[i].nx; }
+    for (auto& sl : s.slots) {
+        if (sl.overlay) continue;
+        const Entry* best = nullptr;
+        double bd = 1e9;
+        for (auto& r : row) {
+            const double d = sl.x < r.x ? r.x - sl.x : (sl.x > r.x + r.w ? sl.x - (r.x + r.w) : 0);
+            if (d < bd) { bd = d; best = &r; }
+        }
+        if (best && bd <= 8) sl.x += best->nx - best->x;
+    }
+    for (auto& r : row) {
+        if (r.item >= 0) s.items[r.item].x = r.nx;
+        if (r.part >= 0) s.parts[r.part].x = r.nx;
+    }
+}
+
 static bool TaskbarIconsCentered() {
     DWORD v = 1, size = sizeof(v);
     if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
@@ -23476,7 +23513,7 @@ struct LpStrip {
     double V(double x) const { return (gapW > 0 && x >= gapFrom - 1 && Section(x) == Section(gapFrom - 1)) ? x - gapW : x; }
     winrt::weak_ref<winrt::Windows::UI::Xaml::Shapes::Rectangle> dropBox;   // dashed outline where it would land
     struct Mover { winrt::weak_ref<wux::FrameworkElement> el; double x, w; bool floats = false; double off = 0; };   // off: where it's slid to
-    double roomShift = 0;    // how far the section is pulled back so the room fits inside the copy
+    double boxX = 0;         // where the dashed outline goes, from the layout pass
     std::vector<Mover> movers;   // what slides aside to make room
 };
 struct LpDrag {
@@ -23567,38 +23604,58 @@ static void LpShowMarkers(LpDrag& st, bool on) {
     st.shownKey = key;
     auto source = st.source.get();
 
-    // Room: what's after the spot in the same section slides forward by the
-    // part's width. Overlays float and move nothing; neither does a part's own place.
+    // Room: a real layout pass. Everything on the copy is lined up with the
+    // outline at the spot; whatever would overlap it (or a neighbour it pushed)
+    // is pushed forward, then pulled back from the end if that runs past it.
+    // Nothing can sit inside the outline or on top of anything else, and only
+    // what's in the way moves. Overlays float and take part in none of it.
     for (size_t si = 0; si < st.strips.size(); si++) {
         auto& strip = st.strips[si];
         const bool here = on && st.tZone == 0 && (int)si == st.tStrip && !strip.slots[st.tSlot].overlay;
-        const bool ownPlace = false;
-        const double slotX = here ? strip.V(strip.slots[st.tSlot].x) : 0;
-        const double gap = std::max(8.0, st.dropW > 0 ? st.dropW : strip.ih * 2) + 4;
-        auto moves = [&](const LpStrip::Mover& mv, wux::FrameworkElement const& el) {
-            return here && !ownPlace && !mv.floats && !(source && el == source) &&
-                   strip.Section(mv.x) == strip.Section(strip.slots[st.tSlot].x);
-        };
-        // One rule: the room opens at the spot, what's after it slides forward,
-        // and whatever that would push past the end is taken back from the whole
-        // section (what's before the spot slides back by that much). So the
-        // things on both sides always move together and nothing leaves the copy.
-        double rightmost = here ? slotX + 2 + gap : 0;
-        for (const auto& mv : strip.movers) {
-            auto el = mv.el.get();
-            if (el && moves(mv, el) && strip.V(mv.x) >= slotX) rightmost = std::max(rightmost, strip.V(mv.x) + mv.w + gap);
-        }
-        strip.roomShift = here && !ownPlace ? std::clamp(rightmost - (strip.width - strip.pad), 0.0, gap) : 0.0;
+        const double boxW = std::clamp(st.dropW > 0 ? st.dropW : strip.ih * 2, 8.0, std::max(8.0, strip.width - 4));
+        struct Entry { LpStrip::Mover* mv; double p, w, key; bool box; double np; };
+        std::vector<Entry> row;
         for (auto& mv : strip.movers) {
             auto el = mv.el.get();
-            if (!el) continue;
-            double off = on && !mv.floats ? strip.V(mv.x) - mv.x : 0;   // closing the lifted part's gap
-            if (moves(mv, el)) off += strip.V(mv.x) >= slotX ? gap - strip.roomShift : -strip.roomShift;
+            if (!el || mv.floats || (source && el == source)) continue;
+            const double p = on ? strip.V(mv.x) : mv.x;   // the lifted part's gap closed
+            row.push_back({ &mv, p, mv.w, p, false, p });
+        }
+        if (here) {
+            const double sx = strip.V(strip.slots[st.tSlot].x);
+            row.push_back({ nullptr, sx + 2, boxW, sx - 0.001, true, sx + 2 });   // before what starts at the spot
+        }
+        std::sort(row.begin(), row.end(), [](const Entry& a, const Entry& b) { return a.key < b.key; });
+        auto space = [](const Entry& a, const Entry& b) { return a.box || b.box ? 4.0 : 0.0; };
+        for (size_t i = 0; i < row.size(); i++) {
+            row[i].np = row[i].p;
+            if (i > 0) row[i].np = std::max(row[i].np, row[i - 1].np + row[i - 1].w + space(row[i - 1], row[i]));
+        }
+        double limit = strip.width - strip.pad;
+        for (size_t i = row.size(); i-- > 0;) {
+            row[i].np = std::min(row[i].np, limit - row[i].w);
+            if (i > 0) limit = row[i].np - space(row[i - 1], row[i]);
+        }
+        double floor = strip.pad;   // too crowded to fit: keep the start in, let the end go
+        for (auto& r : row) { r.np = std::max(r.np, floor); floor = r.np + r.w; }
+        strip.boxX = 0;
+        for (auto& r : row) {
+            if (r.box) { strip.boxX = r.np; continue; }
+            const double off = r.np - r.mv->x;
             // Our own record of where it's slid to: an animation doesn't change
             // the local value, so reading that back left things stuck.
-            if (std::abs(mv.off - off) < 0.5) continue;
-            mv.off = off;
-            if (auto tr = el.RenderTransform().try_as<wuxm::TranslateTransform>()) AnimateTo(tr, L"X", off, 130);
+            if (std::abs(r.mv->off - off) < 0.5) continue;
+            r.mv->off = off;
+            if (auto el = r.mv->el.get())
+                if (auto tr = el.RenderTransform().try_as<wuxm::TranslateTransform>()) AnimateTo(tr, L"X", off, 130);
+        }
+        // Floating parts and the lifted one go back to where they are.
+        for (auto& mv : strip.movers) {
+            auto el = mv.el.get();
+            if (!el || !(mv.floats || (source && el == source))) continue;
+            if (std::abs(mv.off) < 0.5) continue;
+            mv.off = 0;
+            if (auto tr = el.RenderTransform().try_as<wuxm::TranslateTransform>()) AnimateTo(tr, L"X", 0.0, 130);
         }
     }
 
@@ -23615,7 +23672,7 @@ static void LpShowMarkers(LpDrag& st, bool on) {
         if (slot.overlay) {
             x = v == L"taskbar_left_edge" ? strip.pad : v == L"taskbar_center_edge" ? strip.width / 2 - w / 2 : strip.width - strip.pad - w;
         } else {
-            x = strip.V(slot.x) + 2 - strip.roomShift;   // in the room that just opened
+            x = strip.boxX;   // where the layout pass made room
         }
         x = std::clamp(x, 2.0, std::max(2.0, strip.width - w - 2));
         box.Width(w);
@@ -24037,6 +24094,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
                 for (auto& o : snap.parts) if (&o != &r && o.x >= end - 1 && section(o.x) == sec) o.x -= delta;
             }
         }
+        PackLpSnap(snap);
 
         const double pad = 12;   // nothing touches the ends
         // Things keep a readable size; it's the empty stretches between them
