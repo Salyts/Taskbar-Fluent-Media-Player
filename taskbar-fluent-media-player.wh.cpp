@@ -15592,6 +15592,22 @@ static bool AttachTrackingMember(HWND hWnd, PlayerPosition position, Grid const&
         Wh_Log(L"AttachTrackingMember: anchor for %s isn't on the taskbar, using a plain margin", PositionKey(position));
         return false;
     }
+    // Widgets turned off in Windows leaves an empty shell, which can sit at the
+    // far end of the icons: anchoring there put "left of Widgets" on the right.
+    // The empty shell is only the right spot when we hide the button ourselves.
+    if (laidOut && !g_settings.hideNativeWidgetsButton &&
+        (position == PlayerPosition::TaskbarAfterWidgetsLeft || position == PlayerPosition::TaskbarAfterWidgetsRight)) {
+        bool shown = false;
+        try {
+            auto inner = FindChildByName(anchor, L"ExperienceToggleButtonRootPanel");
+            if (!inner) inner = FindChildByClassName(anchor, L"Taskbar.TaskListButtonPanel");
+            shown = inner && inner.Visibility() == Visibility::Visible && inner.ActualWidth() > 0 && anchor.ActualWidth() > 0;
+        } catch (...) { LOG_IGNORED_EXCEPTION(); }
+        if (!shown) {
+            Wh_Log(L"AttachTrackingMember: Widgets is off in Windows, using a plain margin from the start of the taskbar");
+            return false;
+        }
+    }
 
     std::wstring groupKey = MakeTrackingGroupKey(hWnd, PositionAnchorGroupBase(position));
     auto it = g_trackingGroups->find(groupKey);
