@@ -702,6 +702,9 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       $options:
       - "player": In the player
       - "artist": Micro, next to the artist text
+    - vizPosition: "right"
+      $name: Unused (left over from 1.6)
+      $description: Does nothing. It's only here so settings saved by 1.6 still save in Windhawk's settings editor.
     - vizOrder: 4
       #! $showIf: {vizEnabled: true, settingsView: full}
       $name: Layout order (1-4)
@@ -893,7 +896,7 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
     - showWidgetsWhenIdle: false
       #! $showIf: {hideNativeWidgetsButton: true}
       $name: Show Widgets when nothing plays
-      $description: "Swaps them: the main player hides when nothing is playing and the Widgets button (with the weather) shows in its place. Detached parts stay. The Widgets button has to be on in Windows' taskbar settings."
+      $description: "Swaps them: the main player hides when nothing is playing and the Widgets button (with the weather) comes back. Windows keeps the weather where it always is, so set the player's position to the Widgets button to have them swap in the same spot. Detached parts stay. The Widgets button has to be on in Windows' taskbar settings."
     $name: Native Widgets button
   #! $hideIf: {settingsView: window}
   $name: Main Settings
