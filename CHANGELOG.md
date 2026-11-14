@@ -11,6 +11,8 @@
 - **Album art shows.** New option under Album Art: the cover, the icon of the app that plays, or always the stand-in icon (#113, #120).
 - **Mini player.** Mica and Mica Alt looks for the menu background (#112), and an option to fold the cover area away when a song has no cover (#122).
 - **Weather has its own page** in the settings window, and the visualizer's power options sit in a Performance card.
+- **Hide Windows' own buttons.** New switches under Native Widgets: hide the Start button, Search and Task View. They come back when the switch or the mod is turned off.
+- **The left corner is a real spot.** With Widgets turned off in Windows (or a button hidden), parts set next to that button now go to the start of the taskbar side by side, each taking its own room. Before, they landed on top of each other. The Layout page shows the corner as a place to drop parts.
 
 ### Lighter on CPU, GPU and battery
 

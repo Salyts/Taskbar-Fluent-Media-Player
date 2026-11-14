@@ -1015,6 +1015,15 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       #! $showIf: {hideNativeWidgetsButton: true}
       $name: Show Widgets when nothing plays
       $description: "Swaps them: the main player hides when nothing is playing and the Widgets button (with the weather) comes back. Windows keeps the weather where it always is, so set the player's position to the Widgets button to have them swap in the same spot. Detached parts stay. The Widgets button has to be on in Windows' taskbar settings."
+    - hideStartButton: false
+      $name: Hide the Start button
+      $description: Hides Windows' Start button on the taskbar. The Windows key still opens Start.
+    - hideSearchButton: false
+      $name: Hide Search
+      $description: Hides Windows' Search button or box on the taskbar.
+    - hideTaskViewButton: false
+      $name: Hide Task View
+      $description: Hides Windows' Task View button on the taskbar.
     $name: Native Widgets button
   #! $hideIf: {settingsView: window}
   $name: Main Settings
@@ -2680,6 +2689,9 @@ struct ModSettings {
     bool         hideNativeWidgetsButton = false;
     WidgetsHideScope hideNativeWidgetsScope = WidgetsHideScope::Both;
     bool         showWidgetsWhenIdle  = false;
+    bool         hideStartButton      = false;
+    bool         hideSearchButton     = false;
+    bool         hideTaskViewButton   = false;
     int          infoOrder            = 2;
     bool         infoDetached             = false;
     PlayerPosition infoDetachedPosition     = PlayerPosition::TaskbarLeftEdge;
@@ -3019,6 +3031,9 @@ static constexpr SettingSpec SETTINGS[] = {
     SBool(L"MainSettings.NativeWidgetsSetting.hideNativeWidgetsButton", &ModSettings::hideNativeWidgetsButton),
     SStr(L"MainSettings.NativeWidgetsSetting.hideNativeWidgetsScope", L"both"),
     SBool(L"MainSettings.NativeWidgetsSetting.showWidgetsWhenIdle", &ModSettings::showWidgetsWhenIdle),
+    SBool(L"MainSettings.NativeWidgetsSetting.hideStartButton", &ModSettings::hideStartButton),
+    SBool(L"MainSettings.NativeWidgetsSetting.hideSearchButton", &ModSettings::hideSearchButton),
+    SBool(L"MainSettings.NativeWidgetsSetting.hideTaskViewButton", &ModSettings::hideTaskViewButton),
     SBool(L"MainSettings.TextAreaSetting.showTrackTitle", &ModSettings::showTrackTitle),
     SBool(L"MainSettings.TextAreaSetting.showTrackArtist", &ModSettings::showTrackArtist),
     SBool(L"MainSettings.TextAreaSetting.showArtistAsTime", &ModSettings::showArtistAsTime),
@@ -16156,6 +16171,45 @@ static void RecomputeTrackingGroup(const std::wstring& groupKey) {
     } catch (...) { LOG_IGNORED_EXCEPTION(); }
 }
 
+static bool TaskbarIconsCentered() {
+    DWORD v = 1, size = sizeof(v);
+    if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+                     L"TaskbarAl", RRF_RT_REG_DWORD, nullptr, &v, &size) != ERROR_SUCCESS) return true;
+    return v != 0;
+}
+
+// A zero-size stand-in at the start of the taskbar, for parts whose Windows
+// button isn't there (Widgets turned off, a button hidden). A group built on it
+// lays its parts out side by side from the corner, each taking its own room,
+// where they used to land on top of each other.
+static constexpr wchar_t CORNER_ANCHOR_NAME[] = L"FluentMedia_CornerAnchor";
+static FrameworkElement EnsureCornerAnchor(Grid const& targetGrid, bool vertical) {
+    try {
+        for (auto const& child : targetGrid.Children())
+            if (auto fe = child.try_as<FrameworkElement>(); fe && fe.Name() == CORNER_ANCHOR_NAME) return fe;
+        Border b;
+        b.Name(CORNER_ANCHOR_NAME);
+        b.Width(vertical ? 1 : 0);
+        b.Height(vertical ? 0 : 1);
+        b.HorizontalAlignment(HorizontalAlignment::Left);
+        b.VerticalAlignment(vertical ? VerticalAlignment::Top : VerticalAlignment::Center);
+        b.IsHitTestVisible(false);
+        b.Opacity(0);
+        Grid::SetColumn(b, 0);
+        targetGrid.Children().Append(b);
+        return b;
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    return nullptr;
+}
+// The stand-in goes when its group does.
+static void RemoveCornerAnchor(FrameworkElement const& anchor, Grid const& targetGrid) {
+    try {
+        if (!anchor || !targetGrid || anchor.Name() != CORNER_ANCHOR_NAME) return;
+        uint32_t index = 0;
+        if (targetGrid.Children().IndexOf(anchor, index)) targetGrid.Children().RemoveAt(index);
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+}
+
 // Adds memberGrid to the group at `position` (the first one resolves the
 // anchor). False if there's no anchor: use a fixed margin.
 static bool AttachTrackingMember(HWND hWnd, PlayerPosition position, Grid const& memberGrid,
@@ -16163,25 +16217,26 @@ static bool AttachTrackingMember(HWND hWnd, PlayerPosition position, Grid const&
                                   FrameworkElement const& repeater) {
     std::wstring side;
     auto anchor = ResolveTrackingAnchor(repeater, position, side);
-    if (!anchor) return false;
+    if (side.empty()) return false;   // not a position next to a button
     // At startup the taskbar may not be laid out yet, so only check the
     // position once it is; hidden or parked off-screen is a reason to give up.
     bool laidOut = false;
     try { laidOut = targetGrid.ActualWidth() > 0; } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    bool usable = (bool)anchor;
     try {
-        if (anchor.Visibility() != Visibility::Visible) {
-            Wh_Log(L"AttachTrackingMember: anchor for %s is hidden, using a plain margin", PositionKey(position));
-            return false;
+        if (usable && anchor.Visibility() != Visibility::Visible) {
+            Wh_Log(L"AttachTrackingMember: anchor for %s is hidden", PositionKey(position));
+            usable = false;
         }
     } catch (...) { return false; }
-    if (laidOut && !IsUsableTrackingAnchor(anchor, targetGrid)) {
-        Wh_Log(L"AttachTrackingMember: anchor for %s isn't on the taskbar, using a plain margin", PositionKey(position));
-        return false;
+    if (usable && laidOut && !IsUsableTrackingAnchor(anchor, targetGrid)) {
+        Wh_Log(L"AttachTrackingMember: anchor for %s isn't on the taskbar", PositionKey(position));
+        usable = false;
     }
     // Widgets turned off in Windows leaves an empty shell, which can sit at the
     // far end of the icons: anchoring there put "left of Widgets" on the right.
     // The empty shell is only the right spot when we hide the button ourselves.
-    if (laidOut && !g_settings.hideNativeWidgetsButton &&
+    if (usable && laidOut && !g_settings.hideNativeWidgetsButton &&
         (position == PlayerPosition::TaskbarAfterWidgetsLeft || position == PlayerPosition::TaskbarAfterWidgetsRight)) {
         bool shown = false;
         try {
@@ -16189,12 +16244,34 @@ static bool AttachTrackingMember(HWND hWnd, PlayerPosition position, Grid const&
             shown = inner && inner.Visibility() == Visibility::Visible && inner.ActualWidth() > 0 && anchor.ActualWidth() > 0;
         } catch (...) { LOG_IGNORED_EXCEPTION(); }
         if (!shown) {
-            Wh_Log(L"AttachTrackingMember: Widgets is off in Windows, using a plain margin from the start of the taskbar");
-            return false;
+            Wh_Log(L"AttachTrackingMember: Widgets is off in Windows");
+            usable = false;
         }
     }
 
-    std::wstring groupKey = MakeTrackingGroupKey(hWnd, PositionAnchorGroupBase(position));
+    // The button isn't there: the part goes to the start of the taskbar, as a
+    // group like any other, so several parts sit side by side and take room.
+    // With the icons on the left, that's left of Start, which makes the room;
+    // with them centered the corner is free, and a stand-in marks it.
+    std::wstring groupBase = PositionAnchorGroupBase(position);
+    const bool originalAnchor = usable;
+    if (!usable) {
+        anchor = nullptr;
+        const bool vertical = IsVerticalTaskbarEdge(GetTaskbarEdgeForWnd(hWnd));
+        if (!vertical && !TaskbarIconsCentered() &&
+            position != PlayerPosition::TaskbarLeftStart && position != PlayerPosition::TaskbarRightStart) {
+            auto start = FindElementInRepeater(repeater, START_BUTTON_NAMES, ARRAYSIZE(START_BUTTON_NAMES));
+            bool startOk = false;
+            try { startOk = start && start.Visibility() == Visibility::Visible && (!laidOut || IsUsableTrackingAnchor(start, targetGrid)); }
+            catch (...) { LOG_IGNORED_EXCEPTION(); }
+            if (startOk) { anchor = start; side = L"left"; groupBase = L"start"; }
+        }
+        if (!anchor) { anchor = EnsureCornerAnchor(targetGrid, vertical); groupBase = L"corner"; }
+        if (!anchor) return false;
+        Wh_Log(L"AttachTrackingMember: %s goes to the start of the taskbar (%s)", PositionKey(position), groupBase.c_str());
+    }
+
+    std::wstring groupKey = MakeTrackingGroupKey(hWnd, groupBase);
     auto it = g_trackingGroups->find(groupKey);
     if (it == g_trackingGroups->end()) {
         TrackingGroup grp;
@@ -16204,7 +16281,8 @@ static bool AttachTrackingMember(HWND hWnd, PlayerPosition position, Grid const&
         grp.anchorOriginalMargin = anchor.Margin();
         grp.hasOriginalMargin = true;
         grp.targetGrid = targetGrid;
-        if (position == PlayerPosition::TaskbarAfterWidgetsLeft || position == PlayerPosition::TaskbarAfterWidgetsRight) {
+        if (originalAnchor &&
+            (position == PlayerPosition::TaskbarAfterWidgetsLeft || position == PlayerPosition::TaskbarAfterWidgetsRight)) {
             // Read only: writing this element fights Windows (see FindWidgetsAnchorElement).
             grp.positionReferenceElement = WidgetsInnerPanelOf(anchor);
         }
@@ -16249,6 +16327,7 @@ static void DetachTrackingMember(Grid const& memberGrid) {
         if (grp.members.empty()) {
             try { if (grp.targetGrid) grp.targetGrid.LayoutUpdated(grp.layoutUpdateToken); } catch (...) { LOG_IGNORED_EXCEPTION(); }
             try { if (grp.anchorElement && grp.hasOriginalMargin) grp.anchorElement.Margin(grp.anchorOriginalMargin); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+            RemoveCornerAnchor(grp.anchorElement, grp.targetGrid);
             it = g_trackingGroups->erase(it);
         } else {
             const std::wstring key = it->first;
@@ -16266,6 +16345,7 @@ static void ReleaseTrackingGroupsOnThread(HWND hWnd) {
         if (grp.hWnd != hWnd) { ++it; continue; }
         try { if (grp.targetGrid) grp.targetGrid.LayoutUpdated(grp.layoutUpdateToken); } catch (...) { LOG_IGNORED_EXCEPTION(); }
         try { if (grp.anchorElement && grp.hasOriginalMargin) grp.anchorElement.Margin(grp.anchorOriginalMargin); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+        RemoveCornerAnchor(grp.anchorElement, grp.targetGrid);
         it = g_trackingGroups->erase(it);
     }
 }
@@ -17733,8 +17813,15 @@ static void ApplyNativeWidgetsHideState(FrameworkElement const& widgetsButton) {
 
 // Drops the hidden-button list without touching it once its tree is gone
 // (an orientation flip), so the next apply hides the new tree's button.
+// Windows' own Start, Search and Task View buttons the mod has hidden (see
+// EnsureNativeButtonsHidden).
+struct HiddenNativeButton { FrameworkElement el; int kind; };
+[[clang::no_destroy]] static std::optional<std::vector<HiddenNativeButton>> g_hiddenNativeButtons{std::in_place};
+static std::mutex g_hiddenNativeButtonsMtx;   // every taskbar's thread comes through here
+
 static void ForgetHiddenWidgetsBookkeeping() {
     g_hiddenWidgetsButtons->clear();
+    { std::lock_guard<std::mutex> lk(g_hiddenNativeButtonsMtx); g_hiddenNativeButtons->clear(); }
 }
 
 static void RestoreStaleHiddenWidgetsOnThisThread() {
@@ -17781,6 +17868,91 @@ static void ApplyWidgetsHideStateNow(void* param) {
     }
 }
 
+// ---- Windows' own Start, Search and Task View buttons, hidden on request.
+// Collapsed, as a taskbar theme does it. Windows makes new buttons now and
+// then (a taskbar setting, a new monitor), so the timer thread looks again.
+static bool AnyNativeButtonHidden() {
+    return g_settings.hideStartButton || g_settings.hideSearchButton || g_settings.hideTaskViewButton;
+}
+
+// 1 Start, 2 Search, 3 Task View, 0 anything else. By what the button says it
+// is: Start and Task View share a class and a name.
+static int NativeButtonKind(FrameworkElement const& el) {
+    try {
+        std::wstring id;
+        try { id = winrt::Windows::UI::Xaml::Automation::AutomationProperties::GetAutomationId(el).c_str(); }
+        catch (...) { LOG_IGNORED_EXCEPTION(); }
+        if (id == L"StartButton") return 1;
+        if (id == L"TaskViewButton") return 3;
+        const std::wstring cls = winrt::get_class_name(el).c_str();
+        if (cls == L"Taskbar.TaskbarExtensionElement" || cls.find(L"Search") != std::wstring::npos) return 2;
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    return 0;
+}
+
+static bool NativeButtonKindWanted(int kind) {
+    if (g_unloading) return false;   // unloading gives every button back
+    return (kind == 1 && g_settings.hideStartButton) || (kind == 2 && g_settings.hideSearchButton) ||
+           (kind == 3 && g_settings.hideTaskViewButton);
+}
+
+// On one taskbar's thread: hides what's wanted there, and shows again what no longer is.
+static void ApplyNativeButtonHidingOnThread(void* param) {
+    HWND wnd = reinterpret_cast<HWND>(param);
+    std::lock_guard<std::mutex> lk(g_hiddenNativeButtonsMtx);
+    auto& hidden = *g_hiddenNativeButtons;
+    for (int i = (int)hidden.size() - 1; i >= 0; --i) {
+        try {
+            auto el = hidden[i].el;
+            if (!el) { hidden.erase(hidden.begin() + i); continue; }
+            auto dispatcher = el.Dispatcher();
+            if (dispatcher && !dispatcher.HasThreadAccess()) continue;   // another taskbar's
+            // Still that button (Windows reuses them), and still to be hidden?
+            if (NativeButtonKind(el) == hidden[i].kind && NativeButtonKindWanted(hidden[i].kind)) continue;
+            el.Visibility(Visibility::Visible);
+            hidden.erase(hidden.begin() + i);
+        } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    }
+    if (g_unloading || !AnyNativeButtonHidden()) return;
+    try {
+        auto xamlRoot = GetTaskbarXamlRoot(wnd);
+        auto root = xamlRoot ? xamlRoot.Content().try_as<FrameworkElement>() : nullptr;
+        auto rootGrid = root ? FindTaskbarRootGrid(root) : nullptr;
+        auto repeater = rootGrid ? FindChildByName(rootGrid, L"TaskbarFrameRepeater") : nullptr;
+        if (!repeater) return;
+        const int n = VisualTreeHelper::GetChildrenCount(repeater);
+        for (int i = 0; i < n; i++) {
+            auto el = VisualTreeHelper::GetChild(repeater, i).try_as<FrameworkElement>();
+            const int kind = el ? NativeButtonKind(el) : 0;
+            if (!NativeButtonKindWanted(kind)) continue;
+            if (el.Visibility() != Visibility::Collapsed) el.Visibility(Visibility::Collapsed);
+            if (std::none_of(hidden.begin(), hidden.end(), [&](const HiddenNativeButton& h) { return h.el == el; })) {
+                hidden.push_back({ el, kind });
+                Wh_Log(L"NativeButtons: hid kind %d on taskbar %p", kind, wnd);
+            }
+        }
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+}
+
+// Every taskbar of this process, each on its own thread.
+static void EnsureNativeButtonsHidden() {
+    {
+        std::lock_guard<std::mutex> lk(g_hiddenNativeButtonsMtx);
+        if (g_hiddenNativeButtons->empty() && (g_unloading || !AnyNativeButtonHidden())) return;
+    }
+    std::vector<HWND> taskbars;
+    EnumWindows([](HWND h, LPARAM out) -> BOOL {
+        wchar_t cls[64] = {};
+        GetClassNameW(h, cls, ARRAYSIZE(cls));
+        DWORD pid = 0;
+        GetWindowThreadProcessId(h, &pid);
+        if (pid == GetCurrentProcessId() && (!_wcsicmp(cls, L"Shell_TrayWnd") || !_wcsicmp(cls, L"Shell_SecondaryTrayWnd")))
+            reinterpret_cast<std::vector<HWND>*>(out)->push_back(h);
+        return TRUE;
+    }, reinterpret_cast<LPARAM>(&taskbars));
+    for (HWND h : taskbars) RunFromWindowThread(h, ApplyNativeButtonHidingOnThread, reinterpret_cast<void*>(h));
+}
+
 static void EnsureWidgetsHideStateApplied() {
     if (HWND primaryWnd = FindPrimaryTaskbarWnd()) {
         RunFromWindowThread(primaryWnd, ApplyWidgetsHideStateNow, reinterpret_cast<void*>(primaryWnd));
@@ -17790,6 +17962,7 @@ static void EnsureWidgetsHideStateApplied() {
             RunFromWindowThread(wnd2, ApplyWidgetsHideStateNow, reinterpret_cast<void*>(wnd2));
         }
     }
+    EnsureNativeButtonsHidden();
 }
 
 static void QueueNativeWidgetsHideUpdate(FrameworkElement const& widgetsButton) {
@@ -18273,6 +18446,14 @@ static DWORD WINAPI TimerThreadProc(void*) {
         }
 
         if (g_refetchMediaProps.exchange(false)) FetchMediaPropertiesAsync();
+
+        if (AnyNativeButtonHidden()) {
+            static ULONGLONG s_nextButtons = 0;
+            if (const ULONGLONG nowMs = GetTickCount64(); nowMs >= s_nextButtons) {
+                s_nextButtons = nowMs + 5000;
+                EnsureNativeButtonsHidden();
+            }
+        }
 
         // A game going fullscreen (or leaving it) hides or shows the player right
         // away. It used to wait for the next change in the music.
@@ -19746,7 +19927,15 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
             WithDesc(RowBool(L"Show Widgets when nothing plays", L"MainSettings.NativeWidgetsSetting.showWidgetsWhenIdle"),
                      L"The player hides when nothing is playing and the Widgets button (with the weather) shows in its place."),
         };
-        cats.push_back(SettingCategory{ L"Native Widgets", L"\uE8CC", { nativeWidgets } });
+        SettingCard otherButtons;
+        otherButtons.title = L"Other Windows buttons";
+        otherButtons.rows = {
+            WithDesc(RowBool(L"Hide the Start button", L"MainSettings.NativeWidgetsSetting.hideStartButton"),
+                     L"The Windows key still opens Start."),
+            RowBool(L"Hide Search", L"MainSettings.NativeWidgetsSetting.hideSearchButton"),
+            RowBool(L"Hide Task View", L"MainSettings.NativeWidgetsSetting.hideTaskViewButton"),
+        };
+        cats.push_back(SettingCategory{ L"Native Widgets", L"\uE8CC", { nativeWidgets, otherButtons } });
         cats.back().enabledRow = WithDesc(
             RowBool(L"Hide native Widgets button", L"MainSettings.NativeWidgetsSetting.hideNativeWidgetsButton"),
             L"Hides the Windows Widgets button completely.");
@@ -21379,6 +21568,11 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"Performance", L"Продуктивність", L"Производительность", L"Leistung", L"परफ़ॉर्मेंस", L"性能", L"效能", L"Rendimiento", L"Performances", L"Desempenho", L"Prestazioni", L"Wydajność", L"Performans", L"パフォーマンス", L"성능" },
     { L"A double-click doesn't run the single click too", L"Подвійний клік не запускає ще й одинарний", L"Двойной щелчок не запускает ещё и одиночный", L"Doppelklick löst nicht auch den Einzelklick aus", L"डबल-क्लिक पर सिंगल क्लिक वाला काम न चले", L"双击时不同时执行单击动作", L"按兩下時不同時執行按一下的動作", L"El doble clic no ejecuta también el clic simple", L"Le double-clic ne lance pas aussi le clic simple", L"O clique duplo não executa também o clique simples", L"Il doppio clic non esegue anche il clic singolo", L"Dwuklik nie uruchamia też pojedynczego kliknięcia", L"Çift tıklama tek tıklamayı da çalıştırmasın", L"ダブルクリックでシングルクリックの動作を実行しない", L"더블 클릭 시 단일 클릭 동작은 실행하지 않기" },
     { L"Single clicks then wait a moment for a second click.", L"Одинарні кліки тоді мить чекають на другий клік.", L"Одиночные щелчки тогда мгновение ждут второго.", L"Einzelklicks warten dann kurz auf einen zweiten Klick.", L"तब सिंगल क्लिक दूसरी क्लिक के लिए पल भर रुकता है।", L"单击会稍等片刻，看是否有第二次点击。", L"按一下會稍等片刻，看是否有第二次點擊。", L"Los clics simples esperan un momento por si llega un segundo clic.", L"Les clics simples attendent alors un instant un second clic.", L"Os cliques simples esperam um instante por um segundo clique.", L"I clic singoli attendono un attimo un secondo clic.", L"Pojedyncze kliknięcia czekają wtedy chwilę na drugie.", L"Tek tıklamalar ikinci tıklama için bir an bekler.", L"シングルクリックは 2 回目のクリックを少し待ちます。", L"단일 클릭은 두 번째 클릭을 잠시 기다립니다." },
+    { L"Other Windows buttons", L"Інші кнопки Windows", L"Другие кнопки Windows", L"Andere Windows-Schaltflächen", L"Windows के अन्य बटन", L"其他 Windows 按钮", L"其他 Windows 按鈕", L"Otros botones de Windows", L"Autres boutons de Windows", L"Outros botões do Windows", L"Altri pulsanti di Windows", L"Inne przyciski Windows", L"Diğer Windows düğmeleri", L"その他の Windows ボタン", L"기타 Windows 버튼" },
+    { L"Hide the Start button", L"Сховати кнопку «Пуск»", L"Скрыть кнопку «Пуск»", L"Start-Schaltfläche ausblenden", L"स्टार्ट बटन छिपाएँ", L"隐藏“开始”按钮", L"隱藏「開始」按鈕", L"Ocultar el botón Inicio", L"Masquer le bouton Démarrer", L"Ocultar o botão Iniciar", L"Nascondi il pulsante Start", L"Ukryj przycisk Start", L"Başlat düğmesini gizle", L"スタート ボタンを隠す", L"시작 단추 숨기기" },
+    { L"The Windows key still opens Start.", L"Клавіша Windows і далі відкриває «Пуск».", L"Клавиша Windows по-прежнему открывает «Пуск».", L"Die Windows-Taste öffnet Start weiterhin.", L"Windows कुंजी से स्टार्ट अब भी खुलता है।", L"Windows 键仍可打开“开始”。", L"Windows 鍵仍可開啟「開始」。", L"La tecla Windows sigue abriendo Inicio.", L"La touche Windows ouvre toujours Démarrer.", L"A tecla Windows ainda abre o Iniciar.", L"Il tasto Windows apre comunque Start.", L"Klawisz Windows nadal otwiera Start.", L"Windows tuşu Başlat'ı açmaya devam eder.", L"Windows キーでスタートは引き続き開きます。", L"Windows 키로는 여전히 시작이 열립니다." },
+    { L"Hide Search", L"Сховати пошук", L"Скрыть поиск", L"Suche ausblenden", L"खोज छिपाएँ", L"隐藏搜索", L"隱藏搜尋", L"Ocultar Búsqueda", L"Masquer la recherche", L"Ocultar a Pesquisa", L"Nascondi Cerca", L"Ukryj wyszukiwanie", L"Aramayı gizle", L"検索を隠す", L"검색 숨기기" },
+    { L"Hide Task View", L"Сховати подання завдань", L"Скрыть представление задач", L"Aufgabenansicht ausblenden", L"टास्क व्यू छिपाएँ", L"隐藏任务视图", L"隱藏工作檢視", L"Ocultar Vista de tareas", L"Masquer les applications actives", L"Ocultar a Visão de Tarefas", L"Nascondi Visualizzazione attività", L"Ukryj widok zadań", L"Görev Görünümü'nü gizle", L"タスク ビューを隠す", L"작업 보기 숨기기" },
     { L"Window color", L"Колір вікна", L"Цвет окна", L"Fensterfarbe", L"विंडो का रंग", L"窗口颜色", L"視窗色彩", L"Color de la ventana", L"Couleur de la fenêtre", L"Cor da janela", L"Colore della finestra", L"Kolor okna", L"Pencere rengi", L"ウィンドウの色", L"창 색상" },
     { L"Custom color", L"Власний колір", L"Свой цвет", L"Eigene Farbe", L"कस्टम रंग", L"自定义颜色", L"自訂色彩", L"Color personalizado", L"Couleur personnalisée", L"Cor personalizada", L"Colore personalizzato", L"Własny kolor", L"Özel renk", L"カスタム色", L"사용자 지정 색" },
     { L"Title bar color", L"Колір рядка заголовка", L"Цвет строки заголовка", L"Farbe der Titelleiste", L"शीर्षक पट्टी का रंग", L"标题栏颜色", L"標題列色彩", L"Color de la barra de título", L"Couleur de la barre de titre", L"Cor da barra de título", L"Colore della barra del titolo", L"Kolor paska tytułu", L"Başlık çubuğu rengi", L"タイトル バーの色", L"제목 표시줄 색" },
@@ -24057,6 +24251,11 @@ static void TakeLpSnapOnThread(void* param) {
                 else if (cls == L"Taskbar.TaskListButton") kind = LpApp;
                 snap->items.push_back({ kind, x, w });
             }
+            // No Widgets button at all (off in Windows): the start of the taskbar is
+            // still a spot, where parts sit side by side and take their room.
+            bool sawWidgets = false;
+            for (auto& it : snap->items) sawWidgets = sawWidgets || it.kind == LpWidgets || it.kind == LpWidgetsHidden;
+            if (!sawWidgets && TaskbarIconsCentered()) slot(PlayerPosition::TaskbarAfterWidgetsRight, 8);
             static const PlayerPosition anchored[] = {
                 PlayerPosition::TaskbarLeftStart, PlayerPosition::TaskbarRightStart,
                 PlayerPosition::TaskbarAfterSearchLeft, PlayerPosition::TaskbarAfterSearchRight,
@@ -24269,13 +24468,6 @@ static void PackLpSnap(LpSnap& s) {
         if (r.item >= 0) s.items[r.item].x = r.nx;
         if (r.part >= 0) s.parts[r.part].x = r.nx;
     }
-}
-
-static bool TaskbarIconsCentered() {
-    DWORD v = 1, size = sizeof(v);
-    if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
-                     L"TaskbarAl", RRF_RT_REG_DWORD, nullptr, &v, &size) != ERROR_SUCCESS) return true;
-    return v != 0;
 }
 
 // Used when a taskbar can't be read: a typical one at 1080p.
@@ -27251,6 +27443,7 @@ void Wh_ModUninit() {
             g_hiddenWidgetsButtons.reset();
         }, nullptr);
     }
+    EnsureNativeButtonsHidden();   // unloading: shows them all again
 
     // RunAsync work on any taskbar, and system callbacks still on their way out.
     WaitForDispatcherWork();
