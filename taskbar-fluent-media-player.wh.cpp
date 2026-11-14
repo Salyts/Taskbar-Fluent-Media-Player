@@ -11,7 +11,7 @@
 // @license             MIT
 // @include             explorer.exe
 // @architecture        x86-64
-// @compilerOptions     -lole32 -loleaut32 -lruntimeobject -luuid -luser32 -lwindowsapp -lshell32 -lgdi32 -lgdiplus -lshlwapi -lwindowscodecs -ldwmapi -lshcore -lksuser -ladvapi32
+// @compilerOptions     -lole32 -loleaut32 -lruntimeobject -luuid -luser32 -lwindowsapp -lshell32 -lgdi32 -lgdiplus -lshlwapi -lwindowscodecs -ldwmapi -lshcore -lksuser -ladvapi32 -lpowrprof
 // ==/WindhawkMod==
 
 // ==WindhawkModReadme==
@@ -687,6 +687,22 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       #! $showIf: {vizEnabled: true}
       $name: Hide the visualizer when nothing is playing
       $description: Hides the bars (and stops listening to the audio) while the media is paused.
+    - vizFrameRate: "60fps"
+      #! $showIf: {vizEnabled: true}
+      $name: Visualizer frame rate
+      $description: How often the bars are redrawn. Lower rates use less CPU and GPU.
+      $options:
+      - "60fps": "60 fps (smooth)"
+      - "30fps": "30 fps (balanced)"
+      - "15fps": "15 fps (lowest power)"
+    - vizOnBattery: "saver"
+      #! $showIf: {vizEnabled: true}
+      $name: Visualizer on battery
+      $description: Paused, the bars rest and the mod stops listening to the audio.
+      $options:
+      - "run": "Keep running"
+      - "saver": "Pause while battery saver is on"
+      - "battery": "Pause whenever on battery"
     - vizOnlyMediaApp: true
       #! $showIf: {vizEnabled: true}
       $name: Only listen to the app in the player
@@ -1743,6 +1759,7 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
 #include <thread>
 #include <cmath>
 #include <chrono>
+#include <powrprof.h>
 
 using namespace winrt::Windows::UI::Xaml;
 using namespace winrt::Windows::UI::Xaml::Controls;
@@ -1983,6 +2000,11 @@ struct TextScrollState {
 
 static TextScrollState g_titleScroll;
 static TextScrollState g_artistScroll;
+
+// Things that stop the animations while nobody can see them.
+static std::atomic<bool> g_displayOff{false};           // the screen is off
+static std::atomic<bool> g_vizPowerPaused{false};       // "On battery" pauses the visualizer
+static std::atomic<bool> g_animationsSuspended{false};  // the text is hidden or the screen is off
 
 } // namespace UI
 
@@ -2730,6 +2752,8 @@ struct ModSettings {
     std::wstring allowedProcesses     = L"";
     std::wstring defaultMediaApp      = L"";
     bool         vizHideWhenPaused    = false;
+    int          vizFrameMs           = 16;   // from vizFrameRate
+    int          vizOnBattery         = 1;    // 0 keep running, 1 pause in battery saver, 2 pause on battery
     std::wstring vizAudioDevice       = L"";  // part of a device name; empty = default output
     bool         vizOnlyMediaApp      = true;  // capture only the player's app (GitHub #93)
     bool         vizBehindPlayer      = false; // the bars fill the player's background
@@ -3033,6 +3057,8 @@ static constexpr SettingSpec SETTINGS[] = {
     SBool(L"MainSettings.MediaButtonsSettings.hideUnsupportedButtons", &ModSettings::hideUnsupportedButtons),
     SBool(L"MainSettings.VisualizerFunctionsSettings.vizEnabled", &ModSettings::vizEnabled),
     SBool(L"MainSettings.VisualizerFunctionsSettings.vizHideWhenPaused", &ModSettings::vizHideWhenPaused),
+    SStr(L"MainSettings.VisualizerFunctionsSettings.vizFrameRate", L"60fps"),
+    SStr(L"MainSettings.VisualizerFunctionsSettings.vizOnBattery", L"saver"),
     SBool(L"MainSettings.VisualizerFunctionsSettings.vizOnlyMediaApp", &ModSettings::vizOnlyMediaApp),
     SBool(L"MainSettings.VisualizerFunctionsSettings.vizBehindPlayer", &ModSettings::vizBehindPlayer),
     SInt(L"MainSettings.VisualizerFunctionsSettings.vizBehindOpacity", 0, 100, &ModSettings::vizBehindOpacity),
@@ -3583,6 +3609,12 @@ COLD_UNOPTIMIZED static void LoadSettings() {
                                               VIZ_EQS, VizEQ::Default);
         g_settings.vizAnchor = ParseSettingChoice(Str(L"MainSettings.VisualizerFunctionsSettings.vizAnchor", L"middle"),
                                                   VIZ_ANCHORS, VizAnchor::Middle);
+        {
+            const std::wstring rate = Str(L"MainSettings.VisualizerFunctionsSettings.vizFrameRate", L"60fps");
+            g_settings.vizFrameMs = 1000 / std::clamp(_wtoi(rate.c_str()), 15, 60);
+            const std::wstring battery = Str(L"MainSettings.VisualizerFunctionsSettings.vizOnBattery", L"saver");
+            g_settings.vizOnBattery = battery == L"run" ? 0 : battery == L"battery" ? 2 : 1;
+        }
 
         g_settings.vizBarOrientation = ParseSettingChoice(Str(L"MainSettings.VisualizerFunctionsSettings.vizBarOrientation", L"auto"),
                                                           VIZ_BAR_ORIENTATIONS, VizBarOrientation::Auto);
@@ -7623,11 +7655,17 @@ static void VizCaptureThreadProc(VizCaptureRun* run) {
     // 500 ms throttle used to be dropped.
     bool pendingReinit = false;
 
+    ULONGLONG lastPacket = GetTickCount64();
     while (run->running.load(std::memory_order_relaxed)) {
+        // Nothing has come in for 2 s and the bars are down: sleep long instead
+        // of waking 50 times a second. The audio event still wakes this at once
+        // when sound comes back; without one, look less often.
+        bool settled = GetTickCount64() - lastPacket >= 2000;
+        for (int b = 0; b < VIZ_NUM_BANDS && settled; b++) settled = bandEnv[b] <= 0.f;
         if (run->event)
-            WaitForSingleObject(run->event, 20);
+            WaitForSingleObject(run->event, settled ? 250 : 20);
         else
-            Sleep(8);
+            Sleep(settled ? 50 : 8);
 
         if (run->onlyApp) {
             const ULONGLONG nowMs = GetTickCount64();
@@ -7707,6 +7745,7 @@ static void VizCaptureThreadProc(VizCaptureRun* run) {
             continue;
         }
 
+        lastPacket = GetTickCount64();
         while (packetSize > 0) {
             BYTE* pData = nullptr;
             UINT32 numFrames = 0;
@@ -8269,6 +8308,7 @@ static void RetireTaskbarTimer(TaskbarTimerSlot slot) {
 [[clang::no_destroy]] static winrt::Windows::UI::Xaml::DispatcherTimer g_scrollDispatcherTimer{nullptr};
 static winrt::event_token                        g_scrollDispatcherTimerToken{};
 static bool                                       g_scrollDispatcherTimerHasToken = false;
+static int                                        g_scrollTimerInterval = 16;
 static HWND                                       g_scrollTimerWnd = nullptr;
 static DWORD                                      g_scrollTimerThread = 0;
 
@@ -8322,7 +8362,8 @@ static void ScrollTimerTick(winrt::Windows::Foundation::IInspectable const&,
 
     // Nothing to scroll: stop, rather than waking the taskbar 60 times a second.
     // UpdateMarqueeLine starts it again when a title or artist stops fitting.
-    bool needsScroll = (g_titleScroll.active || g_artistScroll.active);
+    // The same when the text can't be seen: UpdateVisibility starts it again.
+    bool needsScroll = (g_titleScroll.active || g_artistScroll.active) && !g_animationsSuspended;
     if (!needsScroll) {
         try { if (g_scrollDispatcherTimer) g_scrollDispatcherTimer.Stop(); } catch (...) { LOG_IGNORED_EXCEPTION(); }
         return;
@@ -8335,6 +8376,23 @@ static void ScrollTimerTick(winrt::Windows::Foundation::IInspectable const&,
     TickScrollState(g_artistScroll, stepPx, pauseMs, g_settings.scrollMode);
 
     UpdateScrollTransforms();
+
+    // While every scrolling line holds still at an end, sleep through the hold
+    // in one go instead of ticking 60 times a second.
+    int hold = -1;   // ms that every active line still holds for; 0 when one is moving
+    for (auto* s : { &g_titleScroll, &g_artistScroll }) {
+        if (!s->active) continue;
+        const int left = s->pausing ? std::max(16, s->pauseTick) : 0;
+        hold = hold < 0 ? left : std::min(hold, left);
+    }
+    const int interval = std::max(16, hold);
+    g_titleScroll.tickMs = g_artistScroll.tickMs = interval;
+    if (interval != g_scrollTimerInterval && g_scrollDispatcherTimer) {
+        g_scrollTimerInterval = interval;
+        try {
+            g_scrollDispatcherTimer.Interval(winrt::Windows::Foundation::TimeSpan{std::chrono::milliseconds(interval)});
+        } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    }
 }
 
 static void StartScrollTimer() {
@@ -8351,11 +8409,14 @@ static void StartScrollTimer() {
         try {
             if (!g_scrollDispatcherTimer) {
                 g_scrollDispatcherTimer = winrt::Windows::UI::Xaml::DispatcherTimer();
-                g_scrollDispatcherTimer.Interval(
-                    winrt::Windows::Foundation::TimeSpan{std::chrono::milliseconds(16)});
                 g_scrollDispatcherTimerToken = g_scrollDispatcherTimer.Tick(&ScrollTimerTick);
                 g_scrollDispatcherTimerHasToken = true;
             }
+            // Back to the short tick: a start can come in the middle of a long hold.
+            g_scrollDispatcherTimer.Interval(
+                winrt::Windows::Foundation::TimeSpan{std::chrono::milliseconds(16)});
+            g_scrollTimerInterval = 16;
+            g_titleScroll.tickMs = g_artistScroll.tickMs = 16;
             g_scrollDispatcherTimer.Start();
         } catch (...) { LOG_IGNORED_EXCEPTION(); }
     }, nullptr);
@@ -8687,13 +8748,19 @@ static double VizZoneExtent(bool vertical) {
     return std::max(8.0, t);
 }
 
-static void VizApplyFrame() {
+// `rest` puts the bars straight down, for when the visualizer stops while it's
+// still on screen.
+static void VizApplyFrame(bool rest = false) {
     if (!g_settings.vizEnabled || g_vizBars->empty())
         return;
 
     bool vertical = ShouldVizBarsBeVertical();
 
-    UpdateVisualizerPeaks();
+    if (rest) {
+        for (int i = 0; i < VIZ_BARS_MAX; i++) g_vizTarget[i] = g_vizPeak[i] = 0.f;
+    } else {
+        UpdateVisualizerPeaks();
+    }
 
     float attack = 0.55f, decay = 0.18f;
     float sensBoost = std::max(0.f, (g_settings.vizSensitivity - 100) / 200.f) * 0.12f;
@@ -8784,6 +8851,11 @@ static void VizApplyFrame() {
     bool lineChanged = g_vizLineFillChanged;  // redrawn after a resize, even with nothing playing
     g_vizLineFillChanged = false;
 
+    // The rise and fall are tuned per 16 ms frame; at a lower frame rate each
+    // frame covers more of it, so the bars move just as fast.
+    const float frameK = (float)g_settings.vizFrameMs / 16.f;
+    auto perFrame = [frameK](float f) { return frameK > 1.01f ? 1.f - powf(1.f - std::min(f, 0.999f), frameK) : f; };
+
     for (int i = 0; i < barCount; i++) {
         float tgt = g_vizTarget[i], cur = g_vizPeak[i];
         float a = attack, d = decay;
@@ -8795,7 +8867,7 @@ static void VizApplyFrame() {
             else                  { a = 0.92f; d = 0.34f + sensBoost; }
         }
 
-        float next = cur + (tgt - cur) * ((tgt > cur) ? a : d);
+        float next = cur + (tgt - cur) * perFrame((tgt > cur) ? a : d);
         g_vizPeak[i] = (fabsf(next - cur) > 0.0005f) ? next : tgt;
 
         float fac = std::max(0.f, g_vizPeak[i]);
@@ -8895,8 +8967,8 @@ static DWORD g_vizTimerThread = 0;
 // Frame interval while there's audio, and once it's been quiet for a second.
 // The bars have settled by then, so the slow rate only keeps the timer alive
 // to notice the music coming back (GitHub #41).
-static constexpr int VIZ_FRAME_MS = 16;
 static constexpr int VIZ_QUIET_FRAME_MS = 100;
+static bool g_vizTimerSlow = false;
 static constexpr ULONGLONG VIZ_QUIET_AFTER_MS = 1000;
 
 static void VizTimerTick(winrt::Windows::Foundation::IInspectable const&,
@@ -8906,7 +8978,6 @@ static void VizTimerTick(winrt::Windows::Foundation::IInspectable const&,
     VizApplyFrame();
 
     static ULONGLONG s_quietSince = 0;
-    static bool s_slow = false;
     bool quiet = true;
     for (int b = 0; b < VIZ_NUM_BANDS && quiet; b++)
         if (g_vizBands[b].load(std::memory_order_relaxed) > 0.002f) quiet = false;
@@ -8914,11 +8985,11 @@ static void VizTimerTick(winrt::Windows::Foundation::IInspectable const&,
     if (!quiet) s_quietSince = 0;
     else if (s_quietSince == 0) s_quietSince = now;
     const bool wantSlow = quiet && now - s_quietSince >= VIZ_QUIET_AFTER_MS;
-    if (wantSlow != s_slow && g_vizDispatcherTimer) {
-        s_slow = wantSlow;
+    if (wantSlow != g_vizTimerSlow && g_vizDispatcherTimer) {
+        g_vizTimerSlow = wantSlow;
         try {
             g_vizDispatcherTimer.Interval(winrt::Windows::Foundation::TimeSpan{
-                std::chrono::milliseconds(wantSlow ? VIZ_QUIET_FRAME_MS : VIZ_FRAME_MS)});
+                std::chrono::milliseconds(wantSlow ? std::max(VIZ_QUIET_FRAME_MS, g_settings.vizFrameMs) : g_settings.vizFrameMs)});
         } catch (...) { LOG_IGNORED_EXCEPTION(); }
     }
 }
@@ -8937,11 +9008,13 @@ static void StartVizTimer() {
         try {
             if (!g_vizDispatcherTimer) {
                 g_vizDispatcherTimer = winrt::Windows::UI::Xaml::DispatcherTimer();
-                g_vizDispatcherTimer.Interval(
-                    winrt::Windows::Foundation::TimeSpan{std::chrono::milliseconds(VIZ_FRAME_MS)});
                 g_vizDispatcherTimerToken = g_vizDispatcherTimer.Tick(&VizTimerTick);
                 g_vizDispatcherTimerHasToken = true;
             }
+            // Every start: the frame rate setting may have changed.
+            g_vizDispatcherTimer.Interval(
+                winrt::Windows::Foundation::TimeSpan{std::chrono::milliseconds(g_settings.vizFrameMs)});
+            g_vizTimerSlow = false;
             g_vizDispatcherTimer.Start();
         } catch (...) { LOG_IGNORED_EXCEPTION(); }
     }, nullptr);
@@ -14145,6 +14218,8 @@ static void UpdateMarqueeLine(TextBlock const& tb, TextScrollState& scroll, bool
                 scroll.textWidth = textW;
                 scroll.viewWidth = viewW;
                 scroll.active = (textW > viewW + 2.0);
+                // A new text in the middle of a long hold: back to the short tick now.
+                if (scroll.active && wasActive && g_scrollTimerInterval != 16 && !g_unloading) StartScrollTimer();
                 if (!scroll.active) {
                     scroll.offset = 0.0;
                     scroll.forward = true;
@@ -15145,7 +15220,8 @@ static void UpdateVisibility() {
                 if (g_detachedViz.grid && !hide)
                     g_detachedViz.grid.Visibility(vizWanted ? Visibility::Visible : Visibility::Collapsed);
             } catch (...) { LOG_IGNORED_EXCEPTION(); }
-            bool nowVisible = !hide && vizWanted;
+            // Also stopped by "On battery" and with the screen off; the bars stay where they are.
+            bool nowVisible = !hide && vizWanted && !g_vizPowerPaused && !g_displayOff;
             if (nowVisible && !g_vizCurrentlyVisible) {
                 g_vizCurrentlyVisible = true;
                 StartVizCaptureThread();
@@ -15154,8 +15230,22 @@ static void UpdateVisibility() {
                 g_vizCurrentlyVisible = false;
                 StopVizTimer();
                 StopVizCaptureThreadAsync();
+                // Still on screen: the bars go down to rest, not freeze mid-beat.
+                if (!hide && vizWanted) {
+                    HWND vw = g_settings.vizDetached && g_detachedViz.injectedOnWnd ? g_detachedViz.injectedOnWnd : g_taskbarWnd;
+                    if (vw && IsWindow(vw))
+                        RunFromWindowThread(vw, [](void*) {
+                            try { VizApplyFrame(true); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+                        }, nullptr);
+                }
             }
         }
+
+        // Scrolling text nobody can see doesn't need its timer.
+        const bool suspend = g_displayOff || hide || (hidePlayer && !g_settings.infoDetached);
+        if (g_animationsSuspended.exchange(suspend) && !suspend &&
+            (g_settings.enableTitleScrolling || g_settings.enableArtistScrolling))
+            StartScrollTimer();
     } catch (...) { LOG_IGNORED_EXCEPTION(); }
 }
 
@@ -17855,6 +17945,34 @@ static void DispatchMediaUpdate() {
 
 static std::atomic<bool> g_themeChangePending{false};
 
+// Windows' "the display is on/off/dimmed" setting.
+static const GUID DISPLAY_STATE_SETTING = { 0x6fe69556, 0x704a, 0x47a0, { 0x8f, 0x24, 0xc2, 0x8d, 0x93, 0x6f, 0xda, 0x47 } };
+
+// From Windows, on a thread of its own, when the screen goes off or comes back.
+static ULONG CALLBACK DisplayStateChanged(PVOID, ULONG type, PVOID setting) {
+    if (type != PBT_POWERSETTINGCHANGE || !setting || g_unloading) return 0;
+    auto* s = static_cast<POWERBROADCAST_SETTING*>(setting);
+    if (s->DataLength < sizeof(DWORD) || !IsEqualGUID(s->PowerSetting, DISPLAY_STATE_SETTING)) return 0;
+    DWORD state = 1;
+    memcpy(&state, s->Data, sizeof(state));
+    const bool off = state == 0;
+    if (g_displayOff.exchange(off) != off) {
+        Wh_Log(L"Display is %s", off ? L"off: animations stop" : L"on");
+        g_needsUiUpdate = true;
+        if (g_timerUpdateEvent) SetEvent(g_timerUpdateEvent);
+    }
+    return 0;
+}
+
+// "On battery": whether the visualizer should be paused right now.
+static bool PowerWantsVizPaused() {
+    if (g_settings.vizOnBattery == 0) return false;
+    SYSTEM_POWER_STATUS ps{};
+    if (!GetSystemPowerStatus(&ps)) return false;
+    if (ps.SystemStatusFlag & 1) return true;   // battery saver is on
+    return g_settings.vizOnBattery == 2 && ps.ACLineStatus == 0;
+}
+
 static DWORD WINAPI TimerThreadProc(void*) {
     static bool lastThemeWasLight = IsSystemLightTheme();
     // The media timeline is read from here (RefreshMiniPlayerTimeline).
@@ -17866,6 +17984,12 @@ static DWORD WINAPI TimerThreadProc(void*) {
     if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", 0, KEY_NOTIFY, &hKey) == ERROR_SUCCESS) {
         RegNotifyChangeKeyValue(hKey, FALSE, REG_NOTIFY_CHANGE_LAST_SET, hEvent, TRUE);
     }
+
+    // DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS and DEVICE_NOTIFY_CALLBACK: this SDK's headers leave them out.
+    struct { ULONG (CALLBACK* callback)(PVOID, ULONG, PVOID); PVOID context; } displaySub{ DisplayStateChanged, nullptr };
+    HPOWERNOTIFY displayNotify = nullptr;
+    if (PowerSettingRegisterNotification(&DISPLAY_STATE_SETTING, 2, &displaySub, &displayNotify) != ERROR_SUCCESS)
+        displayNotify = nullptr;
 
     while (!g_unloading) {
         HANDLE handles[] = {g_timerStopEvent, hEvent, g_timerUpdateEvent};
@@ -17915,7 +18039,29 @@ static DWORD WINAPI TimerThreadProc(void*) {
             }
         }
 
-        if (g_settings.weatherEnabled) {
+        // A game going fullscreen (or leaving it) hides or shows the player right
+        // away. It used to wait for the next change in the music.
+        if (g_settings.hideFullscreen) {
+            static bool s_wasFullscreen = false;
+            if (const bool fs = IsFullscreenActive(); fs != s_wasFullscreen) {
+                s_wasFullscreen = fs;
+                g_needsUiUpdate = true;
+            }
+        }
+
+        if (g_settings.vizEnabled) {
+            static ULONGLONG s_nextPower = 0;
+            static int s_powerMode = -1;
+            const ULONGLONG nowMs = GetTickCount64();
+            if (nowMs >= s_nextPower || s_powerMode != g_settings.vizOnBattery) {
+                s_nextPower = nowMs + 5000;
+                s_powerMode = g_settings.vizOnBattery;
+                const bool pause = PowerWantsVizPaused();
+                if (g_vizPowerPaused.exchange(pause) != pause) g_needsUiUpdate = true;
+            }
+        }
+
+        if (g_settings.weatherEnabled && !g_displayOff) {
             static ULONGLONG s_nextWeather = 0;
             const ULONGLONG nowMs = GetTickCount64();
             if (nowMs >= s_nextWeather) {
@@ -17971,8 +18117,14 @@ static DWORD WINAPI TimerThreadProc(void*) {
         if (g_miniPlayerFlyoutOpen || g_settings.showProgressBar || wantArtistTime) {
             static auto lastSeekRefresh = std::chrono::steady_clock::time_point{};
             auto now = std::chrono::steady_clock::now();
-            if (lastSeekRefresh.time_since_epoch().count() == 0 ||
-                now - lastSeekRefresh >= std::chrono::seconds(1)) {
+            // Paused, the position stands still: every 3 s is plenty. With the
+            // screen off and the mini player closed, not at all.
+            bool playingNow = false;
+            { std::lock_guard<std::mutex> lk(g_mediaMtx); playingNow = g_media.isPlaying; }
+            const bool flyoutOpen = g_miniPlayerFlyoutOpen;
+            const auto every = std::chrono::seconds(flyoutOpen || playingNow ? 1 : 3);
+            if ((flyoutOpen || !g_displayOff) &&
+                (lastSeekRefresh.time_since_epoch().count() == 0 || now - lastSeekRefresh >= every)) {
                 lastSeekRefresh = now;
                 RefreshMiniPlayerTimeline();
                 if (HWND mw = MiniPlayerWnd(); g_miniPlayerFlyoutOpen && mw)
@@ -17988,6 +18140,8 @@ static DWORD WINAPI TimerThreadProc(void*) {
         }
     }
 
+    if (displayNotify) PowerSettingUnregisterNotification(displayNotify);
+    g_displayOff = false;
     if (hKey) RegCloseKey(hKey);
     if (hEvent) CloseHandle(hEvent);
     if (comReady) winrt::uninit_apartment();
@@ -19519,6 +19673,13 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
             RowColorAlpha(L"Gradient color 2", L"AppearanceSettings.VisualizerStyleSettings.vizColor2", L"0 180 255",
                           L"Bar opacity", L"AppearanceSettings.VisualizerStyleSettings.vizColorOpacity"),
             RowBool(L"Hide when nothing is playing", L"MainSettings.VisualizerFunctionsSettings.vizHideWhenPaused"),
+            WithDesc(RowCombo(L"Frame rate", L"MainSettings.VisualizerFunctionsSettings.vizFrameRate", L"60fps",
+                              { {L"60fps", L"60 fps (smooth)"}, {L"30fps", L"30 fps (balanced)"}, {L"15fps", L"15 fps (lowest power)"} }),
+                     L"Lower rates use less CPU and GPU."),
+            WithDesc(RowCombo(L"On battery", L"MainSettings.VisualizerFunctionsSettings.vizOnBattery", L"saver",
+                              { {L"run", L"Keep running"}, {L"saver", L"Pause while battery saver is on"},
+                                {L"battery", L"Pause whenever on battery"} }),
+                     L"Paused, the bars rest and the mod stops listening to the audio."),
         };
         SettingCard bars;
         bars.title = L"Bars";
@@ -20938,6 +21099,16 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"Show weather", L"Показувати погоду", L"Показывать погоду", L"Wetter anzeigen", L"मौसम दिखाएँ", L"显示天气", L"顯示天氣", L"Mostrar el tiempo", L"Afficher la météo", L"Mostrar o clima", L"Mostra il meteo", L"Pokaż pogodę", L"Hava durumunu göster", L"天気を表示", L"날씨 표시" },
     { L"The weather from the Widgets button, placed anywhere. Click it to open Widgets.", L"Погода з кнопки віджетів, будь-де на панелі. Клацніть, щоб відкрити віджети.", L"Погода с кнопки виджетов, в любом месте. Щёлкните, чтобы открыть виджеты.", L"Das Wetter aus der Widgets-Schaltfläche, frei platzierbar. Klick öffnet die Widgets.", L"विजेट्स बटन का मौसम, कहीं भी। क्लिक करने पर विजेट्स खुलते हैं।", L"来自小组件按钮的天气，可放在任意位置。点击打开小组件。", L"來自小工具按鈕的天氣，可放在任何位置。按一下開啟小工具。", L"El tiempo del botón de Widgets, donde quieras. Haz clic para abrir Widgets.", L"La météo du bouton Widgets, où vous voulez. Cliquez pour ouvrir les Widgets.", L"O clima do botão de Widgets, onde quiser. Clique para abrir os Widgets.", L"Il meteo del pulsante Widget, dove vuoi. Fai clic per aprire i Widget.", L"Pogoda z przycisku widżetów, w dowolnym miejscu. Kliknij, aby otworzyć widżety.", L"Pencere Öğeleri düğmesindeki hava durumu, istediğin yerde. Tıklayınca Pencere Öğeleri açılır.", L"ウィジェット ボタンの天気を好きな場所に。クリックでウィジェットを開きます。", L"위젯 버튼의 날씨를 원하는 곳에. 클릭하면 위젯이 열립니다." },
     { L"Show the condition", L"Показувати опис", L"Показывать описание", L"Wetterlage anzeigen", L"हालत दिखाएँ", L"显示天气状况", L"顯示天氣狀況", L"Mostrar el estado", L"Afficher la condition", L"Mostrar a condição", L"Mostra le condizioni", L"Pokaż opis", L"Durumu göster", L"天気の状態を表示", L"날씨 상태 표시" },
+    { L"Frame rate", L"Частота кадрів", L"Частота кадров", L"Bildrate", L"फ़्रेम दर", L"帧率", L"畫面更新率", L"Fotogramas por segundo", L"Fréquence d'images", L"Taxa de quadros", L"Frequenza fotogrammi", L"Liczba klatek", L"Kare hızı", L"フレームレート", L"프레임 속도" },
+    { L"Lower rates use less CPU and GPU.", L"Нижча частота менше навантажує процесор і відеокарту.", L"Меньшая частота меньше нагружает процессор и видеокарту.", L"Niedrigere Raten brauchen weniger CPU und GPU.", L"कम दर पर CPU और GPU कम खर्च होते हैं।", L"帧率越低，占用的 CPU 和 GPU 越少。", L"更新率越低，使用的 CPU 和 GPU 越少。", L"Con menos fotogramas se usa menos CPU y GPU.", L"Une fréquence plus basse utilise moins de CPU et de GPU.", L"Taxas menores usam menos CPU e GPU.", L"Frequenze più basse usano meno CPU e GPU.", L"Mniej klatek to mniejsze użycie CPU i GPU.", L"Düşük hız daha az CPU ve GPU kullanır.", L"低くするほど CPU と GPU の使用が減ります。", L"낮을수록 CPU와 GPU를 덜 씁니다." },
+    { L"60 fps (smooth)", L"60 к/с (плавно)", L"60 к/с (плавно)", L"60 fps (flüssig)", L"60 fps (स्मूद)", L"60 fps（流畅）", L"60 fps（流暢）", L"60 fps (fluido)", L"60 ips (fluide)", L"60 fps (suave)", L"60 fps (fluido)", L"60 kl./s (płynnie)", L"60 fps (akıcı)", L"60 fps（なめらか）", L"60 fps (부드럽게)" },
+    { L"30 fps (balanced)", L"30 к/с (збалансовано)", L"30 к/с (сбалансировано)", L"30 fps (ausgewogen)", L"30 fps (संतुलित)", L"30 fps（均衡）", L"30 fps（平衡）", L"30 fps (equilibrado)", L"30 ips (équilibré)", L"30 fps (equilibrado)", L"30 fps (bilanciato)", L"30 kl./s (zrównoważone)", L"30 fps (dengeli)", L"30 fps（バランス）", L"30 fps (균형)" },
+    { L"15 fps (lowest power)", L"15 к/с (найменше енергії)", L"15 к/с (меньше всего энергии)", L"15 fps (am sparsamsten)", L"15 fps (सबसे कम बिजली)", L"15 fps（最省电）", L"15 fps（最省電）", L"15 fps (mínimo consumo)", L"15 ips (consommation minimale)", L"15 fps (menor consumo)", L"15 fps (consumo minimo)", L"15 kl./s (najmniej energii)", L"15 fps (en az güç)", L"15 fps（最も省電力）", L"15 fps (최저 전력)" },
+    { L"On battery", L"Від батареї", L"От батареи", L"Im Akkubetrieb", L"बैटरी पर", L"使用电池时", L"使用電池時", L"Con batería", L"Sur batterie", L"Na bateria", L"A batteria", L"Na baterii", L"Pilde", L"バッテリー駆動時", L"배터리 사용 시" },
+    { L"Keep running", L"Працювати далі", L"Продолжать работать", L"Weiterlaufen", L"चलता रहे", L"继续运行", L"繼續執行", L"Seguir funcionando", L"Continuer", L"Continuar funcionando", L"Continua", L"Działaj dalej", L"Çalışmaya devam et", L"動かし続ける", L"계속 실행" },
+    { L"Pause while battery saver is on", L"Пауза в режимі заощадження заряду", L"Пауза в режиме экономии заряда", L"Im Energiesparmodus pausieren", L"बैटरी सेवर चालू होने पर रोकें", L"省电模式开启时暂停", L"省電模式開啟時暫停", L"Pausar con el ahorro de batería activado", L"Mettre en pause avec l'économiseur de batterie", L"Pausar com a economia de bateria ativada", L"Pausa con il risparmio batteria attivo", L"Wstrzymaj przy oszczędzaniu baterii", L"Pil tasarrufu açıkken duraklat", L"バッテリー節約機能がオンのとき一時停止", L"배터리 절약 모드에서 일시 중지" },
+    { L"Pause whenever on battery", L"Пауза щоразу при роботі від батареї", L"Пауза всегда при работе от батареи", L"Im Akkubetrieb immer pausieren", L"बैटरी पर हमेशा रोकें", L"使用电池时始终暂停", L"使用電池時一律暫停", L"Pausar siempre con batería", L"Toujours mettre en pause sur batterie", L"Pausar sempre na bateria", L"Pausa sempre a batteria", L"Zawsze wstrzymuj na baterii", L"Pilde her zaman duraklat", L"バッテリー駆動時は常に一時停止", L"배터리 사용 시 항상 일시 중지" },
+    { L"Paused, the bars rest and the mod stops listening to the audio.", L"На паузі смуги завмирають, а мод перестає слухати звук.", L"На паузе полосы замирают, а мод перестаёт слушать звук.", L"Pausiert ruhen die Balken und der Mod hört nicht mehr auf den Ton.", L"रुकने पर बार थम जाते हैं और मॉड ऑडियो सुनना बंद कर देता है।", L"暂停时，频谱条静止，模组也不再监听音频。", L"暫停時，頻譜條靜止，模組也不再監聽音訊。", L"En pausa, las barras se quedan quietas y el mod deja de escuchar el audio.", L"En pause, les barres restent au repos et le mod n'écoute plus l'audio.", L"Em pausa, as barras ficam paradas e o mod para de ouvir o áudio.", L"In pausa le barre restano ferme e la mod smette di ascoltare l'audio.", L"Po wstrzymaniu słupki stoją, a mod przestaje słuchać dźwięku.", L"Duraklatıldığında çubuklar durur ve mod sesi dinlemeyi bırakır.", L"一時停止中はバーが止まり、音声の取り込みも止まります。", L"일시 중지하면 막대가 멈추고 모드가 오디오를 듣지 않습니다." },
     { L"Window color", L"Колір вікна", L"Цвет окна", L"Fensterfarbe", L"विंडो का रंग", L"窗口颜色", L"視窗色彩", L"Color de la ventana", L"Couleur de la fenêtre", L"Cor da janela", L"Colore della finestra", L"Kolor okna", L"Pencere rengi", L"ウィンドウの色", L"창 색상" },
     { L"Custom color", L"Власний колір", L"Свой цвет", L"Eigene Farbe", L"कस्टम रंग", L"自定义颜色", L"自訂色彩", L"Color personalizado", L"Couleur personnalisée", L"Cor personalizada", L"Colore personalizzato", L"Własny kolor", L"Özel renk", L"カスタム色", L"사용자 지정 색" },
     { L"Title bar color", L"Колір рядка заголовка", L"Цвет строки заголовка", L"Farbe der Titelleiste", L"शीर्षक पट्टी का रंग", L"标题栏颜色", L"標題列色彩", L"Color de la barra de título", L"Couleur de la barre de titre", L"Cor da barra de título", L"Colore della barra del titolo", L"Kolor paska tytułu", L"Başlık çubuğu rengi", L"タイトル バーの色", L"제목 표시줄 색" },
@@ -21561,6 +21732,8 @@ static const RowRule ROW_RULES[] = {
     { L"SettingsWindowSettings.windowTitleBarColor", 150, false, L"SettingsWindowSettings.windowTitleBar", L"color" },
     { L"SettingsWindowSettings.windowColor", 5151, false, L"SettingsWindowSettings.windowMaterial", L"color" },
     { L"MainSettings.VisualizerFunctionsSettings.vizHideWhenPaused", 72, false, L"MainSettings.VisualizerFunctionsSettings.vizEnabled", L"true" },
+    { L"MainSettings.VisualizerFunctionsSettings.vizFrameRate", 6301, false, L"MainSettings.VisualizerFunctionsSettings.vizEnabled", L"true" },
+    { L"MainSettings.VisualizerFunctionsSettings.vizOnBattery", 6302, false, L"MainSettings.VisualizerFunctionsSettings.vizEnabled", L"true" },
     { L"MainSettings.VisualizerFunctionsSettings.vizOnlyMediaApp", 73, false, L"MainSettings.VisualizerFunctionsSettings.vizEnabled", L"true" },
     { L"MainSettings.VisualizerFunctionsSettings.vizBehindPlayer", 141, false, L"MainSettings.VisualizerFunctionsSettings.vizEnabled", L"true" },
     { L"MainSettings.VisualizerFunctionsSettings.vizBehindPlayer", 143, true, L"MainSettings.VisualizerFunctionsSettings.vizPlacement", L"artist" },

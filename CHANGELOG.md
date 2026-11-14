@@ -8,6 +8,16 @@
 - **Weather when nothing plays.** Turn on "Show Widgets when nothing plays" under Native Widgets: the player hides when nothing is playing and the Windows Widgets button (with the weather) comes back in its place. Detached parts stay where they are. While music plays, the player is back and Widgets is hidden.
 - **Weather part.** Turn on "Show weather" (Settings, Layout): the icon, temperature and condition from the Windows Widgets button as a part of its own, placed anywhere like the other parts, on any monitor, with its own background. Click it to open Widgets. It reads what the Widgets button shows, so Widgets has to be on in Windows; "Hide native Widgets button" can keep the original out of sight. It stays up when nothing plays.
 
+### Lighter on CPU, GPU and battery
+
+- **Visualizer frame rate.** New option: 60, 30 or 15 fps. Lower rates redraw the bars less often.
+- **Visualizer on battery.** New option: keep running, pause while Windows' battery saver is on (the default), or pause whenever on battery. Paused, the bars rest and the mod stops listening to the audio.
+- With the screen off, the visualizer, the scrolling text and the progress updates stop, and start again when it comes back.
+- "Hide in fullscreen" now reacts within half a second of a game going fullscreen or leaving it. Before, it waited for the next change in the music, so the visualizer kept running under the game.
+- Scrolling text no longer ticks 60 times a second while it holds still at an end, or while the player is hidden.
+- The visualizer's audio thread sleeps while there is no sound instead of waking 50 times a second.
+- While paused, the progress bar asks for the position every 3 seconds instead of every second.
+
 ### Fixes
 
 - "Hide native Widgets button" works again, and the mod only hooks the Widgets button while that setting is on.
