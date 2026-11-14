@@ -2035,6 +2035,7 @@ static std::atomic<bool> g_displayOff{false};           // the screen is off
 static std::atomic<bool> g_vizPowerPaused{false};       // "On battery" pauses the visualizer
 static std::atomic<bool> g_animationsSuspended{false};  // the text is hidden or the screen is off
 static std::atomic<bool> g_refetchMediaProps{false};    // a setting changed what the cover shows
+static std::atomic<bool> g_weatherReadSoon{false};      // read the weather on the next tick
 
 } // namespace UI
 
@@ -16183,6 +16184,15 @@ static void RecomputeTrackingGroup(const std::wstring& groupKey) {
     } catch (...) { LOG_IGNORED_EXCEPTION(); }
 }
 
+// Windows' own Widgets switch. Off, the button never gets the weather, so the
+// weather part has nothing to show.
+static bool WindowsWidgetsTurnedOn() {
+    DWORD v = 1, size = sizeof(v);
+    if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+                     L"TaskbarDa", RRF_RT_REG_DWORD, nullptr, &v, &size) != ERROR_SUCCESS) return true;
+    return v != 0;
+}
+
 static bool TaskbarIconsCentered() {
     DWORD v = 1, size = sizeof(v);
     if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
@@ -17738,6 +17748,27 @@ static FrameworkElement GetFrameworkElementFromThis(void* pThis) {
 static thread_local unsigned int     g_widgetsPaddingDepth{0};
 static thread_local FrameworkElement g_widgetsCandidateButton = nullptr;
 
+// How the hide looks. Collapsed, Windows stops filling in the weather text, and
+// the weather part reads that text. So while the weather part is on, the button
+// stays "shown" but is zero wide, see-through and can't be clicked: no room,
+// nothing to see, and its weather keeps updating.
+static void SetWidgetsHiddenLook(FrameworkElement const& el, bool hidden) {
+    if (!el) return;
+    try {
+        const bool keepAlive = hidden && g_settings.weatherEnabled && !g_unloading;
+        el.Visibility(hidden && !keepAlive ? Visibility::Collapsed : Visibility::Visible);
+        if (keepAlive) {
+            el.Opacity(0.0);
+            el.MaxWidth(0.0);
+            el.IsHitTestVisible(false);
+        } else {
+            el.ClearValue(UIElement::OpacityProperty());
+            el.ClearValue(FrameworkElement::MaxWidthProperty());
+            el.ClearValue(UIElement::IsHitTestVisibleProperty());
+        }
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+}
+
 // A taskbar's own Widgets inner panel (the element the hide collapses).
 static FrameworkElement WidgetsInnerPanelOf(FrameworkElement const& outer) {
     auto inner = FindChildByName(outer, L"ExperienceToggleButtonRootPanel");
@@ -17810,9 +17841,10 @@ static void ApplyNativeWidgetsHideState(FrameworkElement const& widgetsButton) {
             wantHidden = (scope < 0) ? alreadyHidden : (scope > 0);
             if (WidgetsSwapActive() && g_playerIdleHidden) wantHidden = false;
         }
+        // Hidden stays hidden, but how can change (the weather part turned on or off).
+        if (wantHidden) SetWidgetsHiddenLook(widgetsButton, true);
         if (wantHidden == alreadyHidden) return;
-
-        widgetsButton.Visibility(wantHidden ? Visibility::Collapsed : Visibility::Visible);
+        if (!wantHidden) SetWidgetsHiddenLook(widgetsButton, false);
 
         if (wantHidden) g_hiddenWidgetsButtons->push_back(widgetsButton);
         else g_hiddenWidgetsButtons->erase(it);
@@ -17854,7 +17886,7 @@ static void RestoreStaleHiddenWidgetsOnThisThread() {
             }
             if (stillWanted) continue;
 
-            el.Visibility(Visibility::Visible);
+            SetWidgetsHiddenLook(el, false);
             g_hiddenWidgetsButtons->erase(g_hiddenWidgetsButtons->begin() + i);
             Wh_Log(L"WidgetsHide: restored a hidden Widgets button from the kept reference");
         } catch (...) {
@@ -18492,6 +18524,7 @@ static DWORD WINAPI TimerThreadProc(void*) {
         if (g_settings.weatherEnabled && !g_displayOff) {
             static ULONGLONG s_nextWeather = 0;
             const ULONGLONG nowMs = GetTickCount64();
+            if (g_weatherReadSoon.exchange(false)) s_nextWeather = 0;
             if (nowMs >= s_nextWeather) {
                 s_nextWeather = nowMs + 30000;
                 const bool before = WeatherAvailable();
@@ -20299,7 +20332,18 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
         preview.title = L"Taskbar layout";
         preview.layoutPreview = true;
         cats.push_back(SettingCategory{ L"Layout", L"\uE8A9", { preview, card, size, order, sidebarPlayerCard, albumArtCard, infoCard, buttonsCard, vizCard } });
-        cats.push_back(SettingCategory{ L"Weather", L"\uE706", { weatherWhere, weatherLook } });
+        std::vector<SettingCard> weatherCards;
+        if (!WindowsWidgetsTurnedOn()) {
+            SettingCard notice;
+            notice.rows = {
+                WithDesc(RowAction(L"Widgets is turned off in Windows", L"Turn on", L"widgets_on"),
+                         L"The weather comes from Windows' Widgets button. This turns it on and keeps that button hidden, so only this weather shows."),
+            };
+            weatherCards.push_back(notice);
+        }
+        weatherCards.push_back(weatherWhere);
+        weatherCards.push_back(weatherLook);
+        cats.push_back(SettingCategory{ L"Weather", L"\uE706", weatherCards });
         cats.back().enabledRow = WithDesc(
             RowBool(L"Show weather", L"MainSettings.WeatherSetting.weatherEnabled"),
             L"The weather from the Widgets button, placed anywhere. Click it to open Widgets.");
@@ -21596,6 +21640,9 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"Weather widget", L"Віджет погоди", L"Виджет погоды", L"Wetter-Widget", L"मौसम विजेट", L"天气小组件", L"天氣小工具", L"Widget del tiempo", L"Widget météo", L"Widget do clima", L"Widget meteo", L"Widżet pogody", L"Hava durumu pencere öğesi", L"天気ウィジェット", L"날씨 위젯" },
     { L"Only when nothing plays", L"Лише коли нічого не грає", L"Только когда ничего не играет", L"Nur wenn nichts läuft", L"सिर्फ़ जब कुछ न चल रहा हो", L"仅在没有播放时", L"僅在沒有播放時", L"Solo cuando no suena nada", L"Seulement quand rien ne joue", L"Só quando nada estiver tocando", L"Solo quando non suona nulla", L"Tylko gdy nic nie gra", L"Yalnızca hiçbir şey çalmıyorken", L"何も再生していないときだけ", L"재생 중이 아닐 때만" },
     { L"Hides while music plays, so it and the player take turns.", L"Ховається, поки грає музика: погода й плеєр чергуються.", L"Скрывается, пока играет музыка: погода и плеер сменяют друг друга.", L"Blendet sich aus, solange Musik läuft: Wetter und Player wechseln sich ab.", L"संगीत चलते समय छिप जाता है, ताकि यह और प्लेयर बारी-बारी दिखें।", L"播放音乐时隐藏，与播放器轮流显示。", L"播放音樂時隱藏，與播放器輪流顯示。", L"Se oculta mientras suena música, así el tiempo y el reproductor se turnan.", L"Se masque pendant la lecture : la météo et le lecteur se relaient.", L"Some enquanto a música toca, assim o clima e o player se revezam.", L"Si nasconde mentre suona la musica: meteo e player si alternano.", L"Chowa się, gdy gra muzyka, więc pogoda i odtwarzacz się zmieniają.", L"Müzik çalarken gizlenir; hava durumu ve oynatıcı sırayla görünür.", L"音楽の再生中は隠れ、プレーヤーと交代で表示されます。", L"음악이 재생되는 동안 숨겨져 플레이어와 번갈아 표시됩니다." },
+    { L"Widgets is turned off in Windows", L"Віджети вимкнено в Windows", L"Виджеты отключены в Windows", L"Widgets ist in Windows ausgeschaltet", L"Windows में विजेट्स बंद हैं", L"Windows 中的小组件已关闭", L"Windows 中的小工具已關閉", L"Los widgets están desactivados en Windows", L"Les widgets sont désactivés dans Windows", L"Os widgets estão desativados no Windows", L"I widget sono disattivati in Windows", L"Widżety są wyłączone w systemie Windows", L"Pencere Öğeleri Windows'ta kapalı", L"Windows でウィジェットがオフになっています", L"Windows에서 위젯이 꺼져 있습니다" },
+    { L"Turn on", L"Увімкнути", L"Включить", L"Einschalten", L"चालू करें", L"打开", L"開啟", L"Activar", L"Activer", L"Ativar", L"Attiva", L"Włącz", L"Aç", L"オンにする", L"켜기" },
+    { L"The weather comes from Windows' Widgets button. This turns it on and keeps that button hidden, so only this weather shows.", L"Погода береться з кнопки віджетів Windows. Це ввімкне її й сховає саму кнопку, тож буде видно лише цю погоду.", L"Погода берётся с кнопки виджетов Windows. Это включит её и скроет саму кнопку, так что будет видна только эта погода.", L"Das Wetter kommt von der Widgets-Schaltfläche von Windows. Das schaltet sie ein und blendet sie aus, sodass nur dieses Wetter erscheint.", L"मौसम Windows के विजेट्स बटन से आता है। यह उसे चालू करके छिपा देता है, ताकि सिर्फ़ यह मौसम दिखे।", L"天气来自 Windows 的小组件按钮。这会打开它并隐藏该按钮，只显示这里的天气。", L"天氣來自 Windows 的小工具按鈕。這會開啟它並隱藏該按鈕，只顯示這裡的天氣。", L"El tiempo viene del botón de Widgets de Windows. Esto lo activa y oculta ese botón, así solo se ve este tiempo.", L"La météo vient du bouton Widgets de Windows. Ceci l'active et masque ce bouton, pour n'afficher que cette météo.", L"O clima vem do botão de Widgets do Windows. Isso o ativa e oculta esse botão, para mostrar só este clima.", L"Il meteo arriva dal pulsante Widget di Windows. Questo lo attiva e nasconde quel pulsante, così si vede solo questo meteo.", L"Pogoda pochodzi z przycisku widżetów Windows. To go włączy i ukryje, więc widać będzie tylko tę pogodę.", L"Hava durumu Windows'un Pencere Öğeleri düğmesinden gelir. Bu onu açar ve düğmeyi gizler, böylece yalnızca bu hava durumu görünür.", L"天気は Windows のウィジェット ボタンから取得します。オンにしてそのボタンは隠すので、ここの天気だけが表示されます。", L"날씨는 Windows 위젯 버튼에서 가져옵니다. 위젯을 켜고 그 버튼은 숨겨서 이 날씨만 보이게 합니다." },
     { L"Window color", L"Колір вікна", L"Цвет окна", L"Fensterfarbe", L"विंडो का रंग", L"窗口颜色", L"視窗色彩", L"Color de la ventana", L"Couleur de la fenêtre", L"Cor da janela", L"Colore della finestra", L"Kolor okna", L"Pencere rengi", L"ウィンドウの色", L"창 색상" },
     { L"Custom color", L"Власний колір", L"Свой цвет", L"Eigene Farbe", L"कस्टम रंग", L"自定义颜色", L"自訂色彩", L"Color personalizado", L"Couleur personnalisée", L"Cor personalizada", L"Colore personalizzato", L"Własny kolor", L"Özel renk", L"カスタム色", L"사용자 지정 색" },
     { L"Title bar color", L"Колір рядка заголовка", L"Цвет строки заголовка", L"Farbe der Titelleiste", L"शीर्षक पट्टी का रंग", L"标题栏颜色", L"標題列色彩", L"Color de la barra de título", L"Couleur de la barre de titre", L"Cor da barra de título", L"Colore della barra del titolo", L"Kolor paska tytułu", L"Başlık çubuğu rengi", L"タイトル バーの色", L"제목 표시줄 색" },
@@ -22787,6 +22834,41 @@ static void WireActionButton(wuxc::Button const& b, const std::wstring& id) {
             g_settingsDraftDirty = false;
             ApplySettingsLiveNow();
             if (s_hostWnd) PostMessageW(s_hostWnd, WM_XS_REFRESH, 0, 0);
+        });
+    } else if (id == L"widgets_on") {
+        // Turns Widgets on in Windows, and hides Windows' own button so the
+        // weather only shows where the weather part is. Windows can refuse the
+        // switch to anything but its Settings app; then that page opens.
+        b.Click([](IInspectable const&, wux::RoutedEventArgs const&) {
+            SetOverrideLive(L"MainSettings.NativeWidgetsSetting.hideNativeWidgetsButton", L"1");
+            ApplySettingsLiveNow();
+            const HWND host = s_hostWnd;
+            SpawnTrackedWorker([host]() {
+                bool on = false;
+                HKEY key = nullptr;
+                if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+                                  0, KEY_SET_VALUE, &key) == ERROR_SUCCESS) {
+                    const DWORD one = 1;
+                    RegSetValueExW(key, L"TaskbarDa", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&one), sizeof(one));
+                    RegCloseKey(key);
+                    on = WindowsWidgetsTurnedOn();
+                }
+                if (on) {
+                    // The taskbar picks the switch up from this, as from its Settings page.
+                    SendMessageTimeoutW(HWND_BROADCAST, WM_SETTINGCHANGE, 0, reinterpret_cast<LPARAM>(L"TraySettings"),
+                                        SMTO_ABORTIFHUNG, 200, nullptr);
+                    Wh_Log(L"Weather: turned Widgets on in Windows");
+                } else {
+                    Wh_Log(L"Weather: Windows didn't take the Widgets switch, opening its Settings page");
+                    ShellOpenNoUi(L"ms-settings:taskbar");
+                }
+                // Read it once the button has its weather, and show the page without the notice.
+                for (int i = 0; i < 3 && SleepUnlessUnloading(1500); i++) {
+                    g_weatherReadSoon = true;
+                    if (g_timerUpdateEvent) SetEvent(g_timerUpdateEvent);
+                }
+                if (host && IsWindow(host)) PostMessageW(host, WM_XS_REFRESH, 0, 0);
+            });
         });
     } else if (id == L"report_bug") {
         AttachBugReportForm(b);
@@ -27461,7 +27543,7 @@ void Wh_ModUninit() {
         RunFromWindowThread(primaryWnd, [](void*) {
             try {
                 for (auto& el : *g_hiddenWidgetsButtons) {
-                    if (el) el.Visibility(Visibility::Visible);
+                    SetWidgetsHiddenLook(el, false);
                 }
             } catch (...) { LOG_IGNORED_EXCEPTION(); }
             g_hiddenWidgetsButtons.reset();
