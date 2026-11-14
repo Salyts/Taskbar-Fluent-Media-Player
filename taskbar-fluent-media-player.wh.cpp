@@ -907,7 +907,11 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
   - WeatherSetting:
     - weatherEnabled: false
       $name: Show weather
-      $description: The weather from Windows' Widgets button (icon, temperature, condition) as a part of its own, placed wherever you like. Clicking it opens Widgets. Needs Widgets turned on in Windows' taskbar settings; "Hide native Widgets button" can keep the original hidden.
+      $description: The weather from Windows' Widgets button (icon, temperature, condition) as a part of its own, placed wherever you like. Clicking it opens Widgets. Needs Widgets turned on in Windows' taskbar settings; "Hide the weather widget" can keep the original hidden.
+    - weatherOnlyWhenIdle: false
+      #! $showIf: {weatherEnabled: true}
+      $name: Only when nothing plays
+      $description: The weather hides while music plays and comes back when it stops, so it and the player take turns.
     - weatherShowCondition: true
       #! $showIf: {weatherEnabled: true}
       $name: Show the condition
@@ -1001,7 +1005,7 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
     $name: Weather
   - NativeWidgetsSetting:
     - hideNativeWidgetsButton: false
-      $name: Hide native Widgets button
+      $name: Hide the weather widget (Windows' Widgets button)
       $description: "Shrinks the real Windows Widgets/Weather taskbar button to nothing and disables it (no click, no hover, no tooltip) instead of putting player content inside it — frees up that spot for the main player's own position setting to use."
     - hideNativeWidgetsScope: "both"
       #! $showIf: {hideNativeWidgetsButton: true}
@@ -1024,7 +1028,7 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
     - hideTaskViewButton: false
       $name: Hide Task View
       $description: Hides Windows' Task View button on the taskbar.
-    $name: Native Widgets button
+    $name: Windows buttons
   #! $hideIf: {settingsView: window}
   $name: Main Settings
 
@@ -2828,6 +2832,7 @@ struct ModSettings {
     DetachedBackgroundSettings vizDetachedBg;
     bool         weatherEnabled      = false;
     bool         weatherShowCondition = true;
+    bool         weatherOnlyWhenIdle  = false;
     PlayerPosition weatherPosition   = PlayerPosition::TrayLeft;
     int          weatherMonitor      = 1;
     DetachedBackgroundSettings weatherBg;
@@ -3105,6 +3110,7 @@ static constexpr SettingSpec SETTINGS[] = {
     SBool(L"MainSettings.VisualizerFunctionsSettings.vizDetached", &ModSettings::vizDetached),
     SBool(L"MainSettings.WeatherSetting.weatherEnabled", &ModSettings::weatherEnabled),
     SBool(L"MainSettings.WeatherSetting.weatherShowCondition", &ModSettings::weatherShowCondition),
+    SBool(L"MainSettings.WeatherSetting.weatherOnlyWhenIdle", &ModSettings::weatherOnlyWhenIdle),
     SStr(L"MainSettings.WeatherSetting.weatherPosition", L"tray_left"),
     SIntRaw(L"MainSettings.WeatherSetting.weatherMonitor"),
     SStr(L"MainSettings.WeatherSetting.weatherBackgroundType", L"inherit"),
@@ -15415,7 +15421,13 @@ static void UpdateVisibility() {
             if (!dw->grid) continue;
             // A hidden detached info container vanishes on its own, background
             // and margins included, like it does inline.
-            const bool hideThis = dw == &g_detachedWeather ? (fullscreenHide || !WeatherAvailable())
+            // Weather: not for music stopping, but for music playing, with "Only when nothing plays".
+            bool playingForWeather = false;
+            if (dw == &g_detachedWeather && g_settings.weatherOnlyWhenIdle) {
+                std::lock_guard<std::mutex> lk(g_mediaMtx);
+                playingForWeather = g_media.isPlaying;
+            }
+            const bool hideThis = dw == &g_detachedWeather ? (fullscreenHide || !WeatherAvailable() || playingForWeather)
                                                           : (hide || (dw == &g_detachedInfo && !g_infoContainerShown));
             try {
                 dw->grid.Visibility(hideThis ? Visibility::Collapsed : Visibility::Visible);
@@ -19921,24 +19933,26 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
     }
 
     {
-        SettingCard nativeWidgets;
-        nativeWidgets.rows = {
-            RowCombo(L"Hide on which screen", L"MainSettings.NativeWidgetsSetting.hideNativeWidgetsScope", L"both", hideWidgetsScopeOptions),
-            WithDesc(RowBool(L"Show Widgets when nothing plays", L"MainSettings.NativeWidgetsSetting.showWidgetsWhenIdle"),
-                     L"The player hides when nothing is playing and the Widgets button (with the weather) shows in its place."),
-        };
-        SettingCard otherButtons;
-        otherButtons.title = L"Other Windows buttons";
-        otherButtons.rows = {
+        // Windows' own taskbar buttons: which to hide, then the weather widget's
+        // own options (it's the one the player can swap with).
+        SettingCard hideButtons;
+        hideButtons.title = L"Hide on the taskbar";
+        hideButtons.rows = {
             WithDesc(RowBool(L"Hide the Start button", L"MainSettings.NativeWidgetsSetting.hideStartButton"),
                      L"The Windows key still opens Start."),
             RowBool(L"Hide Search", L"MainSettings.NativeWidgetsSetting.hideSearchButton"),
             RowBool(L"Hide Task View", L"MainSettings.NativeWidgetsSetting.hideTaskViewButton"),
+            WithDesc(RowBool(L"Hide the weather widget", L"MainSettings.NativeWidgetsSetting.hideNativeWidgetsButton"),
+                     L"Windows' Widgets button, with the weather."),
         };
-        cats.push_back(SettingCategory{ L"Native Widgets", L"\uE8CC", { nativeWidgets, otherButtons } });
-        cats.back().enabledRow = WithDesc(
-            RowBool(L"Hide native Widgets button", L"MainSettings.NativeWidgetsSetting.hideNativeWidgetsButton"),
-            L"Hides the Windows Widgets button completely.");
+        SettingCard weatherWidget;
+        weatherWidget.title = L"Weather widget";
+        weatherWidget.rows = {
+            RowCombo(L"Hide on which screen", L"MainSettings.NativeWidgetsSetting.hideNativeWidgetsScope", L"both", hideWidgetsScopeOptions),
+            WithDesc(RowBool(L"Show Widgets when nothing plays", L"MainSettings.NativeWidgetsSetting.showWidgetsWhenIdle"),
+                     L"The player hides when nothing is playing and the Widgets button (with the weather) shows in its place."),
+        };
+        cats.push_back(SettingCategory{ L"Windows Buttons", L"\uE8CC", { hideButtons, weatherWidget } });
     }
 
     {
@@ -20263,6 +20277,8 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
                 L"MainSettings.WeatherSetting.weatherMonitor",
                 L"MainSettings.WeatherSetting.weatherBackground", L"tray_left");
             weatherLook.rows.push_back(RowBool(L"Show the condition", L"MainSettings.WeatherSetting.weatherShowCondition"));
+            weatherWhere.rows.push_back(WithDesc(RowBool(L"Only when nothing plays", L"MainSettings.WeatherSetting.weatherOnlyWhenIdle"),
+                                                 L"Hides while music plays, so it and the player take turns."));
             bool pastMonitor = false;
             for (size_t i = 1; i < all.rows.size(); i++) {   // rows[0] is the switch, which the page has itself
                 (pastMonitor ? weatherLook : weatherWhere).rows.push_back(all.rows[i]);
@@ -20424,8 +20440,8 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
     {
         static const wchar_t* const NAV_ORDER[] = {
             L"Appearance", L"Layout", L"Behaviour & Clicks", L"Mini Player Menu",
-            L"Album Art", L"Info", L"Buttons", L"Visualizer",
-            L"Context Menu", L"Native Widgets", L"Other",
+            L"Album Art", L"Info", L"Buttons", L"Visualizer", L"Weather",
+            L"Context Menu", L"Windows Buttons", L"Other",
         };
         auto rank = [](const std::wstring& label) {
             for (size_t i = 0; i < ARRAYSIZE(NAV_ORDER); i++)
@@ -21573,6 +21589,13 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"The Windows key still opens Start.", L"Клавіша Windows і далі відкриває «Пуск».", L"Клавиша Windows по-прежнему открывает «Пуск».", L"Die Windows-Taste öffnet Start weiterhin.", L"Windows कुंजी से स्टार्ट अब भी खुलता है।", L"Windows 键仍可打开“开始”。", L"Windows 鍵仍可開啟「開始」。", L"La tecla Windows sigue abriendo Inicio.", L"La touche Windows ouvre toujours Démarrer.", L"A tecla Windows ainda abre o Iniciar.", L"Il tasto Windows apre comunque Start.", L"Klawisz Windows nadal otwiera Start.", L"Windows tuşu Başlat'ı açmaya devam eder.", L"Windows キーでスタートは引き続き開きます。", L"Windows 키로는 여전히 시작이 열립니다." },
     { L"Hide Search", L"Сховати пошук", L"Скрыть поиск", L"Suche ausblenden", L"खोज छिपाएँ", L"隐藏搜索", L"隱藏搜尋", L"Ocultar Búsqueda", L"Masquer la recherche", L"Ocultar a Pesquisa", L"Nascondi Cerca", L"Ukryj wyszukiwanie", L"Aramayı gizle", L"検索を隠す", L"검색 숨기기" },
     { L"Hide Task View", L"Сховати подання завдань", L"Скрыть представление задач", L"Aufgabenansicht ausblenden", L"टास्क व्यू छिपाएँ", L"隐藏任务视图", L"隱藏工作檢視", L"Ocultar Vista de tareas", L"Masquer les applications actives", L"Ocultar a Visão de Tarefas", L"Nascondi Visualizzazione attività", L"Ukryj widok zadań", L"Görev Görünümü'nü gizle", L"タスク ビューを隠す", L"작업 보기 숨기기" },
+    { L"Windows Buttons", L"Кнопки Windows", L"Кнопки Windows", L"Windows-Schaltflächen", L"Windows बटन", L"Windows 按钮", L"Windows 按鈕", L"Botones de Windows", L"Boutons Windows", L"Botões do Windows", L"Pulsanti di Windows", L"Przyciski Windows", L"Windows düğmeleri", L"Windows のボタン", L"Windows 버튼" },
+    { L"Hide on the taskbar", L"Ховати на панелі завдань", L"Скрывать на панели задач", L"Auf der Taskleiste ausblenden", L"टास्कबार पर छिपाएँ", L"在任务栏上隐藏", L"在工作列上隱藏", L"Ocultar en la barra de tareas", L"Masquer dans la barre des tâches", L"Ocultar na barra de tarefas", L"Nascondi nella barra delle applicazioni", L"Ukryj na pasku zadań", L"Görev çubuğunda gizle", L"タスク バーで隠す", L"작업 표시줄에서 숨기기" },
+    { L"Hide the weather widget", L"Сховати віджет погоди", L"Скрыть виджет погоды", L"Wetter-Widget ausblenden", L"मौसम विजेट छिपाएँ", L"隐藏天气小组件", L"隱藏天氣小工具", L"Ocultar el widget del tiempo", L"Masquer le widget météo", L"Ocultar o widget do clima", L"Nascondi il widget meteo", L"Ukryj widżet pogody", L"Hava durumu pencere öğesini gizle", L"天気ウィジェットを隠す", L"날씨 위젯 숨기기" },
+    { L"Windows' Widgets button, with the weather.", L"Кнопка віджетів Windows із погодою.", L"Кнопка виджетов Windows с погодой.", L"Die Widgets-Schaltfläche von Windows mit dem Wetter.", L"Windows का विजेट्स बटन, मौसम के साथ।", L"Windows 的小组件按钮（显示天气）。", L"Windows 的小工具按鈕（顯示天氣）。", L"El botón de Widgets de Windows, con el tiempo.", L"Le bouton Widgets de Windows, avec la météo.", L"O botão de Widgets do Windows, com o clima.", L"Il pulsante Widget di Windows, con il meteo.", L"Przycisk widżetów Windows z pogodą.", L"Windows'un hava durumunu gösteren Pencere Öğeleri düğmesi.", L"天気を表示する Windows のウィジェット ボタン。", L"날씨가 표시되는 Windows 위젯 버튼." },
+    { L"Weather widget", L"Віджет погоди", L"Виджет погоды", L"Wetter-Widget", L"मौसम विजेट", L"天气小组件", L"天氣小工具", L"Widget del tiempo", L"Widget météo", L"Widget do clima", L"Widget meteo", L"Widżet pogody", L"Hava durumu pencere öğesi", L"天気ウィジェット", L"날씨 위젯" },
+    { L"Only when nothing plays", L"Лише коли нічого не грає", L"Только когда ничего не играет", L"Nur wenn nichts läuft", L"सिर्फ़ जब कुछ न चल रहा हो", L"仅在没有播放时", L"僅在沒有播放時", L"Solo cuando no suena nada", L"Seulement quand rien ne joue", L"Só quando nada estiver tocando", L"Solo quando non suona nulla", L"Tylko gdy nic nie gra", L"Yalnızca hiçbir şey çalmıyorken", L"何も再生していないときだけ", L"재생 중이 아닐 때만" },
+    { L"Hides while music plays, so it and the player take turns.", L"Ховається, поки грає музика: погода й плеєр чергуються.", L"Скрывается, пока играет музыка: погода и плеер сменяют друг друга.", L"Blendet sich aus, solange Musik läuft: Wetter und Player wechseln sich ab.", L"संगीत चलते समय छिप जाता है, ताकि यह और प्लेयर बारी-बारी दिखें।", L"播放音乐时隐藏，与播放器轮流显示。", L"播放音樂時隱藏，與播放器輪流顯示。", L"Se oculta mientras suena música, así el tiempo y el reproductor se turnan.", L"Se masque pendant la lecture : la météo et le lecteur se relaient.", L"Some enquanto a música toca, assim o clima e o player se revezam.", L"Si nasconde mentre suona la musica: meteo e player si alternano.", L"Chowa się, gdy gra muzyka, więc pogoda i odtwarzacz się zmieniają.", L"Müzik çalarken gizlenir; hava durumu ve oynatıcı sırayla görünür.", L"音楽の再生中は隠れ、プレーヤーと交代で表示されます。", L"음악이 재생되는 동안 숨겨져 플레이어와 번갈아 표시됩니다." },
     { L"Window color", L"Колір вікна", L"Цвет окна", L"Fensterfarbe", L"विंडो का रंग", L"窗口颜色", L"視窗色彩", L"Color de la ventana", L"Couleur de la fenêtre", L"Cor da janela", L"Colore della finestra", L"Kolor okna", L"Pencere rengi", L"ウィンドウの色", L"창 색상" },
     { L"Custom color", L"Власний колір", L"Свой цвет", L"Eigene Farbe", L"कस्टम रंग", L"自定义颜色", L"自訂色彩", L"Color personalizado", L"Couleur personnalisée", L"Cor personalizada", L"Colore personalizzato", L"Własny kolor", L"Özel renk", L"カスタム色", L"사용자 지정 색" },
     { L"Title bar color", L"Колір рядка заголовка", L"Цвет строки заголовка", L"Farbe der Titelleiste", L"शीर्षक पट्टी का रंग", L"标题栏颜色", L"標題列色彩", L"Color de la barra de título", L"Couleur de la barre de titre", L"Cor da barra de título", L"Colore della barra del titolo", L"Kolor paska tytułu", L"Başlık çubuğu rengi", L"タイトル バーの色", L"제목 표시줄 색" },
@@ -22271,6 +22294,7 @@ static const RowRule ROW_RULES[] = {
     { L"MainSettings.WeatherSetting.weatherBackgroundHoverEffect", 6091, false, L"MainSettings.WeatherSetting.weatherEnabled", L"true" },
     { L"MainSettings.WeatherSetting.weatherBackgroundHoverEffect", 6092, true, L"MainSettings.WeatherSetting.weatherBackgroundType", L"inherit" },
     { L"MainSettings.WeatherSetting.weatherShowCondition", 6200, false, L"MainSettings.WeatherSetting.weatherEnabled", L"true" },
+    { L"MainSettings.WeatherSetting.weatherOnlyWhenIdle", 6201, false, L"MainSettings.WeatherSetting.weatherEnabled", L"true" },
     { L"MainSettings.VisualizerFunctionsSettings.vizStyle", 93, false, L"MainSettings.VisualizerFunctionsSettings.vizEnabled", L"true" },
     { L"MainSettings.VisualizerFunctionsSettings.vizShape", 94, false, L"MainSettings.VisualizerFunctionsSettings.vizEnabled", L"true" },
     { L"MainSettings.VisualizerFunctionsSettings.vizEQ", 95, false, L"MainSettings.VisualizerFunctionsSettings.vizEnabled", L"true" },
