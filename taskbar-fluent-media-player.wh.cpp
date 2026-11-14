@@ -9942,17 +9942,47 @@ static void SetPauseOverlayShown(Border const& overlay, bool shown) {
     } catch (...) { LOG_IGNORED_EXCEPTION(); }
 }
 
-// Right/middle double-clicks: XAML's DoubleTapped is left-only, so compare
-// with the previous release. The first click still does its single action.
-struct ExtraDoubleClick {
+static HWND TaskbarWndForElement(FrameworkElement const& el);   // with the mini player, below
+
+// Single and double clicks on the player, for all three buttons (XAML's
+// DoubleTapped is left-only). A button that has a double-click action holds
+// its single click for the double-click time, so a double-click runs only its
+// own action (GitHub #115). Without one, the click runs at once, as before.
+struct PlayerClicks {
     ULONGLONG lastTime = 0;
     winrt::Windows::UI::Input::PointerUpdateKind lastKind = winrt::Windows::UI::Input::PointerUpdateKind::Other;
-    bool IsSecondClick(winrt::Windows::UI::Input::PointerUpdateKind kind) {
+    std::shared_ptr<std::atomic<bool>> held;   // cancels the single click that's waiting
+
+    void Click(winrt::Windows::UI::Input::PointerUpdateKind kind, const std::wstring& single,
+               const std::wstring& dbl, FrameworkElement const& fe) {
+        const bool hasDouble = !dbl.empty() && dbl != L"none";
+        if (!hasDouble) { ExecuteMediaAction(single, fe); return; }
+
         const ULONGLONG now = GetTickCount64();
-        const bool second = kind == lastKind && now - lastTime <= GetDoubleClickTime();
-        lastTime = second ? 0 : now;
+        const bool second = kind == lastKind && lastTime && now - lastTime <= GetDoubleClickTime();
         lastKind = kind;
-        return second;
+        lastTime = second ? 0 : now;
+        if (second) {
+            if (held) held->store(true);
+            held.reset();
+            ExecuteMediaAction(dbl, fe);
+            return;
+        }
+        if (single.empty() || single == L"none") return;
+
+        struct Held { std::wstring action; winrt::weak_ref<FrameworkElement> fe; };
+        auto cancelled = std::make_shared<std::atomic<bool>>(false);
+        held = cancelled;
+        HWND wnd = fe ? TaskbarWndForElement(fe) : g_taskbarWnd;
+        SpawnTrackedWorker([cancelled, wnd, action = single, weak = winrt::make_weak(fe)]() {
+            if (!SleepUnlessUnloading((int)GetDoubleClickTime() + 20) || cancelled->load()) return;
+            Held h{ action, weak };
+            RunFromWindowThread(wnd, [](void* p) {
+                auto* h = static_cast<Held*>(p);
+                if (g_unloading || g_applyingSettings) return;
+                try { ExecuteMediaAction(h->action, h->fe.get()); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+            }, &h);
+        });
     }
 };
 
@@ -10177,8 +10207,8 @@ COLD_UNOPTIMIZED static Grid BuildAlbumArtContainer() {
             e.Handled(true);
         });
 
-        auto artDoubleClick = std::make_shared<ExtraDoubleClick>();
-        artContainer.PointerReleased([artDoubleClick](auto const& sender, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e) mutable {
+        auto artClicks = std::make_shared<PlayerClicks>();
+        artContainer.PointerReleased([artClicks](auto const& sender, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e) mutable {
             bool actuallyHovered = false;
             if (auto elem = sender.template try_as<UIElement>()) {
                 elem.ReleasePointerCapture(e.Pointer());
@@ -10201,27 +10231,21 @@ COLD_UNOPTIMIZED static Grid BuildAlbumArtContainer() {
                 auto kind = e.GetCurrentPoint(nullptr).Properties().PointerUpdateKind();
                 auto fe = sender.template try_as<FrameworkElement>();
                 if (kind == winrt::Windows::UI::Input::PointerUpdateKind::LeftButtonReleased) {
-                    ExecuteMediaAction(artOrPlayer(g_settings.albumArtLeftClick, g_settings.playerLeftClick), fe);
+                    artClicks->Click(kind, artOrPlayer(g_settings.albumArtLeftClick, g_settings.playerLeftClick),
+                                     artOrPlayer(g_settings.albumArtLeftDoubleClick, g_settings.playerLeftDoubleClick), fe);
                 } else if (kind == winrt::Windows::UI::Input::PointerUpdateKind::RightButtonReleased) {
-                    if (artDoubleClick->IsSecondClick(kind))
-                        ExecuteMediaAction(artOrPlayer(g_settings.albumArtRightDoubleClick, g_settings.playerRightDoubleClick), fe);
-                    else
-                        ExecuteMediaAction(artOrPlayer(g_settings.albumArtRightClick, g_settings.playerRightClick), fe);
+                    artClicks->Click(kind, artOrPlayer(g_settings.albumArtRightClick, g_settings.playerRightClick),
+                                     artOrPlayer(g_settings.albumArtRightDoubleClick, g_settings.playerRightDoubleClick), fe);
                 } else if (kind == winrt::Windows::UI::Input::PointerUpdateKind::MiddleButtonReleased) {
-                    if (artDoubleClick->IsSecondClick(kind))
-                        ExecuteMediaAction(artOrPlayer(g_settings.albumArtMiddleDoubleClick, g_settings.playerMiddleDoubleClick), fe);
-                    else
-                        ExecuteMediaAction(artOrPlayer(g_settings.albumArtMiddleClick, g_settings.playerMiddleClick), fe);
+                    artClicks->Click(kind, artOrPlayer(g_settings.albumArtMiddleClick, g_settings.playerMiddleClick),
+                                     artOrPlayer(g_settings.albumArtMiddleDoubleClick, g_settings.playerMiddleDoubleClick), fe);
                 }
             }
             e.Handled(true);
         });
 
-        artContainer.DoubleTapped([](auto const& sender, winrt::Windows::UI::Xaml::Input::DoubleTappedRoutedEventArgs const& e) mutable {
-            if (g_unloading) return;
-            const auto& art = g_settings.albumArtLeftDoubleClick;
-            ExecuteMediaAction((art.empty() || art == L"none") ? g_settings.playerLeftDoubleClick : art,
-                               sender.template try_as<FrameworkElement>());
+        // The double-click itself is worked out in PointerReleased (PlayerClicks).
+        artContainer.DoubleTapped([](auto const&, winrt::Windows::UI::Xaml::Input::DoubleTappedRoutedEventArgs const& e) {
             e.Handled(true);
         });
 
@@ -11031,10 +11055,16 @@ static void RefreshMiniPlayerTimeline() {
             try {
                 bool ok = AwaitOrCancel(session.TryChangePlaybackPositionAsync(absoluteTicks));
                 if (!ok && absoluteTicks != relativeTicks)
-                    AwaitOrCancel(session.TryChangePlaybackPositionAsync(relativeTicks));
-                std::lock_guard<std::mutex> lk(g_mediaMtx);
-                g_media.positionTicks    = relativeTicks;
-                g_mediaPositionTimestamp = std::chrono::steady_clock::now();
+                    ok = AwaitOrCancel(session.TryChangePlaybackPositionAsync(relativeTicks));
+                // Some apps don't take a position from Windows. The bar then stays
+                // where the music is instead of jumping as if it had worked.
+                if (ok) {
+                    std::lock_guard<std::mutex> lk(g_mediaMtx);
+                    g_media.positionTicks    = relativeTicks;
+                    g_mediaPositionTimestamp = std::chrono::steady_clock::now();
+                } else {
+                    Wh_Log(L"Seek: the app refused the new position");
+                }
             } catch (...) { LOG_IGNORED_EXCEPTION(); }
         } catch (...) { LOG_IGNORED_EXCEPTION(); }
         DispatchMediaUpdate();
@@ -13716,6 +13746,9 @@ COLD_UNOPTIMIZED static Grid BuildPlayerGrid() {
             else if (pbPos == ProgressBarPosition::UnderButtons)  { barSpanFrom = barSpanTo = colButtons; }
             else if (pbPos == ProgressBarPosition::UnderViz)      { barSpanFrom = barSpanTo = colViz; }
             else if (pbPos == ProgressBarPosition::UnderText)     { barSpanFrom = colInfo; barSpanTo = colButtons; }
+            // "Below info and buttons" with only one of them shown: under that one.
+            if (barSpanFrom < 0) barSpanFrom = barSpanTo;
+            if (barSpanTo < 0)   barSpanTo = barSpanFrom;
             if (barSpanFrom > barSpanTo) std::swap(barSpanFrom, barSpanTo);
         }
         bool progressBarOverlayMode = g_settings.progressBarDisplayMode == ProgressBarDisplay::Overlay;
@@ -13868,7 +13901,16 @@ COLD_UNOPTIMIZED static Grid BuildPlayerGrid() {
 
         if (g_settings.showProgressBar) {
             try {
-                const ProgressBarPosition pos = g_settings.progressBarPosition;
+                ProgressBarPosition pos = g_settings.progressBarPosition;
+                // Under a part that's hidden: the bar spans the whole player instead of
+                // vanishing with it (GitHub #117). A detached part carries its own bar.
+                const bool barOnDetachedPart =
+                    (pos == ProgressBarPosition::UnderAlbumArt && g_settings.showAlbumArt && g_settings.albumArtDetached) ||
+                    (pos == ProgressBarPosition::UnderInfo && hasText && g_settings.infoDetached) ||
+                    (pos == ProgressBarPosition::UnderButtons && g_settings.showMediaButtons && g_settings.buttonsDetached) ||
+                    (pos == ProgressBarPosition::UnderViz && g_settings.vizEnabled && g_settings.vizDetached);
+                if (pos != ProgressBarPosition::AboveBoth && !needsPanelBar && !barOnDetachedPart)
+                    pos = ProgressBarPosition::UnderBoth;
                 if (pos == ProgressBarPosition::AboveBoth || pos == ProgressBarPosition::UnderBoth) {
                     // Spans the whole pill, flush at the edges: a sibling of panel, which is
                     // inset and centered.
@@ -13988,8 +14030,8 @@ COLD_UNOPTIMIZED static Grid BuildPlayerGrid() {
             updatePlayerVisualState();
         });
 
-        auto wrapperDoubleClick = std::make_shared<ExtraDoubleClick>();
-        wrapper.PointerReleased([isPressed, isHovered, updatePlayerVisualState, wrapperDoubleClick](auto const& sender, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e) mutable {
+        auto wrapperClicks = std::make_shared<PlayerClicks>();
+        wrapper.PointerReleased([isPressed, isHovered, updatePlayerVisualState, wrapperClicks](auto const& sender, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e) mutable {
             *isPressed = false;
             bool actuallyHovered = false;
             if (auto elem = sender.template try_as<UIElement>()) {
@@ -14010,13 +14052,11 @@ COLD_UNOPTIMIZED static Grid BuildPlayerGrid() {
                 auto kind = e.GetCurrentPoint(nullptr).Properties().PointerUpdateKind();
                 auto fe = sender.template try_as<FrameworkElement>();
                 if (kind == winrt::Windows::UI::Input::PointerUpdateKind::LeftButtonReleased) {
-                    ExecuteMediaAction(g_settings.playerLeftClick, fe);
+                    wrapperClicks->Click(kind, g_settings.playerLeftClick, g_settings.playerLeftDoubleClick, fe);
                 } else if (kind == winrt::Windows::UI::Input::PointerUpdateKind::RightButtonReleased) {
-                    ExecuteMediaAction(wrapperDoubleClick->IsSecondClick(kind) ? g_settings.playerRightDoubleClick
-                                                                               : g_settings.playerRightClick, fe);
+                    wrapperClicks->Click(kind, g_settings.playerRightClick, g_settings.playerRightDoubleClick, fe);
                 } else if (kind == winrt::Windows::UI::Input::PointerUpdateKind::MiddleButtonReleased) {
-                    ExecuteMediaAction(wrapperDoubleClick->IsSecondClick(kind) ? g_settings.playerMiddleDoubleClick
-                                                                               : g_settings.playerMiddleClick, fe);
+                    wrapperClicks->Click(kind, g_settings.playerMiddleClick, g_settings.playerMiddleDoubleClick, fe);
                 }
             }
         });
@@ -14043,9 +14083,7 @@ COLD_UNOPTIMIZED static Grid BuildPlayerGrid() {
         wrapper.DoubleTapped([isPressed, updatePlayerVisualState](auto const& sender, winrt::Windows::UI::Xaml::Input::DoubleTappedRoutedEventArgs const& e) mutable {
             *isPressed = false;
             updatePlayerVisualState();
-            if (g_unloading) return;
-            ExecuteMediaAction(g_settings.playerLeftDoubleClick, sender.template try_as<FrameworkElement>());
-            e.Handled(true);
+            e.Handled(true);   // the double-click itself is worked out in PointerReleased (PlayerClicks)
         });
 
         wrapper.Tag(winrt::box_value(winrt::hstring(L"FluentMediaBarWrapper")));
@@ -17886,6 +17924,31 @@ static void ExecuteMediaAction(const std::wstring& action, FrameworkElement cons
                 SetForegroundWindow(targetWindow);
                 BringWindowToTop(targetWindow);
                 return;
+            }
+
+            // No window to bring up, but the app runs: it sits in the tray
+            // (GitHub #114). Starting it again makes it show its window, as
+            // Spotify, AIMP and other one-instance apps do.
+            if (!search.targetExe.empty() && search.targetAumid.find(L'!') == std::wstring::npos) {
+                std::wstring exePath;
+                HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+                if (snap != INVALID_HANDLE_VALUE) {
+                    PROCESSENTRY32W pe{ sizeof(pe) };
+                    for (BOOL more = Process32FirstW(snap, &pe); more && exePath.empty(); more = Process32NextW(snap, &pe)) {
+                        std::wstring stem = pe.szExeFile;
+                        if (auto dot = stem.rfind(L'.'); dot != std::wstring::npos) stem.resize(dot);
+                        std::transform(stem.begin(), stem.end(), stem.begin(), ::towlower);
+                        if (stem != search.targetExe) continue;
+                        if (HANDLE proc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pe.th32ProcessID)) {
+                            wchar_t path[MAX_PATH]{};
+                            DWORD len = MAX_PATH;
+                            if (QueryFullProcessImageNameW(proc, 0, path, &len)) exePath = path;
+                            CloseHandle(proc);
+                        }
+                    }
+                    CloseHandle(snap);
+                }
+                if (!exePath.empty() && ShellOpenNoUi(exePath.c_str())) return;
             }
 
             if (!appAumid.empty()) {
