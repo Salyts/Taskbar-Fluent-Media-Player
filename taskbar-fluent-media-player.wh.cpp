@@ -1243,6 +1243,13 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
     $description: The second line of the player (the artist, or the title with "Swap title / artist" on).
 
   - AlbumArtDisplaySettings:
+    - albumArtSource: "cover"
+      $name: Album art shows
+      $description: The song's cover, the icon of the app that plays it, or always the stand-in icon set below for songs without a cover.
+      $options:
+      - "cover":    "The cover"
+      - "app_icon": "The app's icon"
+      - "icon":     "An icon"
     - albumArtEmptyBehavior: "show"
       $name: Album art behavior when no cover available
       $options:
@@ -1343,6 +1350,9 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
   $name: Appearance Settings
 
 - BehaviorSettings:
+  - separateDoubleClick: false
+    $name: A double-click doesn't run the single click too
+    $description: With a click and a double-click action on the same button, a double-click runs only its own action. Single clicks on that button then wait a moment (Windows' double-click time) to see if a second click follows.
   - disableAlbumArtClick: false
     #! $showIf: {settingsView: full}
     $name: Disable album art click (click through to player)
@@ -1414,6 +1424,7 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
           - "switch_sessions": "Switch sessions"
           - "system_sound":    "Change system sound volume"
           - "app_sound":       "Change app sound volume"
+          - "seek":            "Skip 5 seconds back or forward"
       - - object: album_art
         - click: mouse_wheel
         - action: switch_sessions
@@ -1621,6 +1632,9 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
   - hideMiniPlayerIconTray: false
     $name: Hide icon tray
     $description: Hide the row of icons at the bottom of the mini player menu (open app and settings)
+  - miniPlayerHideEmptyArt: false
+    $name: Hide the cover area without a cover
+    $description: The square where the cover goes folds away in the mini player menu when a song has none.
   - miniPlayerSeekBarGradient: false
     $name: Album gradient seek bar
     $description: Color the seek bar with two colors from the album cover, the first on the left end and the second on the right. Overrides the seek bar color while there's album art.
@@ -1652,6 +1666,8 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
     - solid: Solid color
     - album_gradient: Album colors gradient
     - album_art_blur: Blurred album cover
+    - mica: Mica
+    - mica_alt: Mica Alt
   - miniPlayerBackgroundColor: "242 242 242$36 36 36"
     #! $showIf: {miniPlayerBackground: solid}
     $name: Menu background color (R G B)
@@ -2005,6 +2021,7 @@ static TextScrollState g_artistScroll;
 static std::atomic<bool> g_displayOff{false};           // the screen is off
 static std::atomic<bool> g_vizPowerPaused{false};       // "On battery" pauses the visualizer
 static std::atomic<bool> g_animationsSuspended{false};  // the text is hidden or the screen is off
+static std::atomic<bool> g_refetchMediaProps{false};    // a setting changed what the cover shows
 
 } // namespace UI
 
@@ -2068,6 +2085,7 @@ namespace UI {
     static void RefreshMainArtistTimeText();
     static std::wstring FormatMediaTime(int64_t ticks);
     static void SeekMiniPlayer(double ratio);
+    static void SeekBySeconds(int seconds);
     static void ShowMediaContextMenu(FrameworkElement const& target);
     static void ShowMiniPlayerFlyout(FrameworkElement const& target);  // mini player popup (Salyts 1.6.0)
     static void RefreshPlayerContents();
@@ -2490,12 +2508,14 @@ static constexpr SettingChoice<ContextMenuToggleStyle> CONTEXT_MENU_TOGGLE_STYLE
 
 // Which taskbar(s) "Hide the native Widgets button" applies to.
 // What fills the mini player menu (GitHub #48).
-enum class MiniPlayerBackground { Acrylic, Solid, AlbumGradient, AlbumArtBlur };
+enum class MiniPlayerBackground { Acrylic, Solid, AlbumGradient, AlbumArtBlur, Mica, MicaAlt };
 static constexpr SettingChoice<MiniPlayerBackground> MINI_PLAYER_BACKGROUNDS[] = {
     {L"acrylic",        MiniPlayerBackground::Acrylic},
     {L"solid",          MiniPlayerBackground::Solid},
     {L"album_gradient", MiniPlayerBackground::AlbumGradient},
     {L"album_art_blur", MiniPlayerBackground::AlbumArtBlur},
+    {L"mica",           MiniPlayerBackground::Mica},
+    {L"mica_alt",       MiniPlayerBackground::MicaAlt},
 };
 
 enum class WidgetsHideScope { Both, Monitor1, Monitor2 };
@@ -2596,6 +2616,7 @@ struct ModSettings {
     bool         keepMiniPlayerOpen   = false;
     bool         hideMediaSessionsList = false;
     bool         hideMiniPlayerIconTray = false;
+    bool         miniPlayerHideEmptyArt = false;
     bool         miniPlayerSeekBarGradient = false;
     bool         miniPlayerSeekBarHoverEffect = false;
     int          miniPlayerCornerRadius = 6;
@@ -2631,6 +2652,7 @@ struct ModSettings {
     int          albumArtDetachedMonitor  = 1;
     DetachedBackgroundSettings albumArtDetachedBg;
     AlbumArtEmptyBehavior albumArtEmptyBehavior = AlbumArtEmptyBehavior::Show;
+    int          albumArtSource       = 0;   // 0 the cover, 1 the app's icon, 2 the stand-in icon
     std::wstring emptyIconGlyph       = L"E189";
     int          emptyIconSize        = 16;
     EmptyIconFont emptyIconFont       = EmptyIconFont::SegoeFluent;
@@ -2776,6 +2798,7 @@ struct ModSettings {
     std::wstring settingsMaterial        = L"mica";         // XAML settings-window backdrop: none | mica | mica_alt | acrylic | acrylic_thin
     bool         hideUnsupportedButtons  = false;
     bool         disableAlbumArtClick    = false;
+    bool         separateDoubleClick     = false;
     std::vector<std::wstring> contextMenuItems;
     ContextMenuToggleStyle contextMenuRepeatStyle  = ContextMenuToggleStyle::Submenu;
     ContextMenuToggleStyle contextMenuShuffleStyle = ContextMenuToggleStyle::Toggle;
@@ -3149,6 +3172,7 @@ static constexpr SettingSpec SETTINGS[] = {
     SStrRaw(L"AppearanceSettings.ArtistTextStyleSettings.artistFontStyle", &ModSettings::artistFontStyle),
     SIntRaw(L"AppearanceSettings.ArtistTextStyleSettings.artistCharacterSpacing", &ModSettings::artistCharacterSpacing),
     SStr(L"AppearanceSettings.AlbumArtDisplaySettings.albumArtEmptyBehavior", L"show"),
+    SStr(L"AppearanceSettings.AlbumArtDisplaySettings.albumArtSource", L"cover"),
     SStr(L"AppearanceSettings.AlbumArtDisplaySettings.emptyIconGlyph", L"E189", &ModSettings::emptyIconGlyph),
     SInt(L"AppearanceSettings.AlbumArtDisplaySettings.emptyIconSize", 1, 256, &ModSettings::emptyIconSize),
     SStr(L"AppearanceSettings.AlbumArtDisplaySettings.emptyIconFont", L"segoe_fluent"),
@@ -3171,6 +3195,7 @@ static constexpr SettingSpec SETTINGS[] = {
     SInt(L"AppearanceSettings.VisualizerStyleSettings.vizColorOpacity", 0, 100, &ModSettings::vizColorOpacity),
     SInt(L"AppearanceSettings.VisualizerStyleSettings.vizBarCornerRadius", 0, 50, &ModSettings::vizBarCornerRadius),
     SBool(L"BehaviorSettings.disableAlbumArtClick", &ModSettings::disableAlbumArtClick),
+    SBool(L"BehaviorSettings.separateDoubleClick", &ModSettings::separateDoubleClick),
     SList(L"BehaviorSettings.ClickActionSettings"),
     SList(L"BehaviorSettings.MouseWheelActionSettings"),
     SStrRaw(L"BehaviorSettings.defaultMediaApp", &ModSettings::defaultMediaApp),
@@ -3193,6 +3218,7 @@ static constexpr SettingSpec SETTINGS[] = {
     SBool(L"PlayerMenuSettings.keepMiniPlayerOpen", &ModSettings::keepMiniPlayerOpen),
     SBool(L"PlayerMenuSettings.hideMediaSessionsList", &ModSettings::hideMediaSessionsList),
     SBool(L"PlayerMenuSettings.hideMiniPlayerIconTray", &ModSettings::hideMiniPlayerIconTray),
+    SBool(L"PlayerMenuSettings.miniPlayerHideEmptyArt", &ModSettings::miniPlayerHideEmptyArt),
     SBool(L"PlayerMenuSettings.miniPlayerSeekBarGradient", &ModSettings::miniPlayerSeekBarGradient),
     SBool(L"PlayerMenuSettings.miniPlayerSeekBarHoverEffect", &ModSettings::miniPlayerSeekBarHoverEffect),
     SInt(L"PlayerMenuSettings.miniPlayerCornerRadius", 0, 24, &ModSettings::miniPlayerCornerRadius),
@@ -3389,6 +3415,15 @@ COLD_UNOPTIMIZED static void LoadSettings() {
         ALBUM_ART_QUALITIES, AlbumArtQuality::Medium);
     g_settings.albumArtEmptyBehavior = ParseSettingChoice(Str(L"AppearanceSettings.AlbumArtDisplaySettings.albumArtEmptyBehavior", L"show"),
         ALBUM_ART_EMPTY_BEHAVIORS, AlbumArtEmptyBehavior::Show);
+    {
+        const std::wstring source = Str(L"AppearanceSettings.AlbumArtDisplaySettings.albumArtSource", L"cover");
+        static int s_lastSource = -1;
+        g_settings.albumArtSource = source == L"app_icon" ? 1 : source == L"icon" ? 2 : 0;
+        if (s_lastSource >= 0 && s_lastSource != g_settings.albumArtSource) g_refetchMediaProps = true;   // takes effect now, not at the next song
+        s_lastSource = g_settings.albumArtSource;
+        // "An icon" is the stand-in icon, always: no song has a cover then.
+        if (g_settings.albumArtSource == 2) g_settings.albumArtEmptyBehavior = AlbumArtEmptyBehavior::ShowIcon;
+    }
     g_settings.emptyIconFont = ParseSettingChoice(Str(L"AppearanceSettings.AlbumArtDisplaySettings.emptyIconFont", L"segoe_fluent"),
         EMPTY_ICON_FONTS, EmptyIconFont::SegoeFluent);
     g_settings.appIconCorner = ParseSettingChoice(Str(L"AppearanceSettings.AlbumArtDisplaySettings.appIconCorner", L"bottom_right"),
@@ -4940,6 +4975,75 @@ static std::vector<BYTE> ReadThumbnailBytes(winrt::Windows::Storage::Streams::IR
     return bytes;
 }
 
+// Raw BGRA pixels, top row first, as a BMP file with alpha: the cover's own
+// loading and color code then read an icon like any thumbnail.
+static std::vector<BYTE> BgraToBmp(std::vector<BYTE> px, int width, int height) {
+    if (width <= 0 || height <= 0 || px.size() != (size_t)width * height * 4) return {};
+    for (size_t i = 0; i + 3 < px.size(); i += 4) {   // icons come premultiplied; a BMP isn't
+        const BYTE a = px[i + 3];
+        if (a == 0 || a == 255) continue;
+        for (int c = 0; c < 3; c++) px[i + c] = (BYTE)std::min(255, px[i + c] * 255 / a);
+    }
+    BITMAPFILEHEADER fh{};
+    BITMAPV5HEADER ih{};
+    fh.bfType = 0x4D42;
+    fh.bfOffBits = sizeof(fh) + sizeof(ih);
+    fh.bfSize = fh.bfOffBits + (DWORD)px.size();
+    ih.bV5Size = sizeof(ih);
+    ih.bV5Width = width;
+    ih.bV5Height = -height;
+    ih.bV5Planes = 1;
+    ih.bV5BitCount = 32;
+    ih.bV5Compression = BI_BITFIELDS;
+    ih.bV5SizeImage = (DWORD)px.size();
+    ih.bV5RedMask = 0x00FF0000;
+    ih.bV5GreenMask = 0x0000FF00;
+    ih.bV5BlueMask = 0x000000FF;
+    ih.bV5AlphaMask = 0xFF000000;
+    ih.bV5CSType = LCS_sRGB;
+    ih.bV5Intent = LCS_GM_IMAGES;
+    std::vector<BYTE> out(fh.bfSize);
+    memcpy(out.data(), &fh, sizeof(fh));
+    memcpy(out.data() + sizeof(fh), &ih, sizeof(ih));
+    memcpy(out.data() + fh.bfOffBits, px.data(), px.size());
+    return out;
+}
+
+// The app's icon, big, for "Album art shows: the app's icon": Windows' own
+// large icon when the app has one, otherwise the small one scaled up.
+static std::vector<BYTE> FetchAppIconAsCover(const std::wstring& aumid) {
+    static constexpr int SIZE_PX = 256;
+    if (aumid.empty()) return {};
+    try {
+        winrt::com_ptr<IShellItemImageFactory> factory;
+        const std::wstring path = L"shell:AppsFolder\\" + aumid;
+        HBITMAP hbmp = nullptr;
+        if (SUCCEEDED(SHCreateItemFromParsingName(path.c_str(), nullptr, IID_PPV_ARGS(factory.put()))) &&
+            SUCCEEDED(factory->GetImage(SIZE{ SIZE_PX, SIZE_PX }, SIIGBF_ICONONLY, &hbmp)) && hbmp) {
+            std::vector<BYTE> px;
+            BITMAP bm{};
+            if (GetObjectW(hbmp, sizeof(bm), &bm) && bm.bmWidth > 0 && bm.bmHeight > 0) {
+                BITMAPINFO bi{};
+                bi.bmiHeader.biSize = sizeof(bi.bmiHeader);
+                bi.bmiHeader.biWidth = bm.bmWidth;
+                bi.bmiHeader.biHeight = -bm.bmHeight;
+                bi.bmiHeader.biPlanes = 1;
+                bi.bmiHeader.biBitCount = 32;
+                bi.bmiHeader.biCompression = BI_RGB;
+                px.resize((size_t)bm.bmWidth * bm.bmHeight * 4);
+                HDC dc = GetDC(nullptr);
+                const int rows = dc ? GetDIBits(dc, hbmp, 0, bm.bmHeight, px.data(), &bi, DIB_RGB_COLORS) : 0;
+                if (dc) ReleaseDC(nullptr, dc);
+                if (rows != bm.bmHeight) px.clear();
+            }
+            DeleteObject(hbmp);
+            if (auto bmp = BgraToBmp(std::move(px), bm.bmWidth, bm.bmHeight); !bmp.empty()) return bmp;
+        }
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    try { return BgraToBmp(FetchAppIconBytes(aumid, 96), 96, 96); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    return {};
+}
+
 static void FetchMediaPropertiesAsync() {
     Wh_Log(L"FetchMediaPropertiesAsync: Called");
     SpawnTrackedWorker([]() {
@@ -4981,6 +5085,16 @@ static void FetchMediaPropertiesAsync() {
                         thumbHash = thumbHash * 31 + thumbBytes[i];
                     // Mixing in the size keeps two covers that happen to share
                     // every sampled byte from looking identical.
+                    if (!thumbBytes.empty()) thumbHash = thumbHash * 31 + thumbBytes.size();
+                }
+                // "Album art shows": the app's icon, or no picture at all (the
+                // stand-in icon), in the cover's place (GitHub #113, #120).
+                if (g_settings.albumArtSource != 0) {
+                    thumbBytes.clear();
+                    thumbHash = 0;
+                    if (g_settings.albumArtSource == 1) thumbBytes = FetchAppIconAsCover(aumid);
+                    for (size_t i = 0; i < thumbBytes.size(); i += 1024)
+                        thumbHash = thumbHash * 31 + thumbBytes[i];
                     if (!thumbBytes.empty()) thumbHash = thumbHash * 31 + thumbBytes.size();
                 }
 
@@ -9944,10 +10058,33 @@ static void SetPauseOverlayShown(Border const& overlay, bool shown) {
 
 static HWND TaskbarWndForElement(FrameworkElement const& el);   // with the mini player, below
 
+// What the mouse wheel does over the player or the album art.
+static void RunWheelAction(const std::wstring& action, int delta) {
+    if (action == L"switch_tracks") {
+        if (delta > 0) SendMediaCommandAsync(MediaCommand::Previous);
+        else if (delta < 0) SendMediaCommandAsync(MediaCommand::Next);
+        DispatchMediaUpdate();
+    } else if (action == L"switch_tracks_inverted") {  // scroll up = next (1.6.0)
+        if (delta > 0) SendMediaCommandAsync(MediaCommand::Next);
+        else if (delta < 0) SendMediaCommandAsync(MediaCommand::Previous);
+        DispatchMediaUpdate();
+    } else if (action == L"switch_sessions") {
+        if (delta != 0) SwitchMediaSession();
+    } else if (action == L"system_sound") {
+        ChangeSystemVolume(delta > 0);
+    } else if (action == L"app_sound") {
+        QueueAppVolumeStep(delta);
+    } else if (action == L"seek") {
+        if (delta != 0) SeekBySeconds(delta > 0 ? 5 : -5);
+    }
+}
+
 // Single and double clicks on the player, for all three buttons (XAML's
-// DoubleTapped is left-only). A button that has a double-click action holds
-// its single click for the double-click time, so a double-click runs only its
-// own action (GitHub #115). Without one, the click runs at once, as before.
+// DoubleTapped is left-only). With "A double-click doesn't run the single
+// click too" on, a button that has a double-click action holds its single
+// click for the double-click time, so a double-click runs only its own action
+// (GitHub #115). Otherwise the click runs at once, and so does the first click
+// of a double-click.
 struct PlayerClicks {
     ULONGLONG lastTime = 0;
     winrt::Windows::UI::Input::PointerUpdateKind lastKind = winrt::Windows::UI::Input::PointerUpdateKind::Other;
@@ -9969,6 +10106,7 @@ struct PlayerClicks {
             return;
         }
         if (single.empty() || single == L"none") return;
+        if (!g_settings.separateDoubleClick) { ExecuteMediaAction(single, fe); return; }
 
         struct Held { std::wstring action; winrt::weak_ref<FrameworkElement> fe; };
         auto cancelled = std::make_shared<std::atomic<bool>>(false);
@@ -10254,24 +10392,7 @@ COLD_UNOPTIMIZED static Grid BuildAlbumArtContainer() {
             auto action = g_settings.albumArtWheelAction;
             if (action == L"none") return;
 
-            auto props = e.GetCurrentPoint(nullptr).Properties();
-            int delta = props.MouseWheelDelta();
-
-            if (action == L"switch_tracks") {
-                if (delta > 0) SendMediaCommandAsync(MediaCommand::Previous);
-                else if (delta < 0) SendMediaCommandAsync(MediaCommand::Next);
-                DispatchMediaUpdate();
-            } else if (action == L"switch_tracks_inverted") {  // scroll up = next (1.6.0)
-                if (delta > 0) SendMediaCommandAsync(MediaCommand::Next);
-                else if (delta < 0) SendMediaCommandAsync(MediaCommand::Previous);
-                DispatchMediaUpdate();
-            } else if (action == L"switch_sessions") {
-                if (delta != 0) SwitchMediaSession();
-            } else if (action == L"system_sound") {
-                ChangeSystemVolume(delta > 0);
-            } else if (action == L"app_sound") {
-                QueueAppVolumeStep(delta);
-            }
+            RunWheelAction(action, e.GetCurrentPoint(nullptr).Properties().MouseWheelDelta());
             e.Handled(true);
         });
     }
@@ -11072,6 +11193,32 @@ static void RefreshMiniPlayerTimeline() {
     });
 }
 
+// Skips back or forward from where the music is now: the wheel over the player
+// or over the mini player's seek bar (GitHub #121, #123). Quick steps add up.
+static void SeekBySeconds(int seconds) {
+    constexpr int64_t TICKS_PER_SECOND = 10000000LL;
+    static int64_t s_target = 0;
+    static ULONGLONG s_targetAt = 0;
+    int64_t duration = 0, position = 0;
+    {
+        std::lock_guard<std::mutex> lk(g_mediaMtx);
+        duration = g_media.durationTicks;
+        position = g_media.positionTicks;
+        if (g_media.isPlaying && g_mediaPositionTimestamp.time_since_epoch().count() != 0)
+            position += (int64_t)(std::chrono::duration<double>(std::chrono::steady_clock::now() - g_mediaPositionTimestamp).count() *
+                                  TICKS_PER_SECOND);
+    }
+    if (duration <= 0) {   // no length known here: the app works it out itself
+        SendMediaCommandAsync(seconds > 0 ? MediaCommand::Forward5s : MediaCommand::Rewind5s);
+        return;
+    }
+    const ULONGLONG now = GetTickCount64();
+    if (now - s_targetAt < 800) position = s_target;   // the last step is still on its way
+    s_target = std::clamp<int64_t>(position + seconds * TICKS_PER_SECOND, 0, duration);
+    s_targetAt = now;
+    SeekMiniPlayer((double)s_target / (double)duration);
+}
+
 struct MiniSessionInfo {
     std::wstring id;
     std::wstring title;
@@ -11244,6 +11391,25 @@ static Brush MiniPlayerAcrylicBrush(bool isLight) {
     return MakeBrush({0xF5, tint.R, tint.G, tint.B});
 }
 
+// Mica and Mica Alt for the menu (GitHub #112). Windows has no real Mica for a
+// menu, so this is its look: Mica's own base colors, nearly solid, with a
+// little of what's behind coming through.
+static Brush MiniPlayerMicaBrush(bool isLight, bool alt) {
+    const winrt::Windows::UI::Color tint = isLight
+        ? (alt ? winrt::Windows::UI::Color{0xFF, 0xDA, 0xDA, 0xDA} : winrt::Windows::UI::Color{0xFF, 0xF3, 0xF3, 0xF3})
+        : (alt ? winrt::Windows::UI::Color{0xFF, 0x0A, 0x0A, 0x0A} : winrt::Windows::UI::Color{0xFF, 0x20, 0x20, 0x20});
+    try {
+        AcrylicBrush mica;
+        mica.BackgroundSource(AcrylicBackgroundSource::Backdrop);
+        mica.TintColor(tint);
+        mica.TintOpacity(0.8);
+        mica.TintLuminosityOpacity(1.0);
+        mica.FallbackColor(tint);
+        return mica;
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    return MakeBrush(tint);
+}
+
 // An album color pulled most of the way to the menu's own base color, so the
 // theme-colored text stays readable whatever the cover looks like.
 static winrt::Windows::UI::Color MiniPlayerAlbumTone(winrt::Windows::UI::Color album, bool isLight, BYTE alpha) {
@@ -11306,6 +11472,10 @@ static void ApplyMiniPlayerBackground(Border const& target, bool isLight,
                 target.Child(dim);
                 return;
             }
+            case MiniPlayerBackground::Mica:
+            case MiniPlayerBackground::MicaAlt:
+                target.Background(MiniPlayerMicaBrush(isLight, g_settings.miniPlayerBackground == MiniPlayerBackground::MicaAlt));
+                return;
             case MiniPlayerBackground::Acrylic:
                 break;
         }
@@ -11434,6 +11604,13 @@ static void RefreshMiniPlayerFlyoutUI() {
                 ClearImageWithFade(g_miniPlayerArtRef, g_miniArtFade);
                 g_miniPlayerArtRef.Visibility(Visibility::Collapsed);
                 g_miniPlayerCachedThumb.clear();
+            }
+            if (g_settings.miniPlayerHideEmptyArt) {   // the cover's square comes and goes with the cover
+                try {
+                    if (auto clip = VisualTreeHelper::GetParent(g_miniPlayerArtRef))
+                        if (auto area = VisualTreeHelper::GetParent(clip).try_as<FrameworkElement>())
+                            area.Visibility(thumbBytes.empty() ? Visibility::Collapsed : Visibility::Visible);
+                } catch (...) { LOG_IGNORED_EXCEPTION(); }
             }
         }
         {
@@ -12256,6 +12433,7 @@ COLD_UNOPTIMIZED static Grid BuildMiniPlayerFlyoutContent() {
     }
     artInnerGrid.Children().Append(artImage);
     artBorder.Child(artInnerGrid);
+    if (thumbBytes.empty() && g_settings.miniPlayerHideEmptyArt) artBorder.Visibility(Visibility::Collapsed);
     content.Children().Append(artBorder);
 
     TextBlock titleBlock;
@@ -12499,6 +12677,15 @@ COLD_UNOPTIMIZED static Grid BuildMiniPlayerFlyoutContent() {
         seekRow.Children().Append(seekSlider);
         seekRow.Children().Append(durationBlock);
 
+        // The wheel over the seek bar skips 5 seconds (GitHub #121).
+        seekSlider.AddHandler(UIElement::PointerWheelChangedEvent(), winrt::box_value(
+            winrt::Windows::UI::Xaml::Input::PointerEventHandler(
+            [](auto const&, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e) {
+                if (g_unloading) return;
+                const int delta = e.GetCurrentPoint(nullptr).Properties().MouseWheelDelta();
+                if (delta != 0) SeekBySeconds(delta > 0 ? 5 : -5);
+                e.Handled(true);
+            })), true);
         seekSlider.AddHandler(UIElement::PointerPressedEvent(), winrt::box_value(
             winrt::Windows::UI::Xaml::Input::PointerEventHandler(
             [](auto const&, auto const&) {
@@ -14093,24 +14280,7 @@ COLD_UNOPTIMIZED static Grid BuildPlayerGrid() {
             auto action = g_settings.playerWheelAction;
             if (action == L"none") return;
 
-            auto props = e.GetCurrentPoint(nullptr).Properties();
-            int delta = props.MouseWheelDelta();
-
-            if (action == L"switch_tracks") {
-                if (delta > 0) SendMediaCommandAsync(MediaCommand::Previous);
-                else if (delta < 0) SendMediaCommandAsync(MediaCommand::Next);
-                DispatchMediaUpdate();
-            } else if (action == L"switch_tracks_inverted") {  // scroll up = next (1.6.0)
-                if (delta > 0) SendMediaCommandAsync(MediaCommand::Next);
-                else if (delta < 0) SendMediaCommandAsync(MediaCommand::Previous);
-                DispatchMediaUpdate();
-            } else if (action == L"switch_sessions") {
-                if (delta != 0) SwitchMediaSession();
-            } else if (action == L"system_sound") {
-                ChangeSystemVolume(delta > 0);
-            } else if (action == L"app_sound") {
-                QueueAppVolumeStep(delta);
-            }
+            RunWheelAction(action, e.GetCurrentPoint(nullptr).Properties().MouseWheelDelta());
             e.Handled(true);
         });
 
@@ -18102,6 +18272,8 @@ static DWORD WINAPI TimerThreadProc(void*) {
             }
         }
 
+        if (g_refetchMediaProps.exchange(false)) FetchMediaPropertiesAsync();
+
         // A game going fullscreen (or leaving it) hides or shows the player right
         // away. It used to wait for the next change in the music.
         if (g_settings.hideFullscreen) {
@@ -19204,7 +19376,8 @@ COLD_UNOPTIMIZED static SettingCategory BuildBehaviorClicksCategory() {
     const std::vector<ComboOption> wheelActionOptions = {
         {L"none", L"Nothing"}, {L"switch_tracks", L"Switch tracks"}, {L"switch_tracks_inverted", L"Switch tracks (inverted)"},
         {L"switch_sessions", L"Switch sessions"},
-        {L"system_sound", L"Change system sound volume"}, {L"app_sound", L"Change app sound volume"}
+        {L"system_sound", L"Change system sound volume"}, {L"app_sound", L"Change app sound volume"},
+        {L"seek", L"Skip 5 seconds back or forward"}
     };
 
     // Only real behaviour here; each vertical-taskbar row lives in its own
@@ -19214,6 +19387,8 @@ COLD_UNOPTIMIZED static SettingCategory BuildBehaviorClicksCategory() {
         RowBool(L"Auto-switch to active media session", L"MainSettings.PlayerSetting.autoSwitchSession"),
         RowBool(L"Full-height invisible hit area", L"MainSettings.PlayerSetting.fullHeightHitArea"),
         RowBoolInverted(L"Clickable album art", L"BehaviorSettings.disableAlbumArtClick"),
+        WithDesc(RowBool(L"A double-click doesn't run the single click too", L"BehaviorSettings.separateDoubleClick"),
+                 L"Single clicks then wait a moment for a second click."),
         WithDesc(RowTextAllowEmpty(L"App to open when nothing is playing", L"BehaviorSettings.defaultMediaApp"),
                  L"Opens on click when nothing is playing (app, path or link)."),
     };
@@ -19312,6 +19487,8 @@ COLD_UNOPTIMIZED static SettingCategory BuildPlayerMenuCategory() {
     contents.rows = {
         RowBoolInverted(L"Show media sessions list", L"PlayerMenuSettings.hideMediaSessionsList"),
         RowBoolInverted(L"Show icon tray", L"PlayerMenuSettings.hideMiniPlayerIconTray"),
+        WithDesc(RowBool(L"Hide the cover area without a cover", L"PlayerMenuSettings.miniPlayerHideEmptyArt"),
+                 L"The cover's square folds away when a song has none."),
     };
 
     const std::vector<ComboOption> miniPlayerIconStyleOptions = {
@@ -19329,7 +19506,8 @@ COLD_UNOPTIMIZED static SettingCategory BuildPlayerMenuCategory() {
         RowSlider(L"Menu corner radius", L"PlayerMenuSettings.miniPlayerCornerRadius", L"6", 0, 24),
         WithDesc(RowCombo(L"Menu background", L"PlayerMenuSettings.miniPlayerBackground", L"acrylic",
                           { {L"acrylic", L"Acrylic"}, {L"solid", L"Solid color"},
-                            {L"album_gradient", L"Album colors gradient"}, {L"album_art_blur", L"Blurred album cover"} }),
+                            {L"album_gradient", L"Album colors gradient"}, {L"album_art_blur", L"Blurred album cover"},
+                            {L"mica", L"Mica"}, {L"mica_alt", L"Mica Alt"} }),
                  L"Album modes fall back to acrylic without a cover."),
         WithDesc(RowColorAlpha(L"Menu background color", L"PlayerMenuSettings.miniPlayerBackgroundColor", L"242 242 242$36 36 36",
                                L"Menu background opacity", L"PlayerMenuSettings.miniPlayerBackgroundOpacity"),
@@ -19668,6 +19846,9 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
         SettingCard display;
         display.title = L"Display";
         display.rows = {
+            WithDesc(RowCombo(L"Album art shows", L"AppearanceSettings.AlbumArtDisplaySettings.albumArtSource", L"cover",
+                              { {L"cover", L"The cover"}, {L"app_icon", L"The app's icon"}, {L"icon", L"An icon"} }),
+                     L"\"An icon\" is the one set under \"No album art\"."),
             RowCombo(L"Album art quality", L"AppearanceSettings.AlbumArtDisplaySettings.albumArtQuality", L"medium", albumArtQualityOptions),
             RowSlider(L"Album art opacity", L"AppearanceSettings.AlbumArtDisplaySettings.albumArtOpacity", L"100", 0, 100),
             RowText(L"Album art corner radius", L"AppearanceSettings.AlbumArtDisplaySettings.albumArtCornerRadius", L"4"),
@@ -19736,6 +19917,10 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
             RowColorAlpha(L"Gradient color 2", L"AppearanceSettings.VisualizerStyleSettings.vizColor2", L"0 180 255",
                           L"Bar opacity", L"AppearanceSettings.VisualizerStyleSettings.vizColorOpacity"),
             RowBool(L"Hide when nothing is playing", L"MainSettings.VisualizerFunctionsSettings.vizHideWhenPaused"),
+        };
+        SettingCard perf;
+        perf.title = L"Performance";
+        perf.rows = {
             WithDesc(RowCombo(L"Frame rate", L"MainSettings.VisualizerFunctionsSettings.vizFrameRate", L"60fps",
                               { {L"60fps", L"60 fps (smooth)"}, {L"30fps", L"30 fps (balanced)"}, {L"15fps", L"15 fps (lowest power)"} }),
                      L"Lower rates use less CPU and GPU."),
@@ -19777,7 +19962,7 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
             RowSlider(L"Band 6 (6-14 kHz)", L"MainSettings.VisualizerFunctionsSettings.vizBand6Sensitivity", L"100", 0, 300),
             RowSlider(L"Band 7 (14-20 kHz)", L"MainSettings.VisualizerFunctionsSettings.vizBand7Sensitivity", L"100", 0, 300),
         };
-        cats.push_back(SettingCategory{ L"Visualizer", L"\uE9D9", { where, look, bars, sound, bandSens } });
+        cats.push_back(SettingCategory{ L"Visualizer", L"\uE9D9", { where, look, bars, sound, perf, bandSens } });
         cats.back().enabledRow = RowBool(L"Show visualizer", L"MainSettings.VisualizerFunctionsSettings.vizEnabled");
     }
 
@@ -19823,7 +20008,8 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
         };
         auto BuildDetachedContainerCard = [&](const std::wstring& title, const std::wstring& detachKey,
                                                const std::wstring& positionKey, const std::wstring& monitorKey,
-                                               const std::wstring& bgBase) -> SettingCard {
+                                               const std::wstring& bgBase,
+                                               const wchar_t* positionDef = L"taskbar_left_edge") -> SettingCard {
             SettingCard c;
             c.title = title;
             c.expander = true;
@@ -19832,7 +20018,7 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
                 RowBool(L"Detach from player", detachKey),
             };
             {
-                auto posRows = RowPositionRows(L"Position", positionKey, L"taskbar_left_edge", positionAnchors);
+                auto posRows = RowPositionRows(L"Position", positionKey, positionDef, positionAnchors);
                 c.rows.insert(c.rows.end(), posRows.begin(), posRows.end());
             }
             {
@@ -19876,17 +20062,23 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
             L"MainSettings.VisualizerFunctionsSettings.vizDetachedPosition",
             L"MainSettings.VisualizerFunctionsSettings.vizDetachedMonitor",
             L"MainSettings.VisualizerFunctionsSettings.vizDetachedBackground");
-        // Weather is always a part of its own: its switch turns it on.
-        SettingCard weatherCard = BuildDetachedContainerCard(
-            L"Weather", L"MainSettings.WeatherSetting.weatherEnabled",
-            L"MainSettings.WeatherSetting.weatherPosition",
-            L"MainSettings.WeatherSetting.weatherMonitor",
-            L"MainSettings.WeatherSetting.weatherBackground");
-        if (!weatherCard.rows.empty()) {
-            weatherCard.rows[0].label = L"Show weather";
-            weatherCard.rows[0].description = L"The weather from the Widgets button, placed anywhere. Click it to open Widgets.";
-            weatherCard.rows.insert(weatherCard.rows.begin() + 1,
-                RowBool(L"Show the condition", L"MainSettings.WeatherSetting.weatherShowCondition"));
+        // Weather is always a part of its own, with a page of its own: the
+        // page's switch turns it on, then where it goes and how it looks.
+        SettingCard weatherWhere, weatherLook;
+        weatherWhere.title = L"Where it shows";
+        weatherLook.title = L"Appearance";
+        {
+            SettingCard all = BuildDetachedContainerCard(
+                L"Weather", L"MainSettings.WeatherSetting.weatherEnabled",
+                L"MainSettings.WeatherSetting.weatherPosition",
+                L"MainSettings.WeatherSetting.weatherMonitor",
+                L"MainSettings.WeatherSetting.weatherBackground", L"tray_left");
+            weatherLook.rows.push_back(RowBool(L"Show the condition", L"MainSettings.WeatherSetting.weatherShowCondition"));
+            bool pastMonitor = false;
+            for (size_t i = 1; i < all.rows.size(); i++) {   // rows[0] is the switch, which the page has itself
+                (pastMonitor ? weatherLook : weatherWhere).rows.push_back(all.rows[i]);
+                if (all.rows[i].key == L"MainSettings.WeatherSetting.weatherMonitor") pastMonitor = true;
+            }
         }
 
         SettingCard sidebarPlayerCard;
@@ -19901,7 +20093,11 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
         SettingCard preview;
         preview.title = L"Taskbar layout";
         preview.layoutPreview = true;
-        cats.push_back(SettingCategory{ L"Layout", L"\uE8A9", { preview, card, size, order, sidebarPlayerCard, albumArtCard, infoCard, buttonsCard, vizCard, weatherCard } });
+        cats.push_back(SettingCategory{ L"Layout", L"\uE8A9", { preview, card, size, order, sidebarPlayerCard, albumArtCard, infoCard, buttonsCard, vizCard } });
+        cats.push_back(SettingCategory{ L"Weather", L"\uE706", { weatherWhere, weatherLook } });
+        cats.back().enabledRow = WithDesc(
+            RowBool(L"Show weather", L"MainSettings.WeatherSetting.weatherEnabled"),
+            L"The weather from the Widgets button, placed anywhere. Click it to open Widgets.");
     }
 
     cats.push_back(BuildBehaviorClicksCategory());
@@ -21172,6 +21368,17 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"Pause while battery saver is on", L"Пауза в режимі заощадження заряду", L"Пауза в режиме экономии заряда", L"Im Energiesparmodus pausieren", L"बैटरी सेवर चालू होने पर रोकें", L"省电模式开启时暂停", L"省電模式開啟時暫停", L"Pausar con el ahorro de batería activado", L"Mettre en pause avec l'économiseur de batterie", L"Pausar com a economia de bateria ativada", L"Pausa con il risparmio batteria attivo", L"Wstrzymaj przy oszczędzaniu baterii", L"Pil tasarrufu açıkken duraklat", L"バッテリー節約機能がオンのとき一時停止", L"배터리 절약 모드에서 일시 중지" },
     { L"Pause whenever on battery", L"Пауза щоразу при роботі від батареї", L"Пауза всегда при работе от батареи", L"Im Akkubetrieb immer pausieren", L"बैटरी पर हमेशा रोकें", L"使用电池时始终暂停", L"使用電池時一律暫停", L"Pausar siempre con batería", L"Toujours mettre en pause sur batterie", L"Pausar sempre na bateria", L"Pausa sempre a batteria", L"Zawsze wstrzymuj na baterii", L"Pilde her zaman duraklat", L"バッテリー駆動時は常に一時停止", L"배터리 사용 시 항상 일시 중지" },
     { L"Paused, the bars rest and the mod stops listening to the audio.", L"На паузі смуги завмирають, а мод перестає слухати звук.", L"На паузе полосы замирают, а мод перестаёт слушать звук.", L"Pausiert ruhen die Balken und der Mod hört nicht mehr auf den Ton.", L"रुकने पर बार थम जाते हैं और मॉड ऑडियो सुनना बंद कर देता है।", L"暂停时，频谱条静止，模组也不再监听音频。", L"暫停時，頻譜條靜止，模組也不再監聽音訊。", L"En pausa, las barras se quedan quietas y el mod deja de escuchar el audio.", L"En pause, les barres restent au repos et le mod n'écoute plus l'audio.", L"Em pausa, as barras ficam paradas e o mod para de ouvir o áudio.", L"In pausa le barre restano ferme e la mod smette di ascoltare l'audio.", L"Po wstrzymaniu słupki stoją, a mod przestaje słuchać dźwięku.", L"Duraklatıldığında çubuklar durur ve mod sesi dinlemeyi bırakır.", L"一時停止中はバーが止まり、音声の取り込みも止まります。", L"일시 중지하면 막대가 멈추고 모드가 오디오를 듣지 않습니다." },
+    { L"Skip 5 seconds back or forward", L"Перемотка на 5 секунд назад або вперед", L"Перемотка на 5 секунд назад или вперёд", L"5 Sekunden zurück oder vor", L"5 सेकंड पीछे या आगे", L"后退或前进 5 秒", L"倒退或快轉 5 秒", L"Saltar 5 segundos atrás o adelante", L"Reculer ou avancer de 5 secondes", L"Pular 5 segundos para trás ou para frente", L"Salta 5 secondi indietro o avanti", L"Przeskocz 5 sekund w tył lub w przód", L"5 saniye geri veya ileri atla", L"5 秒戻す・進める", L"5초 뒤로 또는 앞으로" },
+    { L"Hide the cover area without a cover", L"Ховати місце обкладинки, коли її немає", L"Скрывать место обложки, когда её нет", L"Coverbereich ohne Cover ausblenden", L"कवर न होने पर कवर की जगह छिपाएँ", L"没有封面时隐藏封面区域", L"沒有封面時隱藏封面區域", L"Ocultar el área de la carátula si no hay carátula", L"Masquer la zone de la pochette sans pochette", L"Ocultar a área da capa quando não houver capa", L"Nascondi l'area della copertina senza copertina", L"Ukryj miejsce na okładkę, gdy jej nie ma", L"Kapak yokken kapak alanını gizle", L"カバーがないときはカバーの領域を隠す", L"커버가 없으면 커버 영역 숨기기" },
+    { L"The cover's square folds away when a song has none.", L"Квадрат обкладинки згортається, коли в пісні її немає.", L"Квадрат обложки сворачивается, когда у песни её нет.", L"Das Coverfeld klappt weg, wenn ein Lied keins hat.", L"गाने में कवर न हो तो कवर का चौकोर हिस्सा सिमट जाता है।", L"歌曲没有封面时，封面方块会收起。", L"歌曲沒有封面時，封面方塊會收起。", L"El cuadro de la carátula se pliega cuando la canción no tiene.", L"Le carré de la pochette se replie quand le titre n'en a pas.", L"O quadrado da capa se recolhe quando a música não tem capa.", L"Il riquadro della copertina si chiude quando il brano non ne ha.", L"Kwadrat okładki zwija się, gdy utwór jej nie ma.", L"Şarkının kapağı yoksa kapak karesi kapanır.", L"曲にカバーがないと、カバーの枠は畳まれます。", L"곡에 커버가 없으면 커버 칸이 접힙니다." },
+    { L"Album art shows", L"Обкладинка показує", L"Обложка показывает", L"Albumcover zeigt", L"एल्बम आर्ट में दिखे", L"专辑封面显示", L"專輯封面顯示", L"La carátula muestra", L"La pochette affiche", L"A capa mostra", L"La copertina mostra", L"Okładka pokazuje", L"Albüm kapağında görünen", L"アルバムアートに表示するもの", L"앨범 아트에 표시" },
+    { L"The cover", L"Обкладинку", L"Обложку", L"Das Cover", L"कवर", L"封面", L"封面", L"La carátula", L"La pochette", L"A capa", L"La copertina", L"Okładkę", L"Kapak", L"カバー", L"커버" },
+    { L"The app's icon", L"Значок програми", L"Значок приложения", L"Das App-Symbol", L"ऐप का आइकन", L"应用图标", L"應用程式圖示", L"El icono de la app", L"L'icône de l'app", L"O ícone do app", L"L'icona dell'app", L"Ikonę aplikacji", L"Uygulamanın simgesi", L"アプリのアイコン", L"앱 아이콘" },
+    { L"An icon", L"Значок", L"Значок", L"Ein Symbol", L"एक आइकन", L"图标", L"圖示", L"Un icono", L"Une icône", L"Um ícone", L"Un'icona", L"Ikonę", L"Bir simge", L"アイコン", L"아이콘" },
+    { L"\"An icon\" is the one set under \"No album art\".", L"«Значок» налаштовується в розділі «Немає обкладинки».", L"«Значок» настраивается в разделе «Нет обложки».", L"„Ein Symbol“ ist das unter „Kein Albumcover“ eingestellte.", L"\"एक आइकन\" वही है जो \"कोई एल्बम आर्ट नहीं\" में सेट है।", L"“图标”即“无专辑封面”下设置的那个。", L"「圖示」即「無專輯封面」下設定的那個。", L"\"Un icono\" es el que se elige en \"Sin carátula\".", L"« Une icône » est celle définie sous « Pas de pochette ».", L"\"Um ícone\" é o definido em \"Sem capa\".", L"\"Un'icona\" è quella impostata in \"Nessuna copertina\".", L"„Ikona” to ta ustawiona w sekcji „Brak okładki”.", L"\"Bir simge\", \"Albüm kapağı yok\" altında ayarlanan simgedir.", L"「アイコン」は「アルバムアートなし」で設定したものです。", L"\"아이콘\"은 \"앨범 아트 없음\"에서 정한 아이콘입니다." },
+    { L"Performance", L"Продуктивність", L"Производительность", L"Leistung", L"परफ़ॉर्मेंस", L"性能", L"效能", L"Rendimiento", L"Performances", L"Desempenho", L"Prestazioni", L"Wydajność", L"Performans", L"パフォーマンス", L"성능" },
+    { L"A double-click doesn't run the single click too", L"Подвійний клік не запускає ще й одинарний", L"Двойной щелчок не запускает ещё и одиночный", L"Doppelklick löst nicht auch den Einzelklick aus", L"डबल-क्लिक पर सिंगल क्लिक वाला काम न चले", L"双击时不同时执行单击动作", L"按兩下時不同時執行按一下的動作", L"El doble clic no ejecuta también el clic simple", L"Le double-clic ne lance pas aussi le clic simple", L"O clique duplo não executa também o clique simples", L"Il doppio clic non esegue anche il clic singolo", L"Dwuklik nie uruchamia też pojedynczego kliknięcia", L"Çift tıklama tek tıklamayı da çalıştırmasın", L"ダブルクリックでシングルクリックの動作を実行しない", L"더블 클릭 시 단일 클릭 동작은 실행하지 않기" },
+    { L"Single clicks then wait a moment for a second click.", L"Одинарні кліки тоді мить чекають на другий клік.", L"Одиночные щелчки тогда мгновение ждут второго.", L"Einzelklicks warten dann kurz auf einen zweiten Klick.", L"तब सिंगल क्लिक दूसरी क्लिक के लिए पल भर रुकता है।", L"单击会稍等片刻，看是否有第二次点击。", L"按一下會稍等片刻，看是否有第二次點擊。", L"Los clics simples esperan un momento por si llega un segundo clic.", L"Les clics simples attendent alors un instant un second clic.", L"Os cliques simples esperam um instante por um segundo clique.", L"I clic singoli attendono un attimo un secondo clic.", L"Pojedyncze kliknięcia czekają wtedy chwilę na drugie.", L"Tek tıklamalar ikinci tıklama için bir an bekler.", L"シングルクリックは 2 回目のクリックを少し待ちます。", L"단일 클릭은 두 번째 클릭을 잠시 기다립니다." },
     { L"Window color", L"Колір вікна", L"Цвет окна", L"Fensterfarbe", L"विंडो का रंग", L"窗口颜色", L"視窗色彩", L"Color de la ventana", L"Couleur de la fenêtre", L"Cor da janela", L"Colore della finestra", L"Kolor okna", L"Pencere rengi", L"ウィンドウの色", L"창 색상" },
     { L"Custom color", L"Власний колір", L"Свой цвет", L"Eigene Farbe", L"कस्टम रंग", L"自定义颜色", L"自訂色彩", L"Color personalizado", L"Couleur personnalisée", L"Cor personalizada", L"Colore personalizzato", L"Własny kolor", L"Özel renk", L"カスタム色", L"사용자 지정 색" },
     { L"Title bar color", L"Колір рядка заголовка", L"Цвет строки заголовка", L"Farbe der Titelleiste", L"शीर्षक पट्टी का रंग", L"标题栏颜色", L"標題列色彩", L"Color de la barra de título", L"Couleur de la barre de titre", L"Cor da barra de título", L"Colore della barra del titolo", L"Kolor paska tytułu", L"Başlık çubuğu rengi", L"タイトル バーの色", L"제목 표시줄 색" },
