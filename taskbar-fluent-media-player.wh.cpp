@@ -524,6 +524,13 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       #! $hideIf: {enableTitleScrolling: false, enableArtistScrolling: false}
       $name: Loop gap (px)
       $description: Distance in pixels between the end of the text and the beginning of its copy in Loop mode.
+    - scrollEdgeFade: true
+      #! $hideIf: {enableTitleScrolling: false, enableArtistScrolling: false}
+      $name: Fade the ends of scrolling text
+      $description: While a line scrolls, its letters fade in and out at the edges instead of being cut off.
+    - scrollFadeWidth: 14
+      #! $showIf: {scrollEdgeFade: true}
+      $name: Fade width (px)
     - swapTitleArtist: false
       #! $showIf: {settingsView: full}
       $name: Swap artist name and track title
@@ -2605,6 +2612,8 @@ struct ModSettings {
     int          scrollPauseDuration  = 1000;
     TextScrollMode scrollMode         = TextScrollMode::Bounce;
     int          loopGap              = 40;
+    bool         scrollEdgeFade       = true;
+    int          scrollFadeWidth      = 14;
     std::wstring solidColor           = L"35 35 35";
     std::wstring solidColor2          = L"35 35 35";
     std::wstring gradientColor2       = L"128 128 128";
@@ -2891,6 +2900,8 @@ static constexpr SettingSpec SETTINGS[] = {
     SInt(L"MainSettings.TextAreaSetting.scrollPauseDuration", 0, 10000, &ModSettings::scrollPauseDuration),
     SStr(L"MainSettings.TextAreaSetting.scrollMode", L"bounce"),
     SInt(L"MainSettings.TextAreaSetting.loopGap", 0, 500, &ModSettings::loopGap),
+    SBool(L"MainSettings.TextAreaSetting.scrollEdgeFade", &ModSettings::scrollEdgeFade),
+    SInt(L"MainSettings.TextAreaSetting.scrollFadeWidth", 2, 60, &ModSettings::scrollFadeWidth),
     SBool(L"MainSettings.TextAreaSetting.swapTitleArtist", &ModSettings::swapTitleArtist),
     SStrRaw(L"MainSettings.TextAreaSetting.emptyTitleText", L"Untitled", &ModSettings::emptyTitleText),
     SStrRaw(L"MainSettings.TextAreaSetting.noMediaTitleText", L"Not Playing", &ModSettings::noMediaTitleText),
@@ -8340,17 +8351,18 @@ static void ApplyEdgeFade(TextBlock const& tb, double viewW, double left, double
                 gs.Color(col);
                 lg.GradientStops().Append(gs);
             }
-            lg.Transform(TranslateTransform());
             tb.Foreground(lg);
         }
-        lg.StartPoint({ 0, 0 });
-        lg.EndPoint({ (float)viewW, 0 });
+        // The view's span in the text's own coordinates (the text sits at
+        // `left` in the view). A brush transform didn't hold it there: the
+        // fade moved with the text and the visible part shrank as it scrolled.
+        lg.StartPoint({ (float)-left, 0 });
+        lg.EndPoint({ (float)(-left + viewW), 0 });
         auto stops = lg.GradientStops();
         stops.GetAt(0).Offset(0.0);
         stops.GetAt(1).Offset(std::clamp(fadeL / viewW, 0.0, 0.5));
         stops.GetAt(2).Offset(std::clamp(1.0 - fadeR / viewW, 0.5, 1.0));
         stops.GetAt(3).Offset(1.0);
-        if (auto tr = lg.Transform().try_as<TranslateTransform>()) tr.X(-left);   // the brush stays put while the text moves
     } catch (...) { LOG_IGNORED_EXCEPTION(); }
 }
 
@@ -8369,8 +8381,8 @@ static Brush PlainForeground(TextBlock const& tb) {
 // bounce only the side that has more text past it.
 static void EdgeFadeAmounts(const TextScrollState& s, double& fadeL, double& fadeR) {
     fadeL = fadeR = 0;
-    if (!s.active || s.viewWidth <= 0) return;
-    const double f = std::min(14.0, s.viewWidth / 4);
+    if (!g_settings.scrollEdgeFade || !s.active || s.viewWidth <= 0) return;
+    const double f = std::min((double)g_settings.scrollFadeWidth, s.viewWidth / 3);
     if (g_settings.scrollMode == TextScrollMode::Loop) { fadeL = fadeR = f; return; }
     fadeL = std::min(f, std::max(0.0, s.offset));
     fadeR = std::min(f, std::max(0.0, s.textWidth - s.viewWidth - s.offset));
@@ -19062,6 +19074,9 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
             RowText(L"Scroll pause duration (ms)", L"MainSettings.TextAreaSetting.scrollPauseDuration", L"1000", true),
             RowCombo(L"Scroll mode", L"MainSettings.TextAreaSetting.scrollMode", L"bounce", scrollModeOptions),
             RowText(L"Loop gap (px)", L"MainSettings.TextAreaSetting.loopGap", L"40", true),
+            WithDesc(RowBool(L"Fade the ends of scrolling text", L"MainSettings.TextAreaSetting.scrollEdgeFade"),
+                     L"Letters fade in and out at the edges instead of being cut off."),
+            RowSlider(L"Fade width (px)", L"MainSettings.TextAreaSetting.scrollFadeWidth", L"14", 2, 60),
         };
         SettingCard fallback;
         fallback.title = L"Fallback text";
@@ -20589,6 +20604,9 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"Title bar", L"Рядок заголовка", L"Строка заголовка", L"Titelleiste", L"शीर्षक पट्टी", L"标题栏", L"標題列", L"Barra de título", L"Barre de titre", L"Barra de título", L"Barra del titolo", L"Pasek tytułu", L"Başlık çubuğu", L"タイトル バー", L"제목 표시줄" },
     { L"Match the window", L"Як у вікна", L"Как у окна", L"Wie das Fenster", L"विंडो के अनुसार", L"与窗口一致", L"與視窗一致", L"Igual que la ventana", L"Comme la fenêtre", L"Igual à janela", L"Come la finestra", L"Jak okno", L"Pencereyle aynı", L"ウィンドウに合わせる", L"창과 동일" },
     { L"Windows default", L"За замовчуванням Windows", L"По умолчанию Windows", L"Windows-Standard", L"Windows डिफ़ॉल्ट", L"Windows 默认", L"Windows 預設", L"Predeterminado de Windows", L"Par défaut de Windows", L"Padrão do Windows", L"Predefinito di Windows", L"Domyślny Windows", L"Windows varsayılanı", L"Windows の既定", L"Windows 기본값" },
+    { L"Fade the ends of scrolling text", L"Згасання країв тексту, що прокручується", L"Затухание краёв прокручиваемого текста", L"Enden von Lauftext ausblenden", L"स्क्रॉल होते टेक्स्ट के किनारों को फ़ेड करें", L"滚动文字两端渐隐", L"捲動文字兩端漸隱", L"Difuminar los extremos del texto desplazable", L"Estomper les bords du texte défilant", L"Esmaecer as pontas do texto rolante", L"Sfuma i bordi del testo scorrevole", L"Wygaszaj krawędzie przewijanego tekstu", L"Kayan metnin kenarlarını soldur", L"スクロールする文字の端をフェード", L"스크롤 텍스트 가장자리 흐리게" },
+    { L"Letters fade in and out at the edges instead of being cut off.", L"Літери плавно з'являються і зникають біля країв, а не обрізаються.", L"Буквы плавно появляются и исчезают у краёв, а не обрезаются.", L"Buchstaben werden an den Rändern ein- und ausgeblendet statt abgeschnitten.", L"अक्षर किनारों पर कटने के बजाय धीरे से आते-जाते हैं।", L"文字在边缘渐入渐出，而不是被截断。", L"文字在邊緣漸入漸出，而不是被截斷。", L"Las letras aparecen y desaparecen suavemente en los bordes en vez de cortarse.", L"Les lettres apparaissent et disparaissent en fondu aux bords au lieu d'être coupées.", L"As letras surgem e somem suavemente nas bordas em vez de serem cortadas.", L"Le lettere sfumano ai bordi invece di essere tagliate.", L"Litery płynnie pojawiają się i znikają przy krawędziach zamiast być ucinane.", L"Harfler kenarlarda kesilmek yerine yavaşça belirip kaybolur.", L"文字は端で切れずに、ふわっと出入りします。", L"글자가 가장자리에서 잘리지 않고 부드럽게 나타나고 사라집니다." },
+    { L"Fade width (px)", L"Ширина згасання (пкс)", L"Ширина затухания (пкс)", L"Ausblendbreite (px)", L"फ़ेड की चौड़ाई (px)", L"渐隐宽度 (px)", L"漸隱寬度 (px)", L"Ancho del difuminado (px)", L"Largeur du fondu (px)", L"Largura do esmaecimento (px)", L"Larghezza sfumatura (px)", L"Szerokość wygaszania (px)", L"Solma genişliği (px)", L"フェードの幅 (px)", L"흐림 너비 (px)" },
     { L"Window color", L"Колір вікна", L"Цвет окна", L"Fensterfarbe", L"विंडो का रंग", L"窗口颜色", L"視窗色彩", L"Color de la ventana", L"Couleur de la fenêtre", L"Cor da janela", L"Colore della finestra", L"Kolor okna", L"Pencere rengi", L"ウィンドウの色", L"창 색상" },
     { L"Custom color", L"Власний колір", L"Свой цвет", L"Eigene Farbe", L"कस्टम रंग", L"自定义颜色", L"自訂色彩", L"Color personalizado", L"Couleur personnalisée", L"Cor personalizada", L"Colore personalizzato", L"Własny kolor", L"Özel renk", L"カスタム色", L"사용자 지정 색" },
     { L"Title bar color", L"Колір рядка заголовка", L"Цвет строки заголовка", L"Farbe der Titelleiste", L"शीर्षक पट्टी का रंग", L"标题栏颜色", L"標題列色彩", L"Color de la barra de título", L"Couleur de la barre de titre", L"Cor da barra de título", L"Colore della barra del titolo", L"Kolor paska tytułu", L"Başlık çubuğu rengi", L"タイトル バーの色", L"제목 표시줄 색" },
@@ -21160,6 +21178,11 @@ static const RowRule ROW_RULES[] = {
     { L"MainSettings.TextAreaSetting.loopGap", 49, false, L"MainSettings.TextAreaSetting.scrollMode", L"loop" },
     { L"MainSettings.TextAreaSetting.loopGap", 50, true, L"MainSettings.TextAreaSetting.enableTitleScrolling", L"false" },
     { L"MainSettings.TextAreaSetting.loopGap", 50, true, L"MainSettings.TextAreaSetting.enableArtistScrolling", L"false" },
+    { L"MainSettings.TextAreaSetting.scrollEdgeFade", 5201, true, L"MainSettings.TextAreaSetting.enableTitleScrolling", L"false" },
+    { L"MainSettings.TextAreaSetting.scrollEdgeFade", 5201, true, L"MainSettings.TextAreaSetting.enableArtistScrolling", L"false" },
+    { L"MainSettings.TextAreaSetting.scrollFadeWidth", 5202, false, L"MainSettings.TextAreaSetting.scrollEdgeFade", L"true" },
+    { L"MainSettings.TextAreaSetting.scrollFadeWidth", 5203, true, L"MainSettings.TextAreaSetting.enableTitleScrolling", L"false" },
+    { L"MainSettings.TextAreaSetting.scrollFadeWidth", 5203, true, L"MainSettings.TextAreaSetting.enableArtistScrolling", L"false" },
     { L"MainSettings.MediaButtonsSettings.buttonsOrder", 51, false, L"MainSettings.MediaButtonsSettings.showMediaButtons", L"true" },
     { L"MainSettings.MediaButtonsSettings.buttonsDetached", 52, false, L"MainSettings.MediaButtonsSettings.showMediaButtons", L"true" },
     { L"MainSettings.MediaButtonsSettings.buttonsDetachedPosition", 53, false, L"MainSettings.MediaButtonsSettings.showMediaButtons", L"true" },
