@@ -6,8 +6,7 @@
 
 - **Drag to place.** Settings, Layout page: a sketch of the taskbar on each monitor with the player and its parts on it. Drag one to a spot and it moves there right away, on any monitor. Drop a part on "In the player" to put it back inside the player, or on "Hidden" to hide it.
 - **Weather when nothing plays.** Turn on "Show Widgets when nothing plays" under Native Widgets: the player hides when nothing is playing and the Windows Widgets button (with the weather) comes back in its place. Detached parts stay where they are. While music plays, the player is back and Widgets is hidden.
-- **Weather part.** Turn on "Show weather" (Settings, Layout): the icon, temperature and condition from the Windows Widgets button as a part of its own, placed anywhere like the other parts, on any monitor, with its own background. Click it to open Widgets. It reads what the Widgets button shows, so Widgets has to be on in Windows; "Hide native Widgets button" can keep the original out of sight. It stays up when nothing plays.
-
+- **Weather part.** Turn on "Show weather" (Settings, Weather page): the icon, temperature and condition from the Windows Widgets button as a part of its own, placed anywhere like the other parts, on any monitor, with its own background. Click it to open Widgets. It reads what the Widgets button shows, so Widgets has to be on in Windows; "Hide native Widgets button" can keep the original out of sight. It stays up when nothing plays.
 - **Scroll to skip.** New mouse wheel action "Skip 5 seconds back or forward" for the player and the album art, and the wheel over the mini player's seek bar does the same (#121, #123).
 - **Album art shows.** New option under Album Art: the cover, the icon of the app that plays, or always the stand-in icon (#113, #120).
 - **Mini player.** Mica and Mica Alt looks for the menu background (#112), and an option to fold the cover area away when a song has no cover (#122).
