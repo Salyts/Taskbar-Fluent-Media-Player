@@ -888,6 +888,101 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       #! $showIf: {vizEnabled: true, settingsView: full}
       $name: Band 7 sensitivity (14-20 kHz, 0-300)
     $name: Visualizer
+  - WeatherSetting:
+    - weatherEnabled: false
+      $name: Show weather
+      $description: The weather from Windows' Widgets button (icon, temperature, condition) as a part of its own, placed wherever you like. Clicking it opens Widgets. Needs Widgets turned on in Windows' taskbar settings; "Hide native Widgets button" can keep the original hidden.
+    - weatherShowCondition: true
+      #! $showIf: {weatherEnabled: true}
+      $name: Show the condition
+      $description: The line under the temperature ("Mostly cloudy").
+    - weatherPosition: "tray_left"
+      #! $showIf: {weatherEnabled: true}
+      $name: Weather position
+      $options:
+      - "taskbar_left_edge": "Taskbar - Left edge (Overlay)"
+      - "taskbar_center_edge": "Taskbar - Center (Overlay)"
+      - "taskbar_right_edge": "Taskbar - Right edge (Overlay)"
+      - "taskbar_left_start": "Taskbar - Left of Start button"
+      - "taskbar_right_start": "Taskbar - Right of Start button"
+      - "taskbar_after_search_left": "Taskbar - Left of Search button"
+      - "taskbar_after_search_right": "Taskbar - Right of Search button"
+      - "taskbar_after_taskview_left": "Taskbar - Left of Task View button"
+      - "taskbar_after_taskview_right": "Taskbar - Right of Task View button"
+      - "taskbar_after_widgets_left": "Taskbar - Left of Widgets button"
+      - "taskbar_after_widgets_right": "Taskbar - Right of Widgets button"
+      - "tray_left": "Tray - Far left"
+      - "tray_right": "Tray - Far right"
+      - "tray_before_clock": "Tray - Left of Clock"
+      - "tray_after_clock": "Tray - Right of Clock"
+      - "tray_before_omni_left": "Tray - Left of Network/Volume button"
+      - "tray_before_omni_right": "Tray - Right of Network/Volume button"
+      - "tray_language_left": "Tray - Left of Language button"
+      - "tray_language_right": "Tray - Right of Language button"
+      - "tray_icons_left": "Tray - Left of Tray Icons"
+      - "tray_icons_right": "Tray - Right of Tray Icons"
+      - "tray_hidden_icons_left": "Tray - Left of Hidden icons button"
+      - "tray_hidden_icons_right": "Tray - Right of Hidden icons button"
+      - "tray_after_showdesktop_left": "Tray - Left of Show Desktop"
+      - "tray_after_showdesktop_right": "Tray - Right of Show Desktop"
+    - weatherMonitor: 1
+      #! $showIf: {weatherEnabled: true}
+      $name: Weather monitor
+      $description: >-
+        Which monitor to show the weather on (1, 2, 3...),
+        independent of the main player's own monitor. If that monitor isn't
+        currently connected, it falls back one monitor at a time (2 -> 1)
+        rather than jumping straight to an arbitrary display. -1 hides it.
+    - weatherBackgroundType: "inherit"
+      #! $showIf: {weatherEnabled: true}
+      $name: Weather background type
+      $description: "'inherit' makes the weather look exactly like the main player. Choose a different value to give it its own independent theme."
+      $options:
+      - "inherit":        "Inherit (same as main player)"
+      - "none":           "None (transparent)"
+      - "solid":          "Solid color"
+      - "gradient":       "Gradient"
+      - "acrylic":        "Acrylic"
+      - "mica":           "Mica"
+      - "mica_alt":       "Mica Alt"
+    - weatherBackgroundColor: "35 35 35"
+      #! $showIf: {weatherEnabled: true, weatherBackgroundType: [solid, acrylic, mica, mica_alt]}
+      $name: Weather background color (RGB)
+    - weatherBackgroundColor2: "35 35 35"
+      #! $showIf: {weatherEnabled: true, weatherBackgroundType: [gradient]}
+      $name: Weather gradient color 1 (RGB)
+    - weatherBackgroundGradientColor2: "128 128 128"
+      #! $showIf: {weatherEnabled: true, weatherBackgroundType: [gradient]}
+      $name: Weather gradient color 2 (RGB)
+    - weatherBackgroundOpacity: 100
+      #! $showIf: {weatherEnabled: true, weatherBackgroundType: [solid, gradient]}
+      $name: Weather background opacity (0-100)
+    - weatherBackgroundGradientAngle: 50
+      #! $showIf: {weatherEnabled: true, weatherBackgroundType: [gradient]}
+      $name: Weather gradient angle (0-360)
+    - weatherBackgroundGradientBalance: 50
+      #! $showIf: {weatherEnabled: true, weatherBackgroundType: [gradient]}
+      $name: Weather gradient balance (0-100)
+    - weatherBackgroundAcrylicOpacity: 50
+      #! $showIf: {weatherEnabled: true, weatherBackgroundType: [acrylic]}
+      $name: Weather acrylic tint opacity (0-100)
+    - weatherBackgroundMicaOpacity: 50
+      #! $showIf: {weatherEnabled: true, weatherBackgroundType: [mica, mica_alt]}
+      $name: Weather Mica/Mica Alt opacity (0-100)
+    - weatherBackgroundCornerRadius: "4"
+      #! $showIf: {weatherEnabled: true}
+      #! $hideIf: {weatherBackgroundType: inherit}
+      $name: Weather corner radius
+    - weatherBackgroundHoverEffect: "auto"
+      #! $showIf: {weatherEnabled: true}
+      #! $hideIf: {weatherBackgroundType: inherit}
+      $name: Weather hover effect
+      $options:
+      - "auto":  "Auto (theme changes automatically)"
+      - "black": "Black"
+      - "white": "White"
+      - "off":   "Disable hover effect"
+    $name: Weather
   - NativeWidgetsSetting:
     - hideNativeWidgetsButton: false
       $name: Hide native Widgets button
@@ -1917,6 +2012,8 @@ struct DetachedWidgetState {
 [[clang::no_destroy]] static DetachedWidgetState g_detachedInfo{ .markerName = L"FluentMediaDetachedInfo" };
 [[clang::no_destroy]] static DetachedWidgetState g_detachedButtons{ .markerName = L"FluentMediaDetachedButtons" };
 [[clang::no_destroy]] static DetachedWidgetState g_detachedViz{ .markerName = L"FluentMediaDetachedViz" };
+[[clang::no_destroy]] static DetachedWidgetState g_detachedWeather{ .markerName = L"FluentMediaDetachedWeather" };
+static bool WeatherAvailable();   // with the weather part, below
 
 } // namespace Taskbar
 
@@ -1978,6 +2075,7 @@ namespace Runtime {
     static void DispatchMediaUpdate();
     static void ExecuteMediaAction(const std::wstring& action, FrameworkElement const& sourceElement = nullptr);
     static void HookTaskbarViewIfWanted();
+    static void OpenWidgetsBoard();
 } // namespace Runtime
 
 // ###########################################################################
@@ -2669,6 +2767,11 @@ struct ModSettings {
     PlayerPosition vizDetachedPosition = PlayerPosition::TaskbarLeftEdge;
     int          vizDetachedMonitor  = 1;
     DetachedBackgroundSettings vizDetachedBg;
+    bool         weatherEnabled      = false;
+    bool         weatherShowCondition = true;
+    PlayerPosition weatherPosition   = PlayerPosition::TrayLeft;
+    int          weatherMonitor      = 1;
+    DetachedBackgroundSettings weatherBg;
     VizShape     vizShape        = VizShape::Stereo;
     VizStyle     vizStyle        = VizStyle::Bars;
     VizColorMode vizColorMode    = VizColorMode::Solid;
@@ -2936,6 +3039,21 @@ static constexpr SettingSpec SETTINGS[] = {
     SStrRaw(L"MainSettings.VisualizerFunctionsSettings.vizAudioDevice", &ModSettings::vizAudioDevice),
     SInt(L"MainSettings.VisualizerFunctionsSettings.vizOrder", 1, 4, &ModSettings::vizOrder),
     SBool(L"MainSettings.VisualizerFunctionsSettings.vizDetached", &ModSettings::vizDetached),
+    SBool(L"MainSettings.WeatherSetting.weatherEnabled", &ModSettings::weatherEnabled),
+    SBool(L"MainSettings.WeatherSetting.weatherShowCondition", &ModSettings::weatherShowCondition),
+    SStr(L"MainSettings.WeatherSetting.weatherPosition", L"tray_left"),
+    SIntRaw(L"MainSettings.WeatherSetting.weatherMonitor"),
+    SStr(L"MainSettings.WeatherSetting.weatherBackgroundType", L"inherit"),
+    SStr(L"MainSettings.WeatherSetting.weatherBackgroundColor", L"35 35 35"),
+    SStr(L"MainSettings.WeatherSetting.weatherBackgroundColor2", L"35 35 35"),
+    SStr(L"MainSettings.WeatherSetting.weatherBackgroundGradientColor2", L"128 128 128"),
+    SIntRaw(L"MainSettings.WeatherSetting.weatherBackgroundOpacity"),
+    SIntRaw(L"MainSettings.WeatherSetting.weatherBackgroundGradientAngle"),
+    SIntRaw(L"MainSettings.WeatherSetting.weatherBackgroundGradientBalance"),
+    SIntRaw(L"MainSettings.WeatherSetting.weatherBackgroundAcrylicOpacity"),
+    SIntRaw(L"MainSettings.WeatherSetting.weatherBackgroundMicaOpacity"),
+    SStr(L"MainSettings.WeatherSetting.weatherBackgroundCornerRadius", L"4"),
+    SStr(L"MainSettings.WeatherSetting.weatherBackgroundHoverEffect", L"auto"),
     SStr(L"MainSettings.VisualizerFunctionsSettings.vizPlacement", L"player"),
     SStr(L"MainSettings.VisualizerFunctionsSettings.vizDetachedPosition", L"taskbar_left_edge"),
     SIntRaw(L"MainSettings.VisualizerFunctionsSettings.vizDetachedMonitor"),
@@ -3417,6 +3535,21 @@ COLD_UNOPTIMIZED static void LoadSettings() {
         L"MainSettings.VisualizerFunctionsSettings.vizDetachedBackgroundMicaOpacity",
         L"MainSettings.VisualizerFunctionsSettings.vizDetachedBackgroundCornerRadius",
         L"MainSettings.VisualizerFunctionsSettings.vizDetachedBackgroundHoverEffect");
+    g_settings.weatherPosition = ParseSettingChoice(Str(L"MainSettings.WeatherSetting.weatherPosition", L"tray_left"),
+                                                        PLAYER_POSITIONS, PlayerPosition::TrayLeft);
+    g_settings.weatherMonitor  = NormalizeMonitor(Int(L"MainSettings.WeatherSetting.weatherMonitor", MONITOR_OFF, 64, 1));
+    g_settings.weatherBg = LoadDetachedBg(
+        L"MainSettings.WeatherSetting.weatherBackgroundType",
+        L"MainSettings.WeatherSetting.weatherBackgroundColor",
+        L"MainSettings.WeatherSetting.weatherBackgroundColor2",
+        L"MainSettings.WeatherSetting.weatherBackgroundGradientColor2",
+        L"MainSettings.WeatherSetting.weatherBackgroundOpacity",
+        L"MainSettings.WeatherSetting.weatherBackgroundGradientAngle",
+        L"MainSettings.WeatherSetting.weatherBackgroundGradientBalance",
+        L"MainSettings.WeatherSetting.weatherBackgroundAcrylicOpacity",
+        L"MainSettings.WeatherSetting.weatherBackgroundMicaOpacity",
+        L"MainSettings.WeatherSetting.weatherBackgroundCornerRadius",
+        L"MainSettings.WeatherSetting.weatherBackgroundHoverEffect");
     g_settings.vizBandSensitivity[0] = Int(L"MainSettings.VisualizerFunctionsSettings.vizBand1Sensitivity", 0, 300, 100);
     g_settings.vizBandSensitivity[1] = Int(L"MainSettings.VisualizerFunctionsSettings.vizBand2Sensitivity", 0, 300, 100);
     g_settings.vizBandSensitivity[2] = Int(L"MainSettings.VisualizerFunctionsSettings.vizBand3Sensitivity", 0, 300, 100);
@@ -3815,7 +3948,8 @@ static std::atomic<bool> g_playerIdleHidden{false};
 
 // With the main player off (monitor -1) the detached parts still need updates.
 static bool HasAnyPlayerUi() {
-    return g_playerGrid || g_detachedAlbumArt.grid || g_detachedInfo.grid || g_detachedButtons.grid || g_detachedViz.grid;
+    return g_playerGrid || g_detachedAlbumArt.grid || g_detachedInfo.grid || g_detachedButtons.grid || g_detachedViz.grid ||
+           g_detachedWeather.grid;
 }
 
 } // namespace Core
@@ -8000,7 +8134,7 @@ static void RefreshDetachedBlurs(bool force = false) {
     key = key * 31 + (uint64_t)g_settings.blurOpacity;
     if (!force && key == s_key) return;
     s_key = key;
-    for (DetachedWidgetState* dw : { &g_detachedAlbumArt, &g_detachedInfo, &g_detachedButtons, &g_detachedViz }) {
+    for (DetachedWidgetState* dw : { &g_detachedAlbumArt, &g_detachedInfo, &g_detachedButtons, &g_detachedViz, &g_detachedWeather }) {
         if (!dw->grid) continue;
         try {
             if (auto fe = FindChildByName(dw->grid, L"FluentMedia_DetachedBlur"))
@@ -8024,6 +8158,9 @@ static FrameworkElement FindMediaChild(std::wstring_view name) {
     }
     if (g_detachedViz.grid) {
         if (auto fe = FindChildByName(g_detachedViz.grid, name)) return fe;
+    }
+    if (g_detachedWeather.grid) {
+        if (auto fe = FindChildByName(g_detachedWeather.grid, name)) return fe;
     }
     return nullptr;
 }
@@ -12622,7 +12759,7 @@ static HWND MiniPlayerWnd() { return (g_miniPlayerHostWnd && IsWindow(g_miniPlay
 static HWND TaskbarWndForElement(FrameworkElement const& el) {
     try {
         for (DependencyObject cur = el; cur; cur = VisualTreeHelper::GetParent(cur)) {
-            for (DetachedWidgetState* dw : { &g_detachedAlbumArt, &g_detachedInfo, &g_detachedButtons, &g_detachedViz })
+            for (DetachedWidgetState* dw : { &g_detachedAlbumArt, &g_detachedInfo, &g_detachedButtons, &g_detachedViz, &g_detachedWeather })
                 if (dw->grid && dw->injectedOnWnd && IsWindow(dw->injectedOnWnd) && cur == dw->grid) return dw->injectedOnWnd;
         }
     } catch (...) { LOG_IGNORED_EXCEPTION(); }
@@ -14976,11 +15113,12 @@ static void UpdateVisibility() {
             g_playerGrid.UpdateLayout();
         }
 
-        for (DetachedWidgetState* dw : { &g_detachedAlbumArt, &g_detachedInfo, &g_detachedButtons, &g_detachedViz }) {
+        for (DetachedWidgetState* dw : { &g_detachedAlbumArt, &g_detachedInfo, &g_detachedButtons, &g_detachedViz, &g_detachedWeather }) {
             if (!dw->grid) continue;
             // A hidden detached info container vanishes on its own, background
             // and margins included, like it does inline.
-            const bool hideThis = hide || (dw == &g_detachedInfo && !g_infoContainerShown);
+            const bool hideThis = dw == &g_detachedWeather ? (fullscreenHide || !WeatherAvailable())
+                                                          : (hide || (dw == &g_detachedInfo && !g_infoContainerShown));
             try {
                 dw->grid.Visibility(hideThis ? Visibility::Collapsed : Visibility::Visible);
                 dw->grid.Opacity(hideThis ? 0.0 : 1.0);
@@ -16834,11 +16972,171 @@ static void RemoveDetachedViz() {
 }
 
 // In "Detached part order": parts sharing a spot line up in the order they go in.
+// ---- Weather: what Windows' Widgets button shows, read from it (nothing goes
+// online), as a part of its own. Read on the primary taskbar's thread, shown on
+// the weather part's; the two only share these strings.
+struct WeatherInfo { std::wstring temp, condition, icon; };
+static std::mutex g_weatherMtx;
+[[clang::no_destroy]] static WeatherInfo g_weather;
+
+static bool WeatherAvailable() {
+    std::lock_guard<std::mutex> lk(g_weatherMtx);
+    return !g_weather.temp.empty();
+}
+
+static void CollectWeatherTexts(DependencyObject const& n, std::vector<std::wstring>& out, int depth) {
+    if (!n || depth > 16 || out.size() >= 4) return;
+    if (auto t = n.try_as<TextBlock>()) {
+        std::wstring s = t.Text().c_str();
+        bool plain = !s.empty();
+        for (wchar_t ch : s) plain = plain && !(ch >= 0xE000 && ch <= 0xF8FF);   // icon glyphs
+        if (plain) out.push_back(s);
+    }
+    const int c = VisualTreeHelper::GetChildrenCount(n);
+    for (int i = 0; i < c && out.size() < 4; i++) CollectWeatherTexts(VisualTreeHelper::GetChild(n, i), out, depth + 1);
+}
+
+static std::wstring FindWeatherIconUri(DependencyObject const& n, int depth) {
+    if (!n || depth > 16) return {};
+    if (auto img = n.try_as<Controls::Image>()) {
+        try {
+            auto src = img.Source();
+            if (auto bmp = src.try_as<BitmapImage>(); bmp && bmp.UriSource()) return bmp.UriSource().ToString().c_str();
+            if (auto svg = src.try_as<SvgImageSource>(); svg && svg.UriSource()) return svg.UriSource().ToString().c_str();
+        } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    }
+    const int c = VisualTreeHelper::GetChildrenCount(n);
+    for (int i = 0; i < c; i++) {
+        auto r = FindWeatherIconUri(VisualTreeHelper::GetChild(n, i), depth + 1);
+        if (!r.empty()) return r;
+    }
+    return {};
+}
+
+// On the primary taskbar's thread.
+static void ReadWeatherOnThread(void*) {
+    WeatherInfo w;
+    try {
+        HWND primary = FindPrimaryTaskbarWnd();
+        auto xr = primary ? GetTaskbarXamlRoot(primary) : nullptr;
+        auto root = xr ? xr.Content().try_as<FrameworkElement>() : nullptr;
+        auto rootGrid = root ? FindTaskbarRootGrid(root) : nullptr;
+        auto repeater = rootGrid ? FindChildByName(rootGrid, L"TaskbarFrameRepeater") : nullptr;
+        if (auto widgets = repeater ? FindWidgetsAnchorElement(repeater) : nullptr) {
+            std::vector<std::wstring> texts;
+            CollectWeatherTexts(widgets, texts, 0);
+            auto hasDigit = [](const std::wstring& t) { return std::any_of(t.begin(), t.end(), iswdigit); };
+            for (auto& t : texts) if (w.temp.empty() && hasDigit(t)) w.temp = t;
+            for (auto& t : texts) if (w.condition.empty() && t != w.temp) w.condition = t;
+            w.icon = FindWeatherIconUri(widgets, 0);
+        }
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    std::lock_guard<std::mutex> lk(g_weatherMtx);
+    g_weather = std::move(w);
+}
+
+// Fills the weather part from g_weather; on the part's thread.
+static void PaintWeather(FrameworkElement const& host) {
+    if (!host) return;
+    WeatherInfo w;
+    { std::lock_guard<std::mutex> lk(g_weatherMtx); w = g_weather; }
+    try {
+        if (auto t = FindChildByName(host, L"FluentMedia_WeatherTemp").try_as<TextBlock>()) {
+            t.Text(winrt::hstring{ w.temp });
+            t.Foreground(MakeBrush(TextColor()));
+        }
+        if (auto t = FindChildByName(host, L"FluentMedia_WeatherCondition").try_as<TextBlock>()) {
+            t.Text(winrt::hstring{ w.condition });
+            t.Foreground(MakeBrush(ArtistColor()));
+            t.Visibility(g_settings.weatherShowCondition && !w.condition.empty() ? Visibility::Visible : Visibility::Collapsed);
+        }
+        auto glyph = FindChildByName(host, L"FluentMedia_WeatherGlyph");
+        auto img = FindChildByName(host, L"FluentMedia_WeatherIcon").try_as<Controls::Image>();
+        if (img) {
+            const std::wstring shown = winrt::unbox_value_or<winrt::hstring>(img.Tag(), L"").c_str();
+            // Only a local icon: an online one isn't fetched (mods don't go online).
+            if (w.icon != shown && !w.icon.empty() && w.icon.rfind(L"http", 0) != 0) {
+                img.Tag(winrt::box_value(winrt::hstring{ w.icon }));
+                winrt::Windows::Foundation::Uri uri{ winrt::hstring{ w.icon } };
+                auto weakGlyph = winrt::make_weak(glyph);
+                auto hideGlyph = [weakGlyph](auto const&, auto const&) { if (auto g = weakGlyph.get()) g.Visibility(Visibility::Collapsed); };
+                if (w.icon.find(L".svg") != std::wstring::npos) { SvgImageSource svg(uri); svg.Opened(hideGlyph); img.Source(svg); }
+                else { BitmapImage bmp(uri); bmp.ImageOpened(hideGlyph); img.Source(bmp); }
+            }
+        }
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+}
+
+static void PaintWeatherOnThread(void*) { if (g_detachedWeather.grid) PaintWeather(g_detachedWeather.grid); }
+
+static FrameworkElement BuildWeatherContainer() {
+    Grid host;
+    host.Name(L"FluentMedia_WeatherHost");
+    host.Background(MakeBrush({ 0x00, 0, 0, 0 }));   // the whole part takes the click
+    host.VerticalAlignment(VerticalAlignment::Center);
+    StackPanel row;
+    row.Orientation(Orientation::Horizontal);
+    row.Spacing(8);
+    row.VerticalAlignment(VerticalAlignment::Center);
+    row.Margin({ 2, 0, 4, 0 });
+    Grid icon;
+    icon.Width(24); icon.Height(24);
+    icon.VerticalAlignment(VerticalAlignment::Center);
+    FontIcon sun;   // until the real icon loads, or for good if it can't
+    sun.Name(L"FluentMedia_WeatherGlyph");
+    sun.Glyph(L"\uE706");
+    sun.FontSize(16);
+    icon.Children().Append(sun);
+    Controls::Image img;
+    img.Name(L"FluentMedia_WeatherIcon");
+    img.Stretch(Stretch::Uniform);
+    icon.Children().Append(img);
+    row.Children().Append(icon);
+    StackPanel text;
+    text.VerticalAlignment(VerticalAlignment::Center);
+    TextBlock temp;
+    temp.Name(L"FluentMedia_WeatherTemp");
+    temp.FontSize((double)g_settings.titleFontSize);
+    temp.FontWeight(winrt::Windows::UI::Text::FontWeights::SemiBold());
+    TextBlock cond;
+    cond.Name(L"FluentMedia_WeatherCondition");
+    cond.FontSize((double)g_settings.artistFontSize);
+    cond.Opacity(0.75);
+    cond.TextTrimming(TextTrimming::CharacterEllipsis);
+    cond.MaxWidth(160);
+    text.Children().Append(temp);
+    text.Children().Append(cond);
+    row.Children().Append(text);
+    host.Children().Append(row);
+    host.Tapped([](auto const&, Input::TappedRoutedEventArgs const& e) {
+        e.Handled(true);
+        OpenWidgetsBoard();
+    });
+    ToolTipService::SetToolTip(host, winrt::box_value(winrt::hstring{ Loc(L"Weather") }));
+    // Read now if this is the primary taskbar's thread; otherwise the timer does it shortly.
+    HWND primary = FindPrimaryTaskbarWnd();
+    if (primary && GetWindowThreadProcessId(primary, nullptr) == GetCurrentThreadId()) ReadWeatherOnThread(nullptr);
+    PaintWeather(host);
+    return host;
+}
+
+static bool InjectDetachedWeather() {
+    if (!g_settings.weatherEnabled) return false;
+    return InjectDetachedWidget(
+        []() -> FrameworkElement { return BuildWeatherContainer(); },
+        g_settings.weatherBg, 4,
+        g_settings.weatherPosition, g_settings.weatherMonitor, g_detachedWeather);
+}
+static void RemoveDetachedWeather() {
+    RemoveDetachedWidget(g_detachedWeather, g_settings.weatherPosition);
+}
+
 static void InjectAllDetachedContainers() {
     struct Part { const wchar_t* keyword; bool (*inject)(); };
     static const Part parts[] = {
         { L"art", InjectDetachedAlbumArt }, { L"info", InjectDetachedInfo },
         { L"buttons", InjectDetachedButtons }, { L"viz", InjectDetachedViz },
+        { L"weather", InjectDetachedWeather },
     };
     bool done[ARRAYSIZE(parts)] = {};
     auto run = [&](size_t i) {
@@ -16857,6 +17155,7 @@ static void RemoveAllDetachedContainers() {
     try { RemoveDetachedInfo(); } catch (...) { LOG_IGNORED_EXCEPTION(); }
     try { RemoveDetachedButtons(); } catch (...) { LOG_IGNORED_EXCEPTION(); }
     try { RemoveDetachedViz(); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    try { RemoveDetachedWeather(); } catch (...) { LOG_IGNORED_EXCEPTION(); }
 }
 
 // A monitor turned off/on or renumbered fires no hook; the timer compares
@@ -16869,6 +17168,7 @@ static bool AnyDetachedWidgetMonitorMismatched() {
         {&g_detachedInfo,     g_settings.infoDetachedMonitor},
         {&g_detachedButtons,  g_settings.buttonsDetachedMonitor},
         {&g_detachedViz,      g_settings.vizDetachedMonitor},
+        {&g_detachedWeather,  g_settings.weatherMonitor},
     };
     for (auto& c : checks) {
         if (!c.state->injectionParent) continue;
@@ -16900,7 +17200,7 @@ static void ForgetInjectedTreeState() {
     g_miniPlayerFlyoutOpen = false;
     g_miniPlayerSeekDragging.store(false);
 
-    for (DetachedWidgetState* dw : { &g_detachedAlbumArt, &g_detachedInfo, &g_detachedButtons, &g_detachedViz }) {
+    for (DetachedWidgetState* dw : { &g_detachedAlbumArt, &g_detachedInfo, &g_detachedButtons, &g_detachedViz, &g_detachedWeather }) {
         dw->grid            = nullptr;
         dw->injectionParent = nullptr;
         dw->column          = -1;
@@ -16937,7 +17237,8 @@ static std::array<LONG, 12> DisplayFingerprint(HWND taskbar) {
 static void CheckMonitorTopologyChanged() {
     if (g_unloading || g_applyingSettings.load()) return;
     const bool partInjected = g_detachedAlbumArt.injectionParent || g_detachedInfo.injectionParent ||
-                              g_detachedButtons.injectionParent || g_detachedViz.injectionParent;
+                              g_detachedButtons.injectionParent || g_detachedViz.injectionParent ||
+                              g_detachedWeather.injectionParent;
     if (!g_playerGrid && !g_injectionParent && !partInjected) return;  // nothing injected yet — the init/retry paths own that
 
     // The full check walks every window and monitor. Skip it while nothing it
@@ -17614,6 +17915,18 @@ static DWORD WINAPI TimerThreadProc(void*) {
             }
         }
 
+        if (g_settings.weatherEnabled) {
+            static ULONGLONG s_nextWeather = 0;
+            const ULONGLONG nowMs = GetTickCount64();
+            if (nowMs >= s_nextWeather) {
+                s_nextWeather = nowMs + 30000;
+                const bool before = WeatherAvailable();
+                if (HWND primary = FindPrimaryTaskbarWnd()) RunFromWindowThread(primary, ReadWeatherOnThread, nullptr);
+                if (HWND w = g_detachedWeather.injectedOnWnd; w && IsWindow(w)) RunFromWindowThread(w, PaintWeatherOnThread, nullptr);
+                if (WeatherAvailable() != before) g_needsUiUpdate = true;   // shown or hidden now
+            }
+        }
+
         bool needsUpdate = g_needsUiUpdate.exchange(false);
 
         if (g_settings.idleHideSeconds > 0) {
@@ -17827,7 +18140,7 @@ static void RecoverMissingPlayer(HWND hWnd) {
     static ULONGLONG s_nextTry = 0;
     static ULONGLONG s_delay   = FIRST_RETRY_MS;
     const bool anythingInjected = g_playerGrid || g_detachedAlbumArt.grid || g_detachedInfo.grid ||
-                                  g_detachedButtons.grid || g_detachedViz.grid;
+                                  g_detachedButtons.grid || g_detachedViz.grid || g_detachedWeather.grid;
     if (anythingInjected) {
         s_nextTry = 0;
         s_delay   = FIRST_RETRY_MS;
@@ -17841,7 +18154,8 @@ static void RecoverMissingPlayer(HWND hWnd) {
         (g_settings.albumArtDetached && g_settings.albumArtDetachedMonitor != MONITOR_OFF) ||
         (g_settings.infoDetached && g_settings.infoDetachedMonitor != MONITOR_OFF) ||
         (g_settings.buttonsDetached && g_settings.buttonsDetachedMonitor != MONITOR_OFF) ||
-        (g_settings.vizDetached && g_settings.vizDetachedMonitor != MONITOR_OFF);
+        (g_settings.vizDetached && g_settings.vizDetachedMonitor != MONITOR_OFF) ||
+        (g_settings.weatherEnabled && g_settings.weatherMonitor != MONITOR_OFF);
     const bool mainWanted = GetEffectiveMonitorSetting() != MONITOR_OFF &&
         (g_settings.sidebarEnabled || !IsVerticalTaskbarEdge(GetTaskbarEdgeForWnd(hWnd)));
     if (!mainWanted && !partWanted) return;
@@ -17895,7 +18209,8 @@ static void KeepTrayPlacement(HWND hWnd) {
         !anchored((bool)g_detachedAlbumArt.grid, g_settings.albumArtDetachedPosition) &&
         !anchored((bool)g_detachedInfo.grid, g_settings.infoDetachedPosition) &&
         !anchored((bool)g_detachedButtons.grid, g_settings.buttonsDetachedPosition) &&
-        !anchored((bool)g_detachedViz.grid, g_settings.vizDetachedPosition))
+        !anchored((bool)g_detachedViz.grid, g_settings.vizDetachedPosition) &&
+        !anchored((bool)g_detachedWeather.grid, g_settings.weatherPosition))
         return;
 
     RunFromWindowThread(hWnd, [](void*) {
@@ -17907,7 +18222,8 @@ static void KeepTrayPlacement(HWND hWnd) {
                   TrayPlacementIsOff(g_detachedAlbumArt.grid, g_settings.albumArtDetachedPosition) ||
                   TrayPlacementIsOff(g_detachedInfo.grid, g_settings.infoDetachedPosition) ||
                   TrayPlacementIsOff(g_detachedButtons.grid, g_settings.buttonsDetachedPosition) ||
-                  TrayPlacementIsOff(g_detachedViz.grid, g_settings.vizDetachedPosition);
+                  TrayPlacementIsOff(g_detachedViz.grid, g_settings.vizDetachedPosition) ||
+                  TrayPlacementIsOff(g_detachedWeather.grid, g_settings.weatherPosition);
         } catch (...) { LOG_IGNORED_EXCEPTION(); return; }
         if (!off) { s_failedRepairs = 0; g_trayPlacementOkStreak++; return; }
         g_trayPlacementOkStreak = 0;
@@ -17954,7 +18270,7 @@ static void WINAPI TrayUI_StartTaskbar_Hook(void* pThis) {
     // bookkeeping (the hidden Widgets list too).
     ResetTrackingGroupsForTaskbarReinit();
     ForgetHiddenWidgetsBookkeeping();
-    for (DetachedWidgetState* dw : { &g_detachedAlbumArt, &g_detachedInfo, &g_detachedButtons, &g_detachedViz }) {
+    for (DetachedWidgetState* dw : { &g_detachedAlbumArt, &g_detachedInfo, &g_detachedButtons, &g_detachedViz, &g_detachedWeather }) {
         dw->grid                              = nullptr;
         dw->injectionParent                   = nullptr;
         dw->column                            = -1;
@@ -19336,6 +19652,18 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
             L"MainSettings.VisualizerFunctionsSettings.vizDetachedPosition",
             L"MainSettings.VisualizerFunctionsSettings.vizDetachedMonitor",
             L"MainSettings.VisualizerFunctionsSettings.vizDetachedBackground");
+        // Weather is always a part of its own: its switch turns it on.
+        SettingCard weatherCard = BuildDetachedContainerCard(
+            L"Weather", L"MainSettings.WeatherSetting.weatherEnabled",
+            L"MainSettings.WeatherSetting.weatherPosition",
+            L"MainSettings.WeatherSetting.weatherMonitor",
+            L"MainSettings.WeatherSetting.weatherBackground");
+        if (!weatherCard.rows.empty()) {
+            weatherCard.rows[0].label = L"Show weather";
+            weatherCard.rows[0].description = L"The weather from the Widgets button, placed anywhere. Click it to open Widgets.";
+            weatherCard.rows.insert(weatherCard.rows.begin() + 1,
+                RowBool(L"Show the condition", L"MainSettings.WeatherSetting.weatherShowCondition"));
+        }
 
         SettingCard sidebarPlayerCard;
         sidebarPlayerCard.title = L"Vertical taskbar";
@@ -19349,7 +19677,7 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
         SettingCard preview;
         preview.title = L"Taskbar layout";
         preview.layoutPreview = true;
-        cats.push_back(SettingCategory{ L"Layout", L"\uE8A9", { preview, card, size, order, sidebarPlayerCard, albumArtCard, infoCard, buttonsCard, vizCard } });
+        cats.push_back(SettingCategory{ L"Layout", L"\uE8A9", { preview, card, size, order, sidebarPlayerCard, albumArtCard, infoCard, buttonsCard, vizCard, weatherCard } });
     }
 
     cats.push_back(BuildBehaviorClicksCategory());
@@ -20607,6 +20935,9 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"Fade the ends of scrolling text", L"Згасання країв тексту, що прокручується", L"Затухание краёв прокручиваемого текста", L"Enden von Lauftext ausblenden", L"स्क्रॉल होते टेक्स्ट के किनारों को फ़ेड करें", L"滚动文字两端渐隐", L"捲動文字兩端漸隱", L"Difuminar los extremos del texto desplazable", L"Estomper les bords du texte défilant", L"Esmaecer as pontas do texto rolante", L"Sfuma i bordi del testo scorrevole", L"Wygaszaj krawędzie przewijanego tekstu", L"Kayan metnin kenarlarını soldur", L"スクロールする文字の端をフェード", L"스크롤 텍스트 가장자리 흐리게" },
     { L"Letters fade in and out at the edges instead of being cut off.", L"Літери плавно з'являються і зникають біля країв, а не обрізаються.", L"Буквы плавно появляются и исчезают у краёв, а не обрезаются.", L"Buchstaben werden an den Rändern ein- und ausgeblendet statt abgeschnitten.", L"अक्षर किनारों पर कटने के बजाय धीरे से आते-जाते हैं।", L"文字在边缘渐入渐出，而不是被截断。", L"文字在邊緣漸入漸出，而不是被截斷。", L"Las letras aparecen y desaparecen suavemente en los bordes en vez de cortarse.", L"Les lettres apparaissent et disparaissent en fondu aux bords au lieu d'être coupées.", L"As letras surgem e somem suavemente nas bordas em vez de serem cortadas.", L"Le lettere sfumano ai bordi invece di essere tagliate.", L"Litery płynnie pojawiają się i znikają przy krawędziach zamiast być ucinane.", L"Harfler kenarlarda kesilmek yerine yavaşça belirip kaybolur.", L"文字は端で切れずに、ふわっと出入りします。", L"글자가 가장자리에서 잘리지 않고 부드럽게 나타나고 사라집니다." },
     { L"Fade width (px)", L"Ширина згасання (пкс)", L"Ширина затухания (пкс)", L"Ausblendbreite (px)", L"फ़ेड की चौड़ाई (px)", L"渐隐宽度 (px)", L"漸隱寬度 (px)", L"Ancho del difuminado (px)", L"Largeur du fondu (px)", L"Largura do esmaecimento (px)", L"Larghezza sfumatura (px)", L"Szerokość wygaszania (px)", L"Solma genişliği (px)", L"フェードの幅 (px)", L"흐림 너비 (px)" },
+    { L"Show weather", L"Показувати погоду", L"Показывать погоду", L"Wetter anzeigen", L"मौसम दिखाएँ", L"显示天气", L"顯示天氣", L"Mostrar el tiempo", L"Afficher la météo", L"Mostrar o clima", L"Mostra il meteo", L"Pokaż pogodę", L"Hava durumunu göster", L"天気を表示", L"날씨 표시" },
+    { L"The weather from the Widgets button, placed anywhere. Click it to open Widgets.", L"Погода з кнопки віджетів, будь-де на панелі. Клацніть, щоб відкрити віджети.", L"Погода с кнопки виджетов, в любом месте. Щёлкните, чтобы открыть виджеты.", L"Das Wetter aus der Widgets-Schaltfläche, frei platzierbar. Klick öffnet die Widgets.", L"विजेट्स बटन का मौसम, कहीं भी। क्लिक करने पर विजेट्स खुलते हैं।", L"来自小组件按钮的天气，可放在任意位置。点击打开小组件。", L"來自小工具按鈕的天氣，可放在任何位置。按一下開啟小工具。", L"El tiempo del botón de Widgets, donde quieras. Haz clic para abrir Widgets.", L"La météo du bouton Widgets, où vous voulez. Cliquez pour ouvrir les Widgets.", L"O clima do botão de Widgets, onde quiser. Clique para abrir os Widgets.", L"Il meteo del pulsante Widget, dove vuoi. Fai clic per aprire i Widget.", L"Pogoda z przycisku widżetów, w dowolnym miejscu. Kliknij, aby otworzyć widżety.", L"Pencere Öğeleri düğmesindeki hava durumu, istediğin yerde. Tıklayınca Pencere Öğeleri açılır.", L"ウィジェット ボタンの天気を好きな場所に。クリックでウィジェットを開きます。", L"위젯 버튼의 날씨를 원하는 곳에. 클릭하면 위젯이 열립니다." },
+    { L"Show the condition", L"Показувати опис", L"Показывать описание", L"Wetterlage anzeigen", L"हालत दिखाएँ", L"显示天气状况", L"顯示天氣狀況", L"Mostrar el estado", L"Afficher la condition", L"Mostrar a condição", L"Mostra le condizioni", L"Pokaż opis", L"Durumu göster", L"天気の状態を表示", L"날씨 상태 표시" },
     { L"Window color", L"Колір вікна", L"Цвет окна", L"Fensterfarbe", L"विंडो का रंग", L"窗口颜色", L"視窗色彩", L"Color de la ventana", L"Couleur de la fenêtre", L"Cor da janela", L"Colore della finestra", L"Kolor okna", L"Pencere rengi", L"ウィンドウの色", L"창 색상" },
     { L"Custom color", L"Власний колір", L"Свой цвет", L"Eigene Farbe", L"कस्टम रंग", L"自定义颜色", L"自訂色彩", L"Color personalizado", L"Couleur personnalisée", L"Cor personalizada", L"Colore personalizzato", L"Własny kolor", L"Özel renk", L"カスタム色", L"사용자 지정 색" },
     { L"Title bar color", L"Колір рядка заголовка", L"Цвет строки заголовка", L"Farbe der Titelleiste", L"शीर्षक पट्टी का रंग", L"标题栏颜色", L"標題列色彩", L"Color de la barra de título", L"Couleur de la barre de titre", L"Cor da barra de título", L"Colore della barra del titolo", L"Kolor paska tytułu", L"Başlık çubuğu rengi", L"タイトル バーの色", L"제목 표시줄 색" },
@@ -21279,6 +21610,30 @@ static const RowRule ROW_RULES[] = {
     { L"MainSettings.VisualizerFunctionsSettings.vizDetachedBackgroundHoverEffect", 91, false, L"MainSettings.VisualizerFunctionsSettings.vizEnabled", L"true" },
     { L"MainSettings.VisualizerFunctionsSettings.vizDetachedBackgroundHoverEffect", 91, false, L"MainSettings.VisualizerFunctionsSettings.vizDetached", L"true" },
     { L"MainSettings.VisualizerFunctionsSettings.vizDetachedBackgroundHoverEffect", 92, true, L"MainSettings.VisualizerFunctionsSettings.vizDetachedBackgroundType", L"inherit" },
+    { L"MainSettings.WeatherSetting.weatherPosition", 6078, false, L"MainSettings.WeatherSetting.weatherEnabled", L"true" },
+    { L"MainSettings.WeatherSetting.weatherMonitor", 6079, false, L"MainSettings.WeatherSetting.weatherEnabled", L"true" },
+    { L"MainSettings.WeatherSetting.weatherBackgroundType", 6080, false, L"MainSettings.WeatherSetting.weatherEnabled", L"true" },
+    { L"MainSettings.WeatherSetting.weatherBackgroundColor", 6081, false, L"MainSettings.WeatherSetting.weatherEnabled", L"true" },
+    { L"MainSettings.WeatherSetting.weatherBackgroundColor", 6081, false, L"MainSettings.WeatherSetting.weatherBackgroundType", L"solid|acrylic|mica|mica_alt" },
+    { L"MainSettings.WeatherSetting.weatherBackgroundColor2", 6082, false, L"MainSettings.WeatherSetting.weatherEnabled", L"true" },
+    { L"MainSettings.WeatherSetting.weatherBackgroundColor2", 6082, false, L"MainSettings.WeatherSetting.weatherBackgroundType", L"gradient" },
+    { L"MainSettings.WeatherSetting.weatherBackgroundGradientColor2", 6083, false, L"MainSettings.WeatherSetting.weatherEnabled", L"true" },
+    { L"MainSettings.WeatherSetting.weatherBackgroundGradientColor2", 6083, false, L"MainSettings.WeatherSetting.weatherBackgroundType", L"gradient" },
+    { L"MainSettings.WeatherSetting.weatherBackgroundOpacity", 6084, false, L"MainSettings.WeatherSetting.weatherEnabled", L"true" },
+    { L"MainSettings.WeatherSetting.weatherBackgroundOpacity", 6084, false, L"MainSettings.WeatherSetting.weatherBackgroundType", L"solid|gradient" },
+    { L"MainSettings.WeatherSetting.weatherBackgroundGradientAngle", 6085, false, L"MainSettings.WeatherSetting.weatherEnabled", L"true" },
+    { L"MainSettings.WeatherSetting.weatherBackgroundGradientAngle", 6085, false, L"MainSettings.WeatherSetting.weatherBackgroundType", L"gradient" },
+    { L"MainSettings.WeatherSetting.weatherBackgroundGradientBalance", 6086, false, L"MainSettings.WeatherSetting.weatherEnabled", L"true" },
+    { L"MainSettings.WeatherSetting.weatherBackgroundGradientBalance", 6086, false, L"MainSettings.WeatherSetting.weatherBackgroundType", L"gradient" },
+    { L"MainSettings.WeatherSetting.weatherBackgroundAcrylicOpacity", 6087, false, L"MainSettings.WeatherSetting.weatherEnabled", L"true" },
+    { L"MainSettings.WeatherSetting.weatherBackgroundAcrylicOpacity", 6087, false, L"MainSettings.WeatherSetting.weatherBackgroundType", L"acrylic" },
+    { L"MainSettings.WeatherSetting.weatherBackgroundMicaOpacity", 6088, false, L"MainSettings.WeatherSetting.weatherEnabled", L"true" },
+    { L"MainSettings.WeatherSetting.weatherBackgroundMicaOpacity", 6088, false, L"MainSettings.WeatherSetting.weatherBackgroundType", L"mica|mica_alt" },
+    { L"MainSettings.WeatherSetting.weatherBackgroundCornerRadius", 6089, false, L"MainSettings.WeatherSetting.weatherEnabled", L"true" },
+    { L"MainSettings.WeatherSetting.weatherBackgroundCornerRadius", 6090, true, L"MainSettings.WeatherSetting.weatherBackgroundType", L"inherit" },
+    { L"MainSettings.WeatherSetting.weatherBackgroundHoverEffect", 6091, false, L"MainSettings.WeatherSetting.weatherEnabled", L"true" },
+    { L"MainSettings.WeatherSetting.weatherBackgroundHoverEffect", 6092, true, L"MainSettings.WeatherSetting.weatherBackgroundType", L"inherit" },
+    { L"MainSettings.WeatherSetting.weatherShowCondition", 6200, false, L"MainSettings.WeatherSetting.weatherEnabled", L"true" },
     { L"MainSettings.VisualizerFunctionsSettings.vizStyle", 93, false, L"MainSettings.VisualizerFunctionsSettings.vizEnabled", L"true" },
     { L"MainSettings.VisualizerFunctionsSettings.vizShape", 94, false, L"MainSettings.VisualizerFunctionsSettings.vizEnabled", L"true" },
     { L"MainSettings.VisualizerFunctionsSettings.vizEQ", 95, false, L"MainSettings.VisualizerFunctionsSettings.vizEnabled", L"true" },
@@ -23107,7 +23462,11 @@ static const LpPart LP_PARTS[] = {
       L"MainSettings.MediaButtonsSettings.buttonsDetachedPosition", L"MainSettings.MediaButtonsSettings.buttonsDetachedMonitor", L"taskbar_left_edge" },
     { L"Visualizer", L"MainSettings.VisualizerFunctionsSettings.vizEnabled", nullptr, L"MainSettings.VisualizerFunctionsSettings.vizDetached",
       L"MainSettings.VisualizerFunctionsSettings.vizDetachedPosition", L"MainSettings.VisualizerFunctionsSettings.vizDetachedMonitor", L"taskbar_left_edge" },
+    // Always a part of its own (no detach switch), never inside the player.
+    { L"Weather", L"MainSettings.WeatherSetting.weatherEnabled", nullptr, nullptr,
+      L"MainSettings.WeatherSetting.weatherPosition", L"MainSettings.WeatherSetting.weatherMonitor", L"tray_left" },
 };
+static constexpr int LP_WEATHER = 5;
 
 static bool LpOn(const wchar_t* key) {
     if (!key) return false;
@@ -23119,6 +23478,7 @@ static bool LpPartOn(const LpPart& p) {
 }
 static bool LpInPlayer(int part) {
     const LpPart& p = LP_PARTS[part];
+    if (!p.detachKey) return false;   // the player itself, or weather
     return LpPartOn(p) && !LpOn(p.detachKey);   // off parts go to Hidden
 }
 static std::wstring LpPosition(const LpPart& p) {
@@ -23323,6 +23683,7 @@ static void TakeLpSnapOnThread(void* param) {
         part(2, g_detachedInfo.grid, g_detachedInfo.injectedOnWnd);
         part(3, g_detachedButtons.grid, g_detachedButtons.injectedOnWnd);
         part(4, g_detachedViz.grid, g_detachedViz.injectedOnWnd);
+        part(LP_WEATHER, g_detachedWeather.grid, g_detachedWeather.injectedOnWnd);
         snap->ok = true;
     } catch (...) {
         LOG_IGNORED_EXCEPTION();
@@ -23399,7 +23760,7 @@ static int LpStackDir(PlayerPosition p) {
     }
 }
 
-static const wchar_t* const LP_PART_KEYWORDS[] = { L"", L"art", L"info", L"buttons", L"viz" };
+static const wchar_t* const LP_PART_KEYWORDS[] = { L"", L"art", L"info", L"buttons", L"viz", L"weather" };
 
 // The order that puts `moved` on `right ? the right : the left` of `besidePart`.
 // False when it can't: the player always goes in first.
@@ -23418,7 +23779,7 @@ static bool LpOrderFor(const LpSlot& slot, int moved, std::wstring& outOrder) {
         RawFetchStr(L"MainSettings.PlayerSetting.partOrder", L"art,info,buttons,viz"));
     for (const auto& kw : SplitCommaList(cur))
         if (std::find(order.begin(), order.end(), kw) == order.end()) order.push_back(kw);
-    for (int p = 1; p <= 4; p++)
+    for (int p = 1; p <= LP_WEATHER; p++)
         if (std::find(order.begin(), order.end(), LP_PART_KEYWORDS[p]) == order.end()) order.push_back(LP_PART_KEYWORDS[p]);
     outOrder = JoinCommaList(order);
     return true;
@@ -23620,6 +23981,24 @@ static wuxc::Border MakeLpPlaceholder(int part, double w, double h, bool live) {
         case 1: row.Children().Append(art()); break;
         case 2: row.Children().Append(text(w - 8)); break;
         case 3: row.Children().Append(buttons()); break;
+        case LP_WEATHER: {
+            WeatherInfo wi;
+            { std::lock_guard<std::mutex> lk(g_weatherMtx); wi = g_weather; }
+            row.Children().Append(LpGlyph(L"\uE706", ih * 0.5));
+            wuxc::StackPanel two;
+            two.VerticalAlignment(wux::VerticalAlignment::Center);
+            wuxc::TextBlock a; a.Text(winrt::hstring{ wi.temp.empty() ? std::wstring(L"18\u00B0") : wi.temp });
+            a.FontSize(std::max(7.0, ih * 0.36)); a.FontWeight(winrt::Windows::UI::Text::FontWeights::SemiBold());
+            two.Children().Append(a);
+            if (ih >= 18) {
+                wuxc::TextBlock b2; b2.Text(winrt::hstring{ wi.condition.empty() ? Loc(L"Weather") : wi.condition });
+                b2.FontSize(std::max(6.0, ih * 0.3)); b2.Opacity(0.7); b2.TextTrimming(wux::TextTrimming::CharacterEllipsis);
+                b2.MaxWidth(std::max(10.0, w - ih - 20));
+                two.Children().Append(b2);
+            }
+            row.Children().Append(two);
+            break;
+        }
         default: row.Children().Append(viz()); break;
     }
     // Only the box takes the pointer: the art, text and icons inside are decoration.
@@ -23658,6 +24037,7 @@ static double LpDefaultWidth(int part, double h) {
         case 1: return h;   // a square, the cover 4 px in from every side
         case 2: return LpTextWidth(ih) + 18;
         case 3: return ih * 2.3 + 20;
+        case LP_WEATHER: return ih * 3.2 + 20;
         default: return ih * 1.2 + 20;
     }
 }
@@ -23708,6 +24088,7 @@ struct LpDrag {
 
 static void LpCommit(int part, int zone, int monitor, const std::wstring& position) {
     const LpPart& p = LP_PARTS[part];
+    if (zone == 1 && part != 0 && !p.detachKey) return;   // weather never goes inside the player
     Wh_Log(L"LayoutPreview: drop %s zone=%d monitor=%d position=%s", p.label, zone, monitor, position.c_str());
     if (p.enableKey && zone != 2 && !LpPartOn(p)) SetOverrideLive(p.enableKey, L"1");
     if (zone == 1) {
@@ -23927,7 +24308,7 @@ static void WireLpDrag(wuxc::Border const& el, int part, std::shared_ptr<LpDrag>
             auto lp = e.GetCurrentPoint(b).Position();
             return lp.X >= 0 && lp.Y >= 0 && lp.X <= b.ActualWidth() && lp.Y <= b.ActualHeight();
         };
-        if (st->part != 0) {
+        if (st->part != 0 && LP_PARTS[st->part].detachKey) {
             if (inside(st->attachZone)) st->tZone = 1;
             for (auto& p : st->players) if (inside(p)) st->tZone = 1;
         }
@@ -23983,7 +24364,13 @@ static void WireLpDrag(wuxc::Border const& el, int part, std::shared_ptr<LpDrag>
             st->lastClickAt = now;
             if (twice && st->part != 0) {
                 st->lastClickPart = -1;
-                LpCommit(st->part, st->pressWhere == 1 ? 2 : 1, 0, L"");
+                if (!LP_PARTS[st->part].detachKey) {
+                    // Weather: out of Hidden back to its place, or off the taskbar into Hidden.
+                    if (st->pressWhere == 2) LpCommit(st->part, 0, std::max(1, LpMonitor(LP_PARTS[st->part])), LpPosition(LP_PARTS[st->part]));
+                    else LpCommit(st->part, 2, 0, L"");
+                } else {
+                    LpCommit(st->part, st->pressWhere == 1 ? 2 : 1, 0, L"");
+                }
             }
             return;
         }
