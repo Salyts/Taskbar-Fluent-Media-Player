@@ -2131,6 +2131,9 @@ namespace UI {
     static void ResetScrollState(TextScrollState& s);
 } // namespace UI
 namespace Taskbar {
+    enum class TaskbarEdge { Bottom, Top, Left, Right };
+    static TaskbarEdge GetTaskbarEdgeForWnd(HWND hTaskbarWnd);
+    static bool IsVerticalTaskbarEdge(TaskbarEdge e);
     static HWND FindCurrentProcessTaskbarWnd();
     static void EnsureWidgetsHideStateApplied();
     static void ForgetHiddenWidgetsBookkeeping();
@@ -13599,15 +13602,24 @@ static void ShowMiniPlayerFlyout(FrameworkElement const& target) {
                         // taskbar's XamlRoot is too small to constrain into).
                         bool edgeAware = false;
                         bool nearRightEdge = false;
+                        bool nearBottomEdge = true;
                         RECT workPx; POINT originPx; double scale;
                         if (GetTaskbarMonitorWorkAreaInfo(rootContent, workPx, originPx, scale)) {
                             double workLeft  = (workPx.left  - originPx.x) / scale;
                             double workRight = (workPx.right - originPx.x) / scale;
+                            double workTop    = (workPx.top    - originPx.y) / scale;
+                            double workBottom = (workPx.bottom - originPx.y) / scale;
                             double widgetCenterX = pt.X + targetW * 0.5;
                             double monitorCenterX = (workLeft + workRight) / 2.0;
                             nearRightEdge = widgetCenterX > monitorCenterX;
+                            nearBottomEdge = pt.Y + target.ActualHeight() * 0.5 > (workTop + workBottom) / 2.0;
                             edgeAware = true;
                         }
+                        // Which side of the screen the taskbar is on: the popup opens
+                        // away from it, so it stays on the screen. Above the player,
+                        // a player at the top of a vertical taskbar opened it off the top.
+                        const TaskbarEdge edge = GetTaskbarEdgeForWnd(
+                            (g_miniPlayerHostWnd && IsWindow(g_miniPlayerHostWnd)) ? g_miniPlayerHostWnd : g_taskbarWnd);
 
                         float offset = (float)g_settings.miniPlayerHorizontalOffsetAbove;
                         float cx = edgeAware
@@ -13615,8 +13627,21 @@ static void ShowMiniPlayerFlyout(FrameworkElement const& target) {
                             : pt.X + (float)targetW * 0.5f + offset;
 
                         using FPM = Controls::Primitives::FlyoutPlacementMode;
-                        bool placeBelow = (g_settings.miniPlayerVerticalPlacementNear == MenuVerticalPlacement::Bottom);
-                        if (placeBelow) {
+                        bool placeBelow = (g_settings.miniPlayerVerticalPlacementNear == MenuVerticalPlacement::Bottom) ||
+                                          edge == TaskbarEdge::Top;
+                        if (IsVerticalTaskbarEdge(edge)) {
+                            // Beside the player, reaching down from its top in the top half
+                            // of the screen and up from its bottom in the lower half.
+                            const bool onLeft = edge == TaskbarEdge::Left;
+                            const float x = onLeft ? (float)(pt.X + targetW) + offset : pt.X - offset;
+                            const float y = nearBottomEdge ? pt.Y + (float)target.ActualHeight() : pt.Y;
+                            anchorPoint = {x, y};
+                            placementMode = onLeft
+                                ? (nearBottomEdge ? FPM::RightEdgeAlignedBottom : FPM::RightEdgeAlignedTop)
+                                : (nearBottomEdge ? FPM::LeftEdgeAlignedBottom : FPM::LeftEdgeAlignedTop);
+                            g_miniPlayerAnimAxis = 1;
+                            g_miniPlayerAnimSign = onLeft ? -1.0 : 1.0;
+                        } else if (placeBelow) {
                             float ty = pt.Y + (float)target.ActualHeight();
                             anchorPoint = {cx, ty};
                             placementMode = edgeAware
@@ -15786,8 +15811,6 @@ namespace Taskbar {
 // ===========================================================================
 namespace Taskbar {
 
-enum class TaskbarEdge { Bottom, Top, Left, Right };
-
 // Which screen edge the taskbar is docked to, from the window's rect vs its
 // monitor's: plain geometry, so XAML tree changes don't affect it.
 static TaskbarEdge GetTaskbarEdgeForWnd(HWND hTaskbarWnd) {
@@ -17854,7 +17877,20 @@ static FrameworkElement BuildWeatherContainer() {
     cond.MaxWidth(160);
     text.Children().Append(temp);
     text.Children().Append(cond);
-    row.Children().Append(text);
+    Border textBox;
+    textBox.Child(text);
+    if (IsSidebarMode()) {
+        // A vertical taskbar: the icon on top and the text turned like the
+        // player's, which wouldn't fit across the strip.
+        row.Orientation(Orientation::Vertical);
+        row.Spacing(4);
+        row.Margin({ 0, 4, 0, 4 });
+        row.HorizontalAlignment(HorizontalAlignment::Center);
+        icon.HorizontalAlignment(HorizontalAlignment::Center);
+        row.Children().Append(WrapSidebarText(textBox));
+    } else {
+        row.Children().Append(textBox);
+    }
     host.Children().Append(row);
     host.Tapped([](auto const&, Input::TappedRoutedEventArgs const& e) {
         e.Handled(true);

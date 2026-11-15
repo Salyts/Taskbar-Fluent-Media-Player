@@ -33,6 +33,8 @@
 
 ### Fixes
 
+- The mini player menu ("near the player") opens away from the taskbar on a vertical or top taskbar, so it stays on the screen. On a vertical taskbar it opens beside the player.
+- The weather part fits a vertical taskbar: the icon on top and the text turned like the player's.
 - On a vertical taskbar, hidden Windows buttons (Start, Search, Task View, the weather widget) no longer leave an empty gap their height tall.
 - The weather part no longer disappears while Windows' Widgets button shows news or a forecast teaser instead of the temperature: only a reading with a temperature counts, the last one stays in between, and it's remembered across restarts.
 - With the weather part on and Windows' weather widget hidden, the hidden widget no longer leaves an empty gap on the taskbar.
