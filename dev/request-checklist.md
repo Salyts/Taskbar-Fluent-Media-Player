@@ -5,6 +5,16 @@ leave `[ ]` for not yet. The issue number is in brackets.
 
 ## Bugs
 
+New since 2026-11-11 (fixed or added on the `1.7.1` branch; replies in `issue-replies.md`, not posted):
+
+- [x] Progress bar hidden when its part (buttons, info) is hidden (#117) — the bar spans the player instead
+- [x] Progress bar click/drag does nothing (#116) — the seek code works; their app likely refuses seeks, and a refused seek no longer moves the bar
+- [x] Single click runs together with the double click (#115) — Behaviour: "A double-click doesn't run the single click too"; a left double-click no longer runs the single click twice
+- [x] "Open media app" does nothing with the app in the tray (#114) — starts the app's exe again, which brings up Spotify, AIMP and other one-instance apps
+- [ ] Player won't move left (#111) — no details; likely the left-align report from Discord, waiting on logs
+- [ ] Smart App Control blocks the 1.7.0 DLL (#119) — Windhawk/Windows signing, not something the mod can change
+- [ ] Riff app not recognized (#100) — needs a check that Riff shows in Windows' own media controls (Win + A)
+
 New since the 2026-10-03 cleanup (replies drafted in `issue-replies.md`, not posted):
 
 - [x] "Tray - Left of Tray Icons" stopped working after a Windows update (#91) — 1.7 handles the StackPanel tray; tray anchors now use the tray's direct child, and a missing anchor puts the player at the tray start instead of nowhere
@@ -67,6 +77,11 @@ Older:
 
 ## Clicks and actions
 
+- [x] Scroll over the player buttons to seek (#123) — mouse wheel action "Skip 5 seconds back or forward"
+- [x] Always show the app icon instead of album art (#113) — Album Art: "Album art shows" = The app's icon
+- [x] Always show the stand-in icon instead of album art (#120) — Album Art: "Album art shows" = An icon
+- [ ] Center the player buttons and spread them evenly (#118)
+- [ ] Keyboard shortcut to open the mini player (#106)
 - [x] Default app to launch when clicking the player with nothing playing (#23) — Behaviour: "App to open when nothing is playing"
 - [ ] Run a script / send a keybind / open an app on click, per area (player, art, title, buttons, visualizer) (#25)
 - [ ] Custom context menu items (#25)
@@ -75,6 +90,9 @@ Older:
 
 ## Mini player menu
 
+- [x] Mica and Mica Alt menu background (#112) — Mini Player Menu: "Menu background" = Mica, Mica Alt (Mica's look; the menu can't have real Mica)
+- [x] Hide the empty artwork placeholder (#122) — Mini Player Menu: "Hide the cover area without a cover"
+- [x] Scroll over the seek bar to skip (#121) — the wheel over the mini player's seek bar skips 5 seconds
 - [x] Acrylic / mica / gradient background options (#48) — Mini Player Menu: "Menu background" = Acrylic, Solid color, Album colors gradient, Blurred album cover (+ color and opacity). No separate Mica: the taskbar's XAML has no real Mica brush (the player's "Mica" is a tinted solid), so Solid color + opacity covers it
 - [x] Remove the settings button and the lower part (#84) — "Hide icon tray"
 - [x] Change the corner radius (#84) — Mini Player Menu: "Menu corner radius"

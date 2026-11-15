@@ -2,6 +2,35 @@
 
 Paste-ready. "1.7" means the release we're about to put out.
 
+## 1.7.1 (alpha on the Windhawk Discord, not posted yet)
+
+**#117** (progress bar hidden with the buttons or the info)
+> Thanks for the clear steps! Fixed in 1.7.1: when the bar is set to sit under a part that's hidden, it spans the whole player instead of disappearing with it.
+
+**#116** (progress bar click/drag doesn't seek)
+> The seeking itself works with the apps we tested, so this is most likely the app refusing it: some players (AIMP among them, depending on its plugin) don't take a new position from Windows. In 1.7.1 a refused seek no longer jumps the bar as if it had worked. Which app was it? If it's not AIMP, we'll take a closer look.
+
+**#115** (single click runs with the double click)
+> Fixed in 1.7.1 with a new option, Behaviour & Clicks: "A double-click doesn't run the single click too". With it on, a single click waits a moment to see if a second click follows, so a double-click only runs its own action. It's off by default so single clicks stay instant for everyone else.
+
+**#114** (Open media app with the app in the tray)
+> Fixed in 1.7.1: when the app has no window to bring up, the mod starts it again, which makes Spotify, AIMP and other apps that only run once show their window.
+
+**#113, #120** (always show the app icon / the stand-in icon instead of album art)
+> Added in 1.7.1: Album Art, "Album art shows": the cover, the app's icon, or an icon (the one set under "No album art").
+
+**#112** (Mica for the mini player)
+> Added in 1.7.1: Mica and Mica Alt menu backgrounds. Windows doesn't give menus real Mica, so these are its look: its colors, nearly solid.
+
+**#121, #123** (scroll to skip)
+> Added in 1.7.1: the wheel over the mini player's seek bar skips 5 seconds, and there's a new wheel action "Skip 5 seconds back or forward" for the player and the album art.
+
+**#122** (hide the empty artwork area in the mini player)
+> Added in 1.7.1: Mini Player Menu, "Hide the cover area without a cover".
+
+**#119** (Smart App Control blocks the mod)
+> Smart App Control blocks DLLs that aren't signed, and Windhawk compiles mods on your PC, so their DLLs can't be signed by us. That's between Windhawk and Windows rather than this mod. Turning Smart App Control off is the only way around it for now (note Windows doesn't let you turn it back on without a reset).
+
 ## New since 2026-10-16 (not posted yet)
 
 **#93** (visualizer reacts to every sound)

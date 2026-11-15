@@ -34,13 +34,26 @@ A media player built into the Windows 11 taskbar, styled to fit in with the rest
 - Pick a monitor with a button, numbered like Windows. Click the selected one again to hide the player.
 - Pull the album art, track info, buttons or visualizer out of the player and put each one somewhere else, with its own background and monitor.
 - Works on vertical taskbars: the text and album art turn to read along them and the buttons stack up.
+- Drag the player and its parts around on a copy of your taskbar in the settings window.
+
+### Weather
+
+- The weather from Windows' Widgets button (icon, temperature, condition) as a part of its own, anywhere on the taskbar. Click it to open Widgets. Nothing goes online.
+- Show it only when nothing plays, or let it take the player's place until music plays again.
+
+### Windows buttons
+
+- Hide Start, Search, Task View and the Widgets button, and in the tray the hidden icons arrow, network and volume, language, the clock and Show desktop.
+- Hide the year on the clock's date.
 
 ### Appearance
 
 - Backgrounds: Acrylic, Mica, Mica Alt, a blurred album cover, a solid color or a gradient.
 - Colors can be `R G B` or hex, can differ between light and dark theme, and can follow the album art or your accent color.
 - Mirror the layout, change the order of the parts, and set sizes, margins and corner radius.
-- Scrolling titles, full font control, and your own text for when there's no title, artist or session.
+- Scrolling titles that fade at the edges, full font control, and your own text for when there's no title, artist or session.
+- Smooth song changes: the text fades in, the player glides to its new width, and the album art morphs between a square cover and a wide thumbnail.
+- Album art can show the cover, the app's icon, or an icon of your choice.
 
 ### Visualizer
 
@@ -48,23 +61,25 @@ A media player built into the Windows 11 taskbar, styled to fit in with the rest
 - Bars or a thin line, in 5 shapes, with 6 color modes and 6 EQ presets.
 - Sits in the player, next to the artist name, or behind the whole player.
 - Tune each of its 7 frequency bands, or pick which audio device it listens to.
+- Runs at 60, 30 or 15 fps, pauses on battery saver, and stops while the screen is off or a game is fullscreen.
 
 ### Mini player
 
 - Album art, title and artist, a seek bar, playback buttons and the list of what's playing.
-- Opens right above the player or at a fixed spot on screen.
-- Acrylic, solid, album gradient or blurred cover background.
+- Opens right next to the player or at a fixed spot on screen.
+- Acrylic, Mica, Mica Alt, solid, album gradient or blurred cover background.
+- A button switches the visualizer between the app in the player and everything on the PC.
 
 ### Mouse and right-click menu
 
-- Bind volume, seeking, switching apps, opening the menu and more to the wheel and to single, double and middle clicks, separately for the album art and the rest of the player.
+- Bind volume, seeking, skipping 5 seconds, switching apps, opening the menu and more to the wheel and to single, double and middle clicks, separately for the album art and the rest of the player.
 - The right-click menu shows repeat and shuffle as submenus or single toggles. Every item is optional and can be reordered.
 
 ### Settings window
 
 - Right-click the player and pick Settings. Every option is sorted into pages, and changes show up on the player while you make them.
 - Comes in 15 languages and follows your Windows language by default.
-- Mica or Acrylic background, with adjustable transparency and blur. Acrylic shows what's behind the window, live wallpapers included.
+- Mica, Acrylic, a blurred album cover or a color of your own as the background, with adjustable transparency and blur. Acrylic shows what's behind the window, live wallpapers included.
 
 ## Screenshots
 

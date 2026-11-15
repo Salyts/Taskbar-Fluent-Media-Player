@@ -1,7 +1,7 @@
 # Future-proofing Taskbar Fluent Media Player
 
 Notes for Salyts and GR0UD on where the mod should go next. Started 2026-10-03,
-updated for 1.7.
+updated for 1.7.1.
 Nothing in here is urgent. The "Improve now" list at the bottom is the stuff
 worth doing before the next release.
 
@@ -49,37 +49,26 @@ Windhawk 2.0 is in alpha (alpha 6 as of Sept 21). Things in it that matter to th
   `Wh_GetStringValue` storage is getting attention. That's the API our settings
   store uses.
 
-## 1.7.1
+## 1.7.1 (in alpha)
 
-**Idle mode: keep the player's spot when nothing plays.** Asked for on Discord:
-the taskbar icons jump around when the player hides and comes back, and "always
-show" leaves an empty player sitting there. A setting for what the player shows
-with no media, keeping its size so nothing moves:
-- the date and time, or a line of custom text
-- the last song, dimmed, with a click to resume it
-- nothing, just the reserved width
+Done on the `1.7.1` branch, not on Windhawk yet:
 
-Everything local. A weather version came up too, but mods can't contact servers,
-so that's out.
+- **Idle mode:** partly. "Weather takes the player's place" keeps something in
+  the player's spot when nothing plays, and "Show Widgets when nothing plays"
+  does it with Windows' own button. Still open: the date/time, the last song
+  dimmed, or just the reserved width, so the taskbar icons don't move at all.
+- **Weather:** done without going online. The weather part reads Windows'
+  Widgets button (it keeps the last reading while the button shows news).
+- **The Windhawk review's functionality notes:** all fixed (Widgets hiding and
+  its hooks, `AttachToSession` locking, the icon-refresh flag, the mini player
+  session/drag/monitor bugs, `monitor: -1`, per-part sidebar mode, the 2.5 s
+  no-media branch, `vizPosition`, the double volume step, scaled art decoding).
+- **Power use:** frame rate and on-battery options for the visualizer, nothing
+  animates with the screen off or a game fullscreen.
+- **GitHub #112 to #123:** fixed or added (see request-checklist.md).
 
-**From the Windhawk review's functionality notes** (promised on the PR):
-- Widgets hiding: `RepeatButton_Width_Hook` queues the outer RepeatButton but
-  `WidgetsButtonScopeState` compares the inner panel, so nothing gets hidden. Also
-  only install those hooks when `hideNativeWidgetsButton` is on.
-- `AttachToSession` checks, detaches and attaches under separate locks, so two
-  session events at once can register the handlers twice. Do it all on the media thread.
-- The icon-refresh check runs after `appIconBytes` was moved out, so its flag never clears.
-- Mini player: session rows updated in place keep their old `capturedId` (wrong
-  session on click); closing mid-drag leaves `g_miniPlayerSeekDragging` set; placement
-  uses `g_taskbarWnd`'s monitor even when opened from a part on another monitor.
-- With `monitor: -1`, detached parts never update (`RefreshPlayerContents` and
-  `UpdateVisibility` exit early without `g_playerGrid`).
-- `g_sidebarMode` is one global that each detached part's taskbar overwrites.
-- "Hide when no media": the 2.5 s branch never runs.
-- Carry 1.6.0's `vizPosition` (left/right) over to `vizOrder`.
-- `ChangeSystemVolume` changes the volume twice per wheel step (also in 1.6.0).
-- Album art is decoded at full size twice on the UI thread per track change; decode
-  it scaled.
+Before it goes to Windhawk: run the compatibility checklist below, with the
+weather part, hidden Windows buttons and a vertical taskbar added to it.
 
 ## Next
 
@@ -116,7 +105,8 @@ The number defaults have to move into the code first (see "Improve now").
   with it, especially in sidebar mode.
 - **Independent taskbar per monitor**: test multi-monitor placement with it on.
 - **Taskbar on top** and **Taskbar Top Window Guard**: test a top taskbar (the
-  mini player's "near" placement and the progress bar above/below).
+  mini player's "near" placement opens below it since 1.7.1; check the progress
+  bar above/below).
 - **Instant Taskbar Thumbnail Previews** fixed "hook installation when the taskbar
   loads after the mod". That's the same family as our scroll-timer bug from
   disabling and re-enabling the mod. Worth re-testing late-load paths in general.
@@ -153,3 +143,8 @@ The number defaults have to move into the code first (see "Improve now").
 - Light and dark theme, with a theme switch while the mod runs.
 - Every window material, including Acrylic with Wallpaper Engine running, and scrolling on each.
 - Line and bars behind the player: check the Windows crash log afterwards.
+- The weather part, with Windows' weather widget hidden and shown, and while
+  the Widgets button shows news.
+- Every Windows button hidden, on a horizontal and a vertical taskbar; then
+  turn the switches off and disable the mod: everything comes back.
+- A mini player kept open while the taskbar moves to another edge.

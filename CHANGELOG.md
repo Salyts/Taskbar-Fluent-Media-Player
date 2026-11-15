@@ -1,63 +1,83 @@
 # Changelog
 
-## 1.7.1 (in progress)
+## 1.7.1 (alpha)
 
-### New
+### Weather
 
-- **Drag to place.** Settings, Layout page: a sketch of the taskbar on each monitor with the player and its parts on it. Drag one to a spot and it moves there right away, on any monitor. Drop a part on "In the player" to put it back inside the player, or on "Hidden" to hide it.
-- **Weather when nothing plays.** Turn on "Show Widgets when nothing plays" under Native Widgets: the player hides when nothing is playing and the Windows Widgets button (with the weather) comes back in its place. Detached parts stay where they are. While music plays, the player is back and Widgets is hidden.
-- **Weather part.** Turn on "Show weather" (Settings, Weather page): the icon, temperature and condition from the Windows Widgets button as a part of its own, placed anywhere like the other parts, on any monitor, with its own background. Click it to open Widgets. It reads what the Widgets button shows, so Widgets has to be on in Windows; "Hide native Widgets button" can keep the original out of sight. It stays up when nothing plays.
+- **Weather part.** Settings, Weather (a page of its own): the icon, temperature and condition from the Windows Widgets button as a part of its own, placed anywhere like the other parts, on any monitor, with its own background. Click it to open Widgets. It reads what the Widgets button shows, so nothing goes online; Widgets has to be on in Windows, and the Weather page has a Turn on button when it isn't. On a vertical taskbar the icon sits on top and the text turns like the player's.
+- **Weather only when nothing plays.** The weather part hides while music plays and comes back when it stops.
+- **Weather takes the player's place.** While nothing plays (for 2.5 seconds, so a skip doesn't count), the player hides and the weather shows in its spot; music brings the player back. It uses the player's position and monitor.
+- **Widgets when nothing plays.** "Show Widgets when nothing plays" (Windows Buttons page) does the same with Windows' own Widgets button: the player hides when nothing is playing and Widgets comes back in its place. Detached parts stay where they are.
+- The weather part keeps the last temperature while Windows' button shows news or a forecast teaser instead, and remembers it across restarts.
+
+### Windows buttons
+
+- **Windows Buttons page** (was Native Widgets). Hide Start, Search, Task View and the weather widget, and in the tray the hidden icons arrow, network/volume/battery, language, the clock and Show desktop. They come back when the switch or the mod is turned off. A hidden button keeps its spot, so a part set next to a hidden Start button still sits right next to the apps.
+- **Hide the year on the clock.** The taskbar clock's date without the year (15/11/2026 shows as 15/11), whatever the date format. Windows' date format stays as it is everywhere else.
+- Hiding the weather widget no longer stops its weather updates while the weather part is on, and leaves no gap.
+
+### Layout
+
+- **Drag to place.** Settings, Layout page: a copy of the taskbar on each monitor with the player and its parts on it. Drag one to a spot and it moves there right away, on any monitor. Drop a part on "In the player" to put it back inside the player, or on "Hidden" to hide it. Double-click a part to move it in or out.
+- **Hidden Windows buttons** show in a box of their own under the taskbar copy. Double-click a Windows button on the copy to hide it, and double-click it in the box to show it again.
+- **The left corner is a real spot.** With Widgets turned off in Windows (or a button hidden), parts set next to that button go to the start of the taskbar side by side, each taking its own room. Before, they landed on top of each other.
+
+### Animation
+
+- **Smooth track changes.** On a new song the text fades in and the player glides to its new width instead of jumping (Appearance, Animation; on by default).
+- **Morph album art between shapes.** When the cover changes shape (a square cover, then a wide video thumbnail), the new cover fades in first, then the art stretches into its shape, and back the same way. Its own switch, on by default.
+
+### Playback, clicks and album art
+
 - **Scroll to skip.** New mouse wheel action "Skip 5 seconds back or forward" for the player and the album art, and the wheel over the mini player's seek bar does the same (#121, #123).
-- **Album art shows.** New option under Album Art: the cover, the icon of the app that plays, or always the stand-in icon (#113, #120).
-- **Mini player.** Mica and Mica Alt looks for the menu background (#112), and an option to fold the cover area away when a song has no cover (#122).
-- **Weather keeps working with Windows' button hidden.** "Hide the weather widget" now hides the button without stopping its weather updates while the weather part is on, so the part has something to show. With Widgets turned off in Windows, the Weather page says so and has a Turn on button.
-- **Smooth track changes.** On a new song the text fades in and the player glides to its new width instead of jumping (Appearance, Animation; on by default). The cover keeps its crossfade, and when its shape changes (a square cover, then a wide video thumbnail) the art grows or shrinks into the new shape ("Morph album art between shapes", its own switch).
-- **Hide the year on the clock.** New switch under Windows Buttons: the taskbar clock's date without the year (15/11/2026 shows as 15/11), whatever the date format. Windows' date format stays as it is everywhere else.
-- **Hide tray buttons too.** New switches under Windows Buttons, Hide in the tray: the hidden icons arrow, network/volume/battery, language, the clock and Show desktop. Hidden buttons now keep their spot (zero wide instead of removed), so a part set next to a hidden Start button still sits right next to the apps.
-- **Hidden Windows buttons on the Layout page.** Start, Search, Task View and the weather widget, when the mod hides them, show in a box of their own under the taskbar copy instead of on it. Double-click one to show it again, or double-click a Windows button on the taskbar copy to hide it.
-- **Weather takes the player's place.** New option on the Weather page: while nothing plays (for 2.5 seconds, so a skip doesn't count), the player hides and the weather shows in its spot; music brings the player back. It uses the player's position and monitor.
-- **Visualizer source in the mini player.** A button in the mini player's icon row switches the visualizer between the app in the player and everything on the PC, and remembers it.
-- **Weather only when nothing plays.** New option for the weather part: it hides while music plays and comes back when it stops, taking turns with the player.
-- **Weather has its own page** in the settings window (right under Visualizer), and the visualizer's power options sit in a Performance card.
-- **Windows Buttons page.** The old Native Widgets page, reorganized: one list of Windows buttons to hide (Start, Search, Task View and the weather widget), then the weather widget's own options. The Start, Search and Task View switches are new. They come back when the switch or the mod is turned off.
-- **The left corner is a real spot.** With Widgets turned off in Windows (or a button hidden), parts set next to that button now go to the start of the taskbar side by side, each taking its own room. Before, they landed on top of each other. The Layout page shows the corner as a place to drop parts.
+- **Album art shows** the cover, the icon of the app that plays, or always the stand-in icon (#113, #120).
+- **A double-click doesn't run the single click too.** New option (Behaviour & Clicks) for when a button has both (#115).
+
+### Mini player
+
+- Mica and Mica Alt menu backgrounds (#112).
+- Option to fold the cover area away when a song has no cover (#122).
+- **Visualizer source button** in the icon row: switch the visualizer between the app in the player and everything on the PC. It's remembered.
+- Opens away from the taskbar on a vertical or top taskbar ("near the player"), so it stays on the screen.
+
+### Settings window
+
+- Window material: Blurred album cover, or a color of your own (with transparency; the window turns light or dark to suit it).
+- Scrolling text fades in and out at the edges, with its own switch and width.
+- The visualizer's "Listen to" is a choice now (the app in the player, or everything on the PC), and its power options sit in a Performance card.
 
 ### Lighter on CPU, GPU and battery
 
-- **Visualizer frame rate.** New option: 60, 30 or 15 fps. Lower rates redraw the bars less often.
-- **Visualizer on battery.** New option: keep running, pause while Windows' battery saver is on (the default), or pause whenever on battery. Paused, the bars rest and the mod stops listening to the audio.
+- **Visualizer frame rate.** 60, 30 or 15 fps. Lower rates redraw the bars less often.
+- **Visualizer on battery.** Keep running, pause while Windows' battery saver is on (the default), or pause whenever on battery. Paused, the bars rest and the mod stops listening to the audio.
 - With the screen off, the visualizer, the scrolling text and the progress updates stop, and start again when it comes back.
-- "Hide in fullscreen" now reacts within half a second of a game going fullscreen or leaving it. Before, it waited for the next change in the music, so the visualizer kept running under the game.
+- "Hide in fullscreen" reacts within half a second of a game going fullscreen or leaving it. Before, it waited for the next change in the music, so the visualizer kept running under the game.
 - Scrolling text no longer ticks 60 times a second while it holds still at an end, or while the player is hidden.
-- The visualizer's audio thread sleeps while there is no sound instead of waking 50 times a second.
+- The visualizer's audio thread sleeps while there is no sound.
 - While paused, the progress bar asks for the position every 3 seconds instead of every second.
+- Album colors and the blurred background decode a smaller copy of the cover.
 
 ### Fixes
 
+- The player no longer shoots out and back when the song changes: apps that clear the title for a moment between songs (Spotify) keep the last song's text through the gap, the smooth position animation pauses for the change, and the width glide lands exactly on the new width.
+- A part placed next to a Windows button no longer slides back and forth when the song or app changes.
+- On a vertical taskbar, hidden Windows buttons no longer leave a gap their height tall.
 - A mini player kept open ("Keep mini player menu open") closes properly when the taskbar moves to another edge, instead of staying on screen broken.
-- The mini player menu ("near the player") opens away from the taskbar on a vertical or top taskbar, so it stays on the screen. On a vertical taskbar it opens beside the player.
-- The weather part fits a vertical taskbar: the icon on top and the text turned like the player's.
-- On a vertical taskbar, hidden Windows buttons (Start, Search, Task View, the weather widget) no longer leave an empty gap their height tall.
-- The weather part no longer disappears while Windows' Widgets button shows news or a forecast teaser instead of the temperature: only a reading with a temperature counts, the last one stays in between, and it's remembered across restarts.
-- With the weather part on and Windows' weather widget hidden, the hidden widget no longer leaves an empty gap on the taskbar.
-- The player no longer shoots out and back when the song changes: apps that clear the title for a moment between songs (Spotify) keep the last song's text through the gap, the smooth position animation pauses for the whole change, and the width glide lands exactly on the new width.
-- A part placed next to a Windows button no longer slides back and forth when the song or app changes: it waits for the button to settle before moving, and the smooth position animation pauses while the player glides to its new width.
-- Layout page: the player is no longer drawn too small right after a part moves in or out of it, and double-clicking a Windows button there works on the first try.
-- The visualizer finds more apps when listening only to the app in the player: when no process carries the app's name, it goes by the app's own sound stream. When it still can't tell, it listens to everything instead of nothing.
-- Visualizer, Sound: "Only listen to the app in the player" is now a "Listen to" choice: the app in the player, or everything on the PC.
-- The progress bar no longer disappears when it is set under a part that is hidden; it spans the player instead (#117).
-- New option "A double-click doesn't run the single click too" (Behavior). A left double-click also no longer runs the single click twice (#115).
+- The visualizer finds more apps when listening only to the app in the player: when no process carries the app's name, it goes by the app's own sound stream, and when it still can't tell, it listens to everything instead of nothing.
+- The progress bar no longer disappears when it's set under a part that is hidden; it spans the player instead (#117).
 - A seek the app refuses no longer moves the progress bar as if it had worked (#116).
 - "Open media app" brings the app up when it sits in the tray (Spotify, AIMP) (#114).
-- "Hide native Widgets button" works again, and the mod only hooks the Widgets button while that setting is on.
+- "Hide native Widgets button" works again, and the mod only hooks the Widgets button while it's on.
 - "Hide when no media" hides the player 2.5 seconds after the media goes away. Before, it never hid while an app kept its session open.
 - With the player off on every monitor, detached parts still update.
 - Mini player: clicking a session in the list switches to the right one after the list changes. It opens on the monitor you clicked on, and the seek bar doesn't stay stuck after closing mid-drag.
+- Layout page: the player is no longer drawn too small right after a part moves in or out of it, and double-clicks work on the first try.
+- Settings window: color pickers open again, colors with a light and a dark half use the right half, and reopening the window after closing it without saving no longer crashes Explorer.
 - Scrolling the volume moves it once per notch instead of twice.
-- Album colors and the blurred background decode a smaller copy of the cover, so track changes take less work.
 - A vertical taskbar on another monitor no longer changes how the main player is laid out.
 - Two quick session changes can't attach the player to the same session twice.
 - The app icon refresh after switching sessions finishes properly.
+- Settings from 1.6 with "vizPosition" in them save again.
 
 ## 1.7
 

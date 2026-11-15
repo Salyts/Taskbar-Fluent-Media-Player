@@ -11362,9 +11362,10 @@ static FrameworkElement ArtBoxOf(Controls::Image const& img) {
     return nullptr;
 }
 
-// A cover of another shape (a square one, then a wide video thumbnail): the art
-// box grows or shrinks into it instead of jumping, a circle stretching into a
-// pill and back ("Morph album art between shapes").
+// A cover of another shape (a square one, then a wide video thumbnail): the new
+// cover shows first, then the art box grows or shrinks into its shape instead
+// of jumping, a circle stretching into a pill and back ("Morph album art
+// between shapes").
 [[clang::no_destroy]] static Storyboard g_artMorphSb{nullptr};
 static void MorphArtBox(FrameworkElement const& box, double fromW) {
     if (!box || !g_settings.smoothArtShape || IsSidebarMode()) return;
@@ -11381,6 +11382,10 @@ static void MorphArtBox(FrameworkElement const& box, double fromW) {
         grow.From(fromW);
         grow.To(toW);
         grow.Duration(DurationHelper::FromTimeSpan(std::chrono::milliseconds(320)));
+        // The new cover fades in first, at the old shape; then the box grows or
+        // shrinks into the new one.
+        if (g_settings.enableAlbumArtFade)
+            grow.BeginTime(winrt::Windows::Foundation::TimeSpan{ std::chrono::milliseconds(ALBUM_ART_FADE_MS) });
         CubicEase ease;
         ease.EasingMode(EasingMode::EaseOut);
         grow.EasingFunction(ease);
