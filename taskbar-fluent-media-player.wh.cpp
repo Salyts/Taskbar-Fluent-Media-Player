@@ -2124,6 +2124,7 @@ namespace UI {
     static void SeekBySeconds(int seconds);
     static void ShowMediaContextMenu(FrameworkElement const& target);
     static void ShowMiniPlayerFlyout(FrameworkElement const& target);  // mini player popup (Salyts 1.6.0)
+    static void CloseMiniPlayerBeforeRebuild();
     static void RefreshPlayerContents();
     static void UpdateVisibility();
     static bool PlayerHasInlineContent();
@@ -2135,6 +2136,7 @@ namespace Taskbar {
     static TaskbarEdge GetTaskbarEdgeForWnd(HWND hTaskbarWnd);
     static bool IsVerticalTaskbarEdge(TaskbarEdge e);
     static HWND FindCurrentProcessTaskbarWnd();
+    static XamlRoot GetTaskbarXamlRoot(HWND hTaskbarWnd);
     static void EnsureWidgetsHideStateApplied();
     static void ForgetHiddenWidgetsBookkeeping();
     static FrameworkElement WidgetsInnerPanelOf(FrameworkElement const& outer);
@@ -13683,6 +13685,28 @@ static void ShowMiniPlayerFlyout(FrameworkElement const& target) {
         Wh_Log(L"ShowMiniPlayerFlyout: Exception in main try block");
     }
 }
+// The taskbar is about to be rebuilt (it moved to another edge): close the
+// mini player while it can still be closed. Kept open ("Keep mini player menu
+// open"), it was otherwise forgotten but left on screen, dead. Only while it
+// still lives in that taskbar's XAML: once that's gone, so is the menu, and
+// calling into it is what used to crash.
+static void CloseMiniPlayerBeforeRebuild() {
+    if (!g_miniPlayerFlyoutOpen || !g_miniPlayerFlyout) return;
+    HWND host = MiniPlayerWnd();
+    if (!host || !IsWindow(host)) return;
+    RunFromWindowThread(host, [](void*) {
+        try {
+            if (!g_miniPlayerFlyout) return;
+            auto flyoutRoot = g_miniPlayerFlyout.XamlRoot();
+            auto taskbarRoot = GetTaskbarXamlRoot(MiniPlayerWnd());
+            if (!flyoutRoot || !taskbarRoot || flyoutRoot != taskbarRoot) return;
+            Wh_Log(L"MiniPlayer: closing it, the taskbar is being rebuilt");
+            g_miniPlayerExplicitCloseRequested.store(true);
+            g_miniPlayerFlyout.Hide();
+        } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    }, nullptr);
+}
+
 // ===========================================================================
 // End Mini Player Popup.
 // ===========================================================================
@@ -18061,6 +18085,9 @@ static void CheckMonitorTopologyChanged() {
     // edge case has to forget them instead (see ForgetInjectedTreeState).
     static bool s_treeWasRebuilt = false;
     s_treeWasRebuilt = edgeMismatched;
+
+    // A mini player kept open would be left behind, dead: closed first.
+    CloseMiniPlayerBeforeRebuild();
 
     // The visualizer and scroll timers tick on the OLD taskbar thread and touch
     // elements from the old tree. Stop them before anything is rebuilt, exactly

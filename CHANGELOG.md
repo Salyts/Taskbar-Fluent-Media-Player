@@ -33,6 +33,7 @@
 
 ### Fixes
 
+- A mini player kept open ("Keep mini player menu open") closes properly when the taskbar moves to another edge, instead of staying on screen broken.
 - The mini player menu ("near the player") opens away from the taskbar on a vertical or top taskbar, so it stays on the screen. On a vertical taskbar it opens beside the player.
 - The weather part fits a vertical taskbar: the icon on top and the text turned like the player's.
 - On a vertical taskbar, hidden Windows buttons (Start, Search, Task View, the weather widget) no longer leave an empty gap their height tall.
