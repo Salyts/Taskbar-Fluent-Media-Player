@@ -24505,6 +24505,24 @@ enum LpKind {
     LpChevron = 10, LpTrayIcons, LpLanguage, LpOmni, LpClock, LpShowDesktop, LpOtherTray,
 };
 struct LpItem { int kind; double x, w; };
+
+// A Windows button the mod hides, going by the setting: the copy leaves it out
+// even when it's read a moment before the hide has landed.
+static bool LpKindHiddenByMod(int kind) {
+    switch (kind) {
+        case LpStart:       return g_settings.hideStartButton;
+        case LpSearchIcon:
+        case LpSearchBox:   return g_settings.hideSearchButton;
+        case LpTaskView:    return g_settings.hideTaskViewButton;
+        case LpWidgets:     return g_settings.hideNativeWidgetsButton;
+        case LpChevron:     return g_settings.hideHiddenIconsButton;
+        case LpOmni:        return g_settings.hideNetworkButton;
+        case LpLanguage:    return g_settings.hideLanguageButton;
+        case LpClock:       return g_settings.hideClock;
+        case LpShowDesktop: return g_settings.hideShowDesktop;
+    }
+    return false;
+}
 struct LpSlot {
     const wchar_t* value; double x; bool overlay;
     // Beside one of ours: who shares the spot (left to right), whose side, and
@@ -24589,6 +24607,7 @@ static void TakeLpSnapOnThread(void* param) {
                 else if (id == L"TaskViewButton") kind = LpTaskView;
                 else if (cls == L"Taskbar.AugmentedEntryPointButton" || name == L"AugmentedEntryPointButton") kind = LpWidgets;
                 else if (cls == L"Taskbar.TaskListButton") kind = LpApp;
+                if (LpKindHiddenByMod(kind)) continue;
                 snap->items.push_back({ kind, x, w });
             }
             // No Widgets button at all (off in Windows): the start of the taskbar is
@@ -24642,6 +24661,7 @@ static void TakeLpSnapOnThread(void* param) {
                 if (!c || !rectOf(c, x, w) || ours(c.Name().c_str())) continue;
                 int kind = LpOtherTray;
                 for (auto& k : known) if (k.first == c) { kind = k.second; break; }
+                if (LpKindHiddenByMod(kind)) continue;
                 snap->items.push_back({ kind, x, w });
                 if (kind == LpClock && clockX < 0) { clockX = x; clockR = x + w; }
                 if (kind == LpShowDesktop) { sdX = x; sdR = x + w; }
@@ -26002,26 +26022,28 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         chips.Spacing(6);
         for (const NativeChip& c : CHIPS) {
             if (!LpOn(c.key)) continue;
+            // Drawn like the parts in the boxes above: same height, fill and outline.
+            const double cw = zih * std::max(1.2, c.w);
             wuxc::Border chip;
-            chip.CornerRadius(wux::CornerRadius{ 4, 4, 4, 4 });
+            chip.Width(cw);
+            chip.Height(zih);
+            chip.CornerRadius(wux::CornerRadius{ 5, 5, 5, 5 });
             chip.BorderThickness(wux::Thickness{ 1, 1, 1, 1 });
-            chip.BorderBrush(zoneLine);
-            chip.Padding(wux::Thickness{ 4, 2, 8, 2 });
-            chip.Background(wuxm::SolidColorBrush(winrt::Windows::UI::Colors::Transparent()));
-            wuxc::StackPanel row;
-            row.Orientation(wuxc::Orientation::Horizontal);
-            row.Spacing(4);
-            LpItem it{ c.kind, 0, zih * c.w };
-            auto look = MakeLpItem(it, zih * c.w, zih - 4, timeText, dateText);
-            look.Opacity(0.55);
-            row.Children().Append(look);
-            if (c.kind != LpWidgets) {
-                wuxc::TextBlock name; name.Text(hstring{ Loc(c.label) }); name.FontSize(11); name.Opacity(0.8);
-                name.VerticalAlignment(wux::VerticalAlignment::Center);
-                row.Children().Append(name);
+            {
+                const auto ac = AccentTargetColor();
+                chip.BorderBrush(Brush(0x70, ac.R, ac.G, ac.B));
             }
-            chip.Child(row);
-            ToolTipService::SetToolTip(chip, winrt::box_value(hstring{ Loc(L"Double-click to show it on the taskbar again") }));
+            chip.Background(s_light ? Brush(0x0C, 0, 0, 0) : Brush(0x0E, 255, 255, 255));
+            if (c.kind == LpShowDesktop) {
+                chip.Child(LpGlyph(L"", (zih - 8) * 0.55));   // its real look is a hairline: a monitor instead
+            } else {
+                LpItem it{ c.kind, 0, cw - 4 };
+                auto look = MakeLpItem(it, cw - 4, zih - 6, timeText, dateText);
+                look.HorizontalAlignment(wux::HorizontalAlignment::Center);
+                look.VerticalAlignment(wux::VerticalAlignment::Center);
+                chip.Child(look);
+            }
+            ToolTipService::SetToolTip(chip, winrt::box_value(hstring{ Loc(c.label) + L"\n" + Loc(L"Double-click to show it on the taskbar again") }));
             const std::wstring key = c.key;
             chip.DoubleTapped([key](auto const&, wux::Input::DoubleTappedRoutedEventArgs const& args) {
                 args.Handled(true);
