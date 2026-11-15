@@ -1285,6 +1285,9 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       - "cover":    "The cover"
       - "app_icon": "The app's icon"
       - "icon":     "An icon"
+    - morphArtShape: false
+      $name: Morph album art between shapes
+      $description: When the cover changes shape (a square cover, then a wide video thumbnail), the new cover shows first, then the art stretches into its shape instead of jumping.
     - albumArtEmptyBehavior: "show"
       $name: Album art behavior when no cover available
       $options:
@@ -1489,8 +1492,9 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
     $name: Smooth track changes
     $description: On a new song the text fades in and the player glides to its new width instead of jumping.
   - smoothArtShape: false
-    $name: Morph album art between shapes
-    $description: When the cover changes shape (a square cover, then a wide video thumbnail), the art stretches into the new shape instead of jumping.
+    #! $showIf: {settingsView: full}
+    $name: Unused (left over from the 1.7.1 alpha)
+    $description: Does nothing. It's only here so settings saved by the earlier alpha still save in Windhawk's settings editor. The setting is under Album Art now.
   #! $hideIf: {settingsView: window}
   $name: Animation Settings
 
@@ -3280,7 +3284,7 @@ static constexpr SettingSpec SETTINGS[] = {
     SBool(L"AnimationSettings.enableSmoothPositionAnimation", &ModSettings::enableSmoothPositionAnimation),
     SBool(L"AnimationSettings.enableAlbumArtFade", &ModSettings::enableAlbumArtFade),
     SBool(L"AnimationSettings.smoothTrackChange", &ModSettings::smoothTrackChange),
-    SBool(L"AnimationSettings.smoothArtShape", &ModSettings::smoothArtShape),
+    SBool(L"AppearanceSettings.AlbumArtDisplaySettings.morphArtShape", &ModSettings::smoothArtShape),
     SBool(L"NotificationSettings.showSuccessNotification", &ModSettings::showSuccessNotification),
     SStr(L"PlayerMenuSettings.placementMode", L"screen"),
     SIntRaw(L"PlayerMenuSettings.PlayerMenuSettingsNear.miniPlayerHorizontalOffsetNear"),
@@ -20766,7 +20770,7 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
                               { {L"cover", L"The cover"}, {L"app_icon", L"The app's icon"}, {L"icon", L"An icon"} }),
                      L"\"An icon\" is the one set under \"No album art\"."),
             RowCombo(L"Album art quality", L"AppearanceSettings.AlbumArtDisplaySettings.albumArtQuality", L"medium", albumArtQualityOptions),
-            WithDesc(RowBool(L"Morph album art between shapes", L"AnimationSettings.smoothArtShape"),
+            WithDesc(RowBool(L"Morph album art between shapes", L"AppearanceSettings.AlbumArtDisplaySettings.morphArtShape"),
                      L"A square cover stretches into a wide thumbnail and back."),
             RowSlider(L"Album art opacity", L"AppearanceSettings.AlbumArtDisplaySettings.albumArtOpacity", L"100", 0, 100),
             RowText(L"Album art corner radius", L"AppearanceSettings.AlbumArtDisplaySettings.albumArtCornerRadius", L"4"),
