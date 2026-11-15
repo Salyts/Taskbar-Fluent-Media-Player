@@ -1028,6 +1028,21 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
     - hideTaskViewButton: false
       $name: Hide Task View
       $description: Hides Windows' Task View button on the taskbar.
+    - hideHiddenIconsButton: false
+      $name: Hide the hidden icons arrow
+      $description: The ^ button that opens the hidden tray icons.
+    - hideNetworkButton: false
+      $name: Hide network, volume and battery
+      $description: Quick settings still open with Windows + A.
+    - hideLanguageButton: false
+      $name: Hide the language button
+      $description: The keyboard language (ENG).
+    - hideClock: false
+      $name: Hide the clock
+      $description: The clock and date, with the notifications. Windows + N still opens them.
+    - hideShowDesktop: false
+      $name: Hide Show desktop
+      $description: The thin strip at the far right.
     $name: Windows buttons
   #! $hideIf: {settingsView: window}
   $name: Main Settings
@@ -2700,6 +2715,11 @@ struct ModSettings {
     bool         hideStartButton      = false;
     bool         hideSearchButton     = false;
     bool         hideTaskViewButton   = false;
+    bool         hideHiddenIconsButton = false;
+    bool         hideNetworkButton    = false;
+    bool         hideLanguageButton   = false;
+    bool         hideClock            = false;
+    bool         hideShowDesktop      = false;
     int          infoOrder            = 2;
     bool         infoDetached             = false;
     PlayerPosition infoDetachedPosition     = PlayerPosition::TaskbarLeftEdge;
@@ -3044,6 +3064,11 @@ static constexpr SettingSpec SETTINGS[] = {
     SBool(L"MainSettings.NativeWidgetsSetting.hideStartButton", &ModSettings::hideStartButton),
     SBool(L"MainSettings.NativeWidgetsSetting.hideSearchButton", &ModSettings::hideSearchButton),
     SBool(L"MainSettings.NativeWidgetsSetting.hideTaskViewButton", &ModSettings::hideTaskViewButton),
+    SBool(L"MainSettings.NativeWidgetsSetting.hideHiddenIconsButton", &ModSettings::hideHiddenIconsButton),
+    SBool(L"MainSettings.NativeWidgetsSetting.hideNetworkButton", &ModSettings::hideNetworkButton),
+    SBool(L"MainSettings.NativeWidgetsSetting.hideLanguageButton", &ModSettings::hideLanguageButton),
+    SBool(L"MainSettings.NativeWidgetsSetting.hideClock", &ModSettings::hideClock),
+    SBool(L"MainSettings.NativeWidgetsSetting.hideShowDesktop", &ModSettings::hideShowDesktop),
     SBool(L"MainSettings.TextAreaSetting.showTrackTitle", &ModSettings::showTrackTitle),
     SBool(L"MainSettings.TextAreaSetting.showTrackArtist", &ModSettings::showTrackArtist),
     SBool(L"MainSettings.TextAreaSetting.showArtistAsTime", &ModSettings::showArtistAsTime),
@@ -17998,11 +18023,16 @@ static void ApplyWidgetsHideStateNow(void* param) {
     }
 }
 
-// ---- Windows' own Start, Search and Task View buttons, hidden on request.
-// Collapsed, as a taskbar theme does it. Windows makes new buttons now and
-// then (a taskbar setting, a new monitor), so the timer thread looks again.
+// ---- Windows' own taskbar and tray buttons, hidden on request. Hidden the
+// way the weather widget is while the weather part reads it: still there, but
+// zero wide, see-through and not clickable. So a part placed next to a hidden
+// button still has its spot (next to Start = next to the apps), and the tray's
+// own order, which tray placements go by, stays as it is.
+
 static bool AnyNativeButtonHidden() {
-    return g_settings.hideStartButton || g_settings.hideSearchButton || g_settings.hideTaskViewButton;
+    return g_settings.hideStartButton || g_settings.hideSearchButton || g_settings.hideTaskViewButton ||
+           g_settings.hideHiddenIconsButton || g_settings.hideNetworkButton || g_settings.hideLanguageButton ||
+           g_settings.hideClock || g_settings.hideShowDesktop;
 }
 
 // 1 Start, 2 Search, 3 Task View, 0 anything else. By what the button says it
@@ -18020,15 +18050,68 @@ static int NativeButtonKind(FrameworkElement const& el) {
     return 0;
 }
 
+// The tray's own buttons, by the names the tray placements use too.
+struct TrayNativeButton { const wchar_t* name; int kind; };
+static constexpr TrayNativeButton TRAY_NATIVE_BUTTONS[] = {
+    { L"NotifyIconStack", 4 }, { L"ControlCenterButton", 5 }, { L"NonActivatableStack", 6 },
+    { L"NotificationCenterButton", 7 }, { L"ClockButton", 7 }, { L"ShowDesktopStack", 8 },
+};
+
 static bool NativeButtonKindWanted(int kind) {
     if (g_unloading) return false;   // unloading gives every button back
-    return (kind == 1 && g_settings.hideStartButton) || (kind == 2 && g_settings.hideSearchButton) ||
-           (kind == 3 && g_settings.hideTaskViewButton);
+    switch (kind) {
+        case 1: return g_settings.hideStartButton;
+        case 2: return g_settings.hideSearchButton;
+        case 3: return g_settings.hideTaskViewButton;
+        case 4: return g_settings.hideHiddenIconsButton;
+        case 5: return g_settings.hideNetworkButton;
+        case 6: return g_settings.hideLanguageButton;
+        case 7: return g_settings.hideClock;
+        case 8: return g_settings.hideShowDesktop;
+    }
+    return false;
+}
+
+static void SetNativeHiddenLook(FrameworkElement const& el, bool hidden) {
+    if (!el) return;
+    try {
+        el.Visibility(Visibility::Visible);
+        if (hidden) {
+            if (el.Opacity() != 0.0) el.Opacity(0.0);
+            if (el.MaxWidth() != 0.0) el.MaxWidth(0.0);
+            if (el.IsHitTestVisible()) el.IsHitTestVisible(false);
+        } else {
+            el.ClearValue(UIElement::OpacityProperty());
+            el.ClearValue(FrameworkElement::MaxWidthProperty());
+            el.ClearValue(UIElement::IsHitTestVisibleProperty());
+        }
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
 }
 
 // On one taskbar's thread: hides what's wanted there, and shows again what no longer is.
 static void ApplyNativeButtonHidingOnThread(void* param) {
     HWND wnd = reinterpret_cast<HWND>(param);
+    std::vector<std::pair<FrameworkElement, int>> present;
+    try {
+        auto xamlRoot = GetTaskbarXamlRoot(wnd);
+        auto root = xamlRoot ? xamlRoot.Content().try_as<FrameworkElement>() : nullptr;
+        auto rootGrid = root ? FindTaskbarRootGrid(root) : nullptr;
+        if (auto repeater = rootGrid ? FindChildByName(rootGrid, L"TaskbarFrameRepeater") : nullptr) {
+            const int n = VisualTreeHelper::GetChildrenCount(repeater);
+            for (int i = 0; i < n; i++)
+                if (auto el = VisualTreeHelper::GetChild(repeater, i).try_as<FrameworkElement>())
+                    if (const int kind = NativeButtonKind(el)) present.push_back({ el, kind });
+        }
+        auto trayFrame = root ? FindChildByName(root, L"SystemTrayFrameGrid") : nullptr;
+        if (auto tray = trayFrame ? trayFrame.try_as<Panel>() : nullptr) {
+            for (const auto& t : TRAY_NATIVE_BUTTONS) {
+                auto el = TrayDirectChild(tray, FindChildByName(tray, t.name));
+                if (el && std::none_of(present.begin(), present.end(), [&](auto const& p) { return p.first == el; }))
+                    present.push_back({ el, t.kind });
+            }
+        }
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+
     std::lock_guard<std::mutex> lk(g_hiddenNativeButtonsMtx);
     auto& hidden = *g_hiddenNativeButtons;
     for (int i = (int)hidden.size() - 1; i >= 0; --i) {
@@ -18038,33 +18121,23 @@ static void ApplyNativeButtonHidingOnThread(void* param) {
             auto dispatcher = el.Dispatcher();
             if (dispatcher && !dispatcher.HasThreadAccess()) continue;   // another taskbar's
             // Still that button (Windows reuses them), and still to be hidden?
-            if (NativeButtonKind(el) == hidden[i].kind && NativeButtonKindWanted(hidden[i].kind)) continue;
-            el.Visibility(Visibility::Visible);
+            const bool same = std::any_of(present.begin(), present.end(),
+                                          [&](auto const& p) { return p.first == el && p.second == hidden[i].kind; });
+            if (same && NativeButtonKindWanted(hidden[i].kind)) continue;
+            SetNativeHiddenLook(el, false);
             hidden.erase(hidden.begin() + i);
         } catch (...) { LOG_IGNORED_EXCEPTION(); }
     }
-    if (g_unloading || !AnyNativeButtonHidden()) return;
-    try {
-        auto xamlRoot = GetTaskbarXamlRoot(wnd);
-        auto root = xamlRoot ? xamlRoot.Content().try_as<FrameworkElement>() : nullptr;
-        auto rootGrid = root ? FindTaskbarRootGrid(root) : nullptr;
-        auto repeater = rootGrid ? FindChildByName(rootGrid, L"TaskbarFrameRepeater") : nullptr;
-        if (!repeater) return;
-        const int n = VisualTreeHelper::GetChildrenCount(repeater);
-        for (int i = 0; i < n; i++) {
-            auto el = VisualTreeHelper::GetChild(repeater, i).try_as<FrameworkElement>();
-            const int kind = el ? NativeButtonKind(el) : 0;
-            if (!NativeButtonKindWanted(kind)) continue;
-            if (el.Visibility() != Visibility::Collapsed) el.Visibility(Visibility::Collapsed);
-            if (std::none_of(hidden.begin(), hidden.end(), [&](const HiddenNativeButton& h) { return h.el == el; })) {
-                hidden.push_back({ el, kind });
-                Wh_Log(L"NativeButtons: hid kind %d on taskbar %p", kind, wnd);
-            }
+    for (auto const& [el, kind] : present) {
+        if (!NativeButtonKindWanted(kind)) continue;
+        SetNativeHiddenLook(el, true);   // again each pass: Windows can reset a button
+        if (std::none_of(hidden.begin(), hidden.end(), [&](const HiddenNativeButton& h) { return h.el == el; })) {
+            hidden.push_back({ el, kind });
+            Wh_Log(L"NativeButtons: hid kind %d on taskbar %p", kind, wnd);
         }
-    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    }
 }
 
-// Every taskbar of this process, each on its own thread.
 static void EnsureNativeButtonsHidden() {
     {
         std::lock_guard<std::mutex> lk(g_hiddenNativeButtonsMtx);
@@ -20066,6 +20139,20 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
             WithDesc(RowBool(L"Hide the weather widget", L"MainSettings.NativeWidgetsSetting.hideNativeWidgetsButton"),
                      L"Windows' Widgets button, with the weather."),
         };
+        SettingCard hideTray;
+        hideTray.title = L"Hide in the tray";
+        hideTray.rows = {
+            WithDesc(RowBool(L"Hide the hidden icons arrow", L"MainSettings.NativeWidgetsSetting.hideHiddenIconsButton"),
+                     L"The ^ button that opens the hidden tray icons."),
+            WithDesc(RowBool(L"Hide network, volume and battery", L"MainSettings.NativeWidgetsSetting.hideNetworkButton"),
+                     L"Quick settings still open with Windows + A."),
+            WithDesc(RowBool(L"Hide the language button", L"MainSettings.NativeWidgetsSetting.hideLanguageButton"),
+                     L"The keyboard language (ENG)."),
+            WithDesc(RowBool(L"Hide the clock", L"MainSettings.NativeWidgetsSetting.hideClock"),
+                     L"The clock and date, with the notifications. Windows + N still opens them."),
+            WithDesc(RowBool(L"Hide Show desktop", L"MainSettings.NativeWidgetsSetting.hideShowDesktop"),
+                     L"The thin strip at the far right."),
+        };
         SettingCard weatherWidget;
         weatherWidget.title = L"Weather widget";
         weatherWidget.rows = {
@@ -20073,7 +20160,7 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
             WithDesc(RowBool(L"Show Widgets when nothing plays", L"MainSettings.NativeWidgetsSetting.showWidgetsWhenIdle"),
                      L"The player hides when nothing is playing and the Widgets button (with the weather) shows in its place."),
         };
-        cats.push_back(SettingCategory{ L"Windows Buttons", L"\uE8CC", { hideButtons, weatherWidget } });
+        cats.push_back(SettingCategory{ L"Windows Buttons", L"\uE8CC", { hideButtons, hideTray, weatherWidget } });
     }
 
     {
@@ -21739,6 +21826,23 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"Start", L"Пуск", L"Пуск", L"Start", L"स्टार्ट", L"开始", L"開始", L"Inicio", L"Démarrer", L"Iniciar", L"Start", L"Start", L"Başlat", L"スタート", L"시작" },
     { L"Search", L"Пошук", L"Поиск", L"Suche", L"खोज", L"搜索", L"搜尋", L"Búsqueda", L"Recherche", L"Pesquisa", L"Cerca", L"Wyszukiwanie", L"Arama", L"検索", L"검색" },
     { L"Task View", L"Подання завдань", L"Представление задач", L"Aufgabenansicht", L"टास्क व्यू", L"任务视图", L"工作檢視", L"Vista de tareas", L"Applications actives", L"Visão de Tarefas", L"Visualizzazione attività", L"Widok zadań", L"Görev Görünümü", L"タスク ビュー", L"작업 보기" },
+    { L"Hide in the tray", L"Ховати в треї", L"Скрывать в трее", L"Im Infobereich ausblenden", L"ट्रे में छिपाएँ", L"在托盘中隐藏", L"在系統匣中隱藏", L"Ocultar en la bandeja", L"Masquer dans la zone de notification", L"Ocultar na bandeja", L"Nascondi nell'area di notifica", L"Ukryj w zasobniku", L"Tepside gizle", L"トレイで隠す", L"트레이에서 숨기기" },
+    { L"Hide the hidden icons arrow", L"Сховати стрілку прихованих значків", L"Скрыть стрелку скрытых значков", L"Pfeil für ausgeblendete Symbole ausblenden", L"छिपे आइकन वाला तीर छिपाएँ", L"隐藏“显示隐藏的图标”箭头", L"隱藏「顯示隱藏的圖示」箭頭", L"Ocultar la flecha de iconos ocultos", L"Masquer la flèche des icônes cachées", L"Ocultar a seta de ícones ocultos", L"Nascondi la freccia delle icone nascoste", L"Ukryj strzałkę ukrytych ikon", L"Gizli simgeler okunu gizle", L"隠れているインジケーターの矢印を隠す", L"숨겨진 아이콘 화살표 숨기기" },
+    { L"The ^ button that opens the hidden tray icons.", L"Кнопка ^, що відкриває приховані значки.", L"Кнопка ^, открывающая скрытые значки.", L"Die ^-Schaltfläche, die die ausgeblendeten Symbole öffnet.", L"^ बटन जो छिपे ट्रे आइकन खोलता है।", L"打开隐藏托盘图标的 ^ 按钮。", L"開啟隱藏系統匣圖示的 ^ 按鈕。", L"El botón ^ que abre los iconos ocultos.", L"Le bouton ^ qui ouvre les icônes cachées.", L"O botão ^ que abre os ícones ocultos.", L"Il pulsante ^ che apre le icone nascoste.", L"Przycisk ^ otwierający ukryte ikony.", L"Gizli tepsi simgelerini açan ^ düğmesi.", L"隠れているアイコンを開く ^ ボタン。", L"숨겨진 트레이 아이콘을 여는 ^ 버튼." },
+    { L"Hide network, volume and battery", L"Сховати мережу, гучність і батарею", L"Скрыть сеть, громкость и батарею", L"Netzwerk, Lautstärke und Akku ausblenden", L"नेटवर्क, वॉल्यूम और बैटरी छिपाएँ", L"隐藏网络、音量和电池", L"隱藏網路、音量和電池", L"Ocultar red, volumen y batería", L"Masquer réseau, volume et batterie", L"Ocultar rede, volume e bateria", L"Nascondi rete, volume e batteria", L"Ukryj sieć, głośność i baterię", L"Ağ, ses ve pili gizle", L"ネットワーク、音量、バッテリーを隠す", L"네트워크, 볼륨, 배터리 숨기기" },
+    { L"Quick settings still open with Windows + A.", L"Швидкі налаштування й далі відкриваються клавішами Windows + A.", L"Быстрые настройки по-прежнему открываются клавишами Windows + A.", L"Die Schnelleinstellungen öffnen sich weiter mit Windows + A.", L"त्वरित सेटिंग्स अब भी Windows + A से खुलती हैं।", L"仍可用 Windows + A 打开快速设置。", L"仍可用 Windows + A 開啟快速設定。", L"La configuración rápida sigue abriéndose con Windows + A.", L"Les paramètres rapides s'ouvrent toujours avec Windows + A.", L"As configurações rápidas ainda abrem com Windows + A.", L"Le impostazioni rapide si aprono ancora con Windows + A.", L"Szybkie ustawienia nadal otwiera Windows + A.", L"Hızlı ayarlar hâlâ Windows + A ile açılır.", L"クイック設定は Windows + A で開けます。", L"빠른 설정은 여전히 Windows + A로 열립니다." },
+    { L"Hide the language button", L"Сховати кнопку мови", L"Скрыть кнопку языка", L"Sprachschaltfläche ausblenden", L"भाषा बटन छिपाएँ", L"隐藏语言按钮", L"隱藏語言按鈕", L"Ocultar el botón de idioma", L"Masquer le bouton de langue", L"Ocultar o botão de idioma", L"Nascondi il pulsante della lingua", L"Ukryj przycisk języka", L"Dil düğmesini gizle", L"言語ボタンを隠す", L"언어 버튼 숨기기" },
+    { L"The keyboard language (ENG).", L"Мова клавіатури (ENG).", L"Язык клавиатуры (ENG).", L"Die Tastatursprache (ENG).", L"कीबोर्ड की भाषा (ENG)।", L"键盘语言 (ENG)。", L"鍵盤語言 (ENG)。", L"El idioma del teclado (ENG).", L"La langue du clavier (ENG).", L"O idioma do teclado (ENG).", L"La lingua della tastiera (ENG).", L"Język klawiatury (ENG).", L"Klavye dili (ENG).", L"キーボードの言語 (ENG)。", L"키보드 언어 (ENG)." },
+    { L"Hide the clock", L"Сховати годинник", L"Скрыть часы", L"Uhr ausblenden", L"घड़ी छिपाएँ", L"隐藏时钟", L"隱藏時鐘", L"Ocultar el reloj", L"Masquer l'horloge", L"Ocultar o relógio", L"Nascondi l'orologio", L"Ukryj zegar", L"Saati gizle", L"時計を隠す", L"시계 숨기기" },
+    { L"The clock and date, with the notifications. Windows + N still opens them.", L"Годинник і дата разом зі сповіщеннями. Windows + N і далі їх відкриває.", L"Часы и дата вместе с уведомлениями. Windows + N по-прежнему их открывает.", L"Uhr und Datum mit den Benachrichtigungen. Windows + N öffnet sie weiterhin.", L"घड़ी और तारीख, सूचनाओं के साथ। Windows + N से वे अब भी खुलती हैं।", L"时钟和日期（含通知）。仍可用 Windows + N 打开。", L"時鐘和日期（含通知）。仍可用 Windows + N 開啟。", L"El reloj y la fecha, con las notificaciones. Windows + N sigue abriéndolas.", L"L'horloge et la date, avec les notifications. Windows + N les ouvre toujours.", L"O relógio e a data, com as notificações. Windows + N ainda as abre.", L"Orologio e data, con le notifiche. Windows + N le apre ancora.", L"Zegar i data razem z powiadomieniami. Windows + N nadal je otwiera.", L"Saat ve tarih, bildirimlerle birlikte. Windows + N hâlâ açar.", L"時計と日付（通知を含む）。Windows + N で引き続き開けます。", L"시계와 날짜(알림 포함). Windows + N으로 여전히 열 수 있습니다." },
+    { L"Hide Show desktop", L"Сховати «Показати робочий стіл»", L"Скрыть «Свернуть все окна»", L"„Desktop anzeigen“ ausblenden", L"डेस्कटॉप दिखाएँ छिपाएँ", L"隐藏“显示桌面”", L"隱藏「顯示桌面」", L"Ocultar Mostrar escritorio", L"Masquer Afficher le bureau", L"Ocultar Mostrar área de trabalho", L"Nascondi Mostra desktop", L"Ukryj Pokaż pulpit", L"Masaüstünü göster'i gizle", L"デスクトップの表示を隠す", L"바탕 화면 보기 숨기기" },
+    { L"The thin strip at the far right.", L"Тонка смужка справа з краю.", L"Тонкая полоска справа с краю.", L"Der schmale Streifen ganz rechts.", L"सबसे दाईं ओर की पतली पट्टी।", L"最右侧的细条。", L"最右側的細條。", L"La franja fina del extremo derecho.", L"La fine bande tout à droite.", L"A faixa fina na ponta direita.", L"La sottile striscia all'estrema destra.", L"Wąski pasek po prawej stronie.", L"En sağdaki ince şerit.", L"右端の細い部分。", L"맨 오른쪽의 얇은 막대." },
+    { L"Hidden icons arrow", L"Стрілка прихованих значків", L"Стрелка скрытых значков", L"Pfeil für ausgeblendete Symbole", L"छिपे आइकन का तीर", L"隐藏图标箭头", L"隱藏圖示箭頭", L"Flecha de iconos ocultos", L"Flèche des icônes cachées", L"Seta de ícones ocultos", L"Freccia icone nascoste", L"Strzałka ukrytych ikon", L"Gizli simgeler oku", L"隠れたアイコンの矢印", L"숨겨진 아이콘 화살표" },
+    { L"Network and volume", L"Мережа й гучність", L"Сеть и громкость", L"Netzwerk und Lautstärke", L"नेटवर्क और वॉल्यूम", L"网络和音量", L"網路和音量", L"Red y volumen", L"Réseau et volume", L"Rede e volume", L"Rete e volume", L"Sieć i głośność", L"Ağ ve ses", L"ネットワークと音量", L"네트워크 및 볼륨" },
+    { L"Clock", L"Годинник", L"Часы", L"Uhr", L"घड़ी", L"时钟", L"時鐘", L"Reloj", L"Horloge", L"Relógio", L"Orologio", L"Zegar", L"Saat", L"時計", L"시계" },
+    { L"Show desktop", L"Показати робочий стіл", L"Свернуть все окна", L"Desktop anzeigen", L"डेस्कटॉप दिखाएँ", L"显示桌面", L"顯示桌面", L"Mostrar escritorio", L"Afficher le bureau", L"Mostrar área de trabalho", L"Mostra desktop", L"Pokaż pulpit", L"Masaüstünü göster", L"デスクトップの表示", L"바탕 화면 보기" },
+    { L"Double-click to hide it from the taskbar", L"Двічі клацніть, щоб сховати з панелі завдань", L"Дважды щёлкните, чтобы скрыть с панели задач", L"Doppelklick blendet sie auf der Taskleiste aus", L"टास्कबार से छिपाने के लिए डबल-क्लिक करें", L"双击可从任务栏隐藏", L"按兩下可從工作列隱藏", L"Doble clic para ocultarlo de la barra de tareas", L"Double-cliquez pour le masquer de la barre des tâches", L"Clique duas vezes para ocultar da barra de tarefas", L"Doppio clic per nasconderlo dalla barra delle applicazioni", L"Kliknij dwukrotnie, aby ukryć na pasku zadań", L"Görev çubuğundan gizlemek için çift tıklayın", L"ダブルクリックでタスク バーから隠す", L"두 번 클릭하면 작업 표시줄에서 숨깁니다" },
+    { L"Hidden from the taskbar by the mod. Double-click one to show it again, or a Windows button on the taskbar above to hide it.", L"Мод сховав їх з панелі завдань. Двічі клацніть, щоб показати знову, або двічі клацніть кнопку Windows на панелі вище, щоб сховати її.", L"Мод скрыл их с панели задач. Дважды щёлкните, чтобы показать снова, или дважды щёлкните кнопку Windows на панели выше, чтобы скрыть её.", L"Vom Mod auf der Taskleiste ausgeblendet. Doppelklick zeigt sie wieder; Doppelklick auf eine Windows-Schaltfläche oben blendet sie aus.", L"मॉड ने इन्हें टास्कबार से छिपाया है। फिर दिखाने के लिए डबल-क्लिक करें, या छिपाने के लिए ऊपर किसी Windows बटन पर डबल-क्लिक करें।", L"由模组从任务栏隐藏。双击可重新显示；双击上方任务栏中的 Windows 按钮可将其隐藏。", L"由模組從工作列隱藏。按兩下可重新顯示；按兩下上方工作列中的 Windows 按鈕可將其隱藏。", L"El mod los oculta de la barra de tareas. Haz doble clic en uno para mostrarlo, o en un botón de Windows de la barra de arriba para ocultarlo.", L"Masqués de la barre des tâches par le mod. Double-cliquez pour en réafficher un, ou sur un bouton Windows de la barre ci-dessus pour le masquer.", L"Ocultados da barra de tarefas pelo mod. Clique duas vezes para mostrar de novo, ou num botão do Windows na barra acima para ocultá-lo.", L"Nascosti dalla barra delle applicazioni dalla mod. Doppio clic per mostrarli, o su un pulsante di Windows nella barra sopra per nasconderlo.", L"Ukryte na pasku zadań przez mod. Kliknij dwukrotnie, aby pokazać, albo dwukrotnie przycisk Windows na pasku powyżej, aby go ukryć.", L"Mod tarafından görev çubuğundan gizlendi. Yeniden göstermek için çift tıklayın ya da gizlemek için yukarıdaki bir Windows düğmesine çift tıklayın.", L"Mod がタスク バーから隠しています。ダブルクリックで再表示、上のタスク バーの Windows ボタンをダブルクリックで非表示にします。", L"모드가 작업 표시줄에서 숨겼습니다. 두 번 클릭하면 다시 표시되고, 위 작업 표시줄의 Windows 버튼을 두 번 클릭하면 숨겨집니다." },
     { L"Window color", L"Колір вікна", L"Цвет окна", L"Fensterfarbe", L"विंडो का रंग", L"窗口颜色", L"視窗色彩", L"Color de la ventana", L"Couleur de la fenêtre", L"Cor da janela", L"Colore della finestra", L"Kolor okna", L"Pencere rengi", L"ウィンドウの色", L"창 색상" },
     { L"Custom color", L"Власний колір", L"Свой цвет", L"Eigene Farbe", L"कस्टम रंग", L"自定义颜色", L"自訂色彩", L"Color personalizado", L"Couleur personnalisée", L"Cor personalizada", L"Colore personalizzato", L"Własny kolor", L"Özel renk", L"カスタム色", L"사용자 지정 색" },
     { L"Title bar color", L"Колір рядка заголовка", L"Цвет строки заголовка", L"Farbe der Titelleiste", L"शीर्षक पट्टी का रंग", L"标题栏颜色", L"標題列色彩", L"Color de la barra de título", L"Couleur de la barre de titre", L"Cor da barra de título", L"Colore della barra del titolo", L"Kolor paska tytułu", L"Başlık çubuğu rengi", L"タイトル バーの色", L"제목 표시줄 색" },
@@ -24468,7 +24572,18 @@ static void TakeLpSnapOnThread(void* param) {
                 std::wstring side;
                 auto a = ResolveTrackingAnchor(repeater, p, side);
                 double x, w;
-                if (a && rectOf(a, x, w)) slot(p, side == L"left" ? x - 3 : x + w + 3);
+                if (!a) continue;
+                if (rectOf(a, x, w)) {
+                    slot(p, side == L"left" ? x - 3 : x + w + 3);
+                } else if (side == L"right" && p != PlayerPosition::TaskbarAfterWidgetsRight) {
+                    // Hidden by the mod (zero wide, still in place): one spot where it is.
+                    try {
+                        if (a.Visibility() == Visibility::Visible) {
+                            const double hx = a.TransformToVisual(root).TransformPoint({ 0, 0 }).X;
+                            if (hx >= 0 && hx < W) slot(p, hx + 3);
+                        }
+                    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+                }
             }
         }
         slot(PlayerPosition::TaskbarLeftEdge, 4, true);
@@ -24504,7 +24619,14 @@ static void TakeLpSnapOnThread(void* param) {
                 const TrayAnchor a = TrayAnchorOf(p);
                 auto el = TrayDirectChild(tray, FindChildByName(tray, a.name));
                 double x, w;
-                if (el && rectOf(el, x, w)) slot(p, a.after ? x + w + 3 : x - 3);
+                if (el && rectOf(el, x, w)) {
+                    slot(p, a.after ? x + w + 3 : x - 3);
+                } else if (el && a.after) {   // hidden by the mod: one spot where it is
+                    try {
+                        const double hx = el.TransformToVisual(root).TransformPoint({ 0, 0 }).X;
+                        if (hx >= 0 && hx < W) slot(p, hx + 1);
+                    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+                }
             }
             if (clockX >= 0) slot(PlayerPosition::TrayBeforeClock, clockX - 3);
             if (sdX >= 0) {
@@ -24947,6 +25069,34 @@ static void LpCommit(int part, int zone, int monitor, const std::wstring& positi
         PostMessageW(s_hostWnd, WM_XS_REFRESH, 0, 0);
         // Once the taskbar has laid itself out again, so the copy shows the real
         // result, and again once its animations (a part sliding in or out) are done.
+        SetTimer(s_hostWnd, RELAYOUT_TIMER, 450, nullptr);
+        SetTimer(s_hostWnd, SETTLE_TIMER, 1300, nullptr);
+    }
+}
+
+// The hide switch for a Windows button drawn on the taskbar copy, or null.
+static const wchar_t* LpNativeHideKey(int kind) {
+    switch (kind) {
+        case LpStart:       return L"MainSettings.NativeWidgetsSetting.hideStartButton";
+        case LpSearchIcon:
+        case LpSearchBox:   return L"MainSettings.NativeWidgetsSetting.hideSearchButton";
+        case LpTaskView:    return L"MainSettings.NativeWidgetsSetting.hideTaskViewButton";
+        case LpWidgets:     return L"MainSettings.NativeWidgetsSetting.hideNativeWidgetsButton";
+        case LpChevron:     return L"MainSettings.NativeWidgetsSetting.hideHiddenIconsButton";
+        case LpOmni:        return L"MainSettings.NativeWidgetsSetting.hideNetworkButton";
+        case LpLanguage:    return L"MainSettings.NativeWidgetsSetting.hideLanguageButton";
+        case LpClock:       return L"MainSettings.NativeWidgetsSetting.hideClock";
+        case LpShowDesktop: return L"MainSettings.NativeWidgetsSetting.hideShowDesktop";
+    }
+    return nullptr;
+}
+
+// Hides or shows a Windows button from the Layout page, and redraws the page.
+static void LpSetNativeHidden(const std::wstring& key, bool hidden) {
+    SetOverrideLive(key, hidden ? L"1" : L"0");
+    ApplySettingsLiveNow();
+    if (s_hostWnd) {
+        PostMessageW(s_hostWnd, WM_XS_REFRESH, 0, 0);
         SetTimer(s_hostWnd, RELAYOUT_TIMER, 450, nullptr);
         SetTimer(s_hostWnd, SETTLE_TIMER, 1300, nullptr);
     }
@@ -25568,6 +25718,16 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         for (const LpItem& it : snap.items) {
             if (it.kind == LpApp) continue;
             auto el = MakeLpItem(it, MW(it.x, it.w), ih, timeText, dateText);
+            if (const wchar_t* hideKey = LpNativeHideKey(it.kind)) {
+                if (auto b = el.try_as<wuxc::Border>(); b && !b.Background())
+                    b.Background(wuxm::SolidColorBrush(winrt::Windows::UI::Colors::Transparent()));   // something to double-click
+                ToolTipService::SetToolTip(el, winrt::box_value(hstring{ Loc(L"Double-click to hide it from the taskbar") }));
+                const std::wstring key = hideKey;
+                el.DoubleTapped([key](auto const&, wux::Input::DoubleTappedRoutedEventArgs const& args) {
+                    args.Handled(true);
+                    LpSetNativeHidden(key, true);
+                });
+            }
             const double ex = MX(it.x);
             wuxc::Canvas::SetLeft(el, ex);
             wuxc::Canvas::SetTop(el, y0 + (ih - el.Height()) / 2);
@@ -25797,6 +25957,11 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
             { L"MainSettings.NativeWidgetsSetting.hideSearchButton",        LpSearchIcon, L"Search",         1.0 },
             { L"MainSettings.NativeWidgetsSetting.hideTaskViewButton",      LpTaskView,   L"Task View",      1.0 },
             { L"MainSettings.NativeWidgetsSetting.hideNativeWidgetsButton", LpWidgets,    L"Weather widget", 2.6 },
+            { L"MainSettings.NativeWidgetsSetting.hideHiddenIconsButton",   LpChevron,    L"Hidden icons arrow", 0.8 },
+            { L"MainSettings.NativeWidgetsSetting.hideNetworkButton",       LpOmni,       L"Network and volume", 1.8 },
+            { L"MainSettings.NativeWidgetsSetting.hideLanguageButton",      LpLanguage,   L"Language",       1.2 },
+            { L"MainSettings.NativeWidgetsSetting.hideClock",               LpClock,      L"Clock",          2.0 },
+            { L"MainSettings.NativeWidgetsSetting.hideShowDesktop",         LpShowDesktop, L"Show desktop",  0.4 },
         };
         wuxc::StackPanel chips;
         chips.Orientation(wuxc::Orientation::Horizontal);
@@ -25813,7 +25978,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
             row.Orientation(wuxc::Orientation::Horizontal);
             row.Spacing(4);
             LpItem it{ c.kind, 0, zih * c.w };
-            auto look = MakeLpItem(it, zih * c.w, zih - 4, L"", L"");
+            auto look = MakeLpItem(it, zih * c.w, zih - 4, timeText, dateText);
             look.Opacity(0.55);
             row.Children().Append(look);
             if (c.kind != LpWidgets) {
@@ -25826,13 +25991,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
             const std::wstring key = c.key;
             chip.DoubleTapped([key](auto const&, wux::Input::DoubleTappedRoutedEventArgs const& args) {
                 args.Handled(true);
-                SetOverrideLive(key, L"0");
-                ApplySettingsLiveNow();
-                if (s_hostWnd) {
-                    PostMessageW(s_hostWnd, WM_XS_REFRESH, 0, 0);
-                    SetTimer(s_hostWnd, RELAYOUT_TIMER, 450, nullptr);
-                    SetTimer(s_hostWnd, SETTLE_TIMER, 1300, nullptr);
-                }
+                LpSetNativeHidden(key, false);
             });
             chips.Children().Append(chip);
         }
@@ -25848,7 +26007,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
             inner.Children().Append(t);
             inner.Children().Append(chips);
             wuxc::TextBlock note;
-            note.Text(hstring{ Loc(L"Hidden from the taskbar by the mod. Double-click one to show it again.") });
+            note.Text(hstring{ Loc(L"Hidden from the taskbar by the mod. Double-click one to show it again, or a Windows button on the taskbar above to hide it.") });
             note.FontSize(11); note.Opacity(0.6);
             note.TextWrapping(wux::TextWrapping::Wrap);
             inner.Children().Append(note);
