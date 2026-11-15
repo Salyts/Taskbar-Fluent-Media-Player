@@ -18058,14 +18058,29 @@ static void SetWidgetsHiddenLook(FrameworkElement const& el, bool hidden) {
     try {
         const bool keepAlive = hidden && g_settings.weatherEnabled && !g_unloading;
         el.Visibility(hidden && !keepAlive ? Visibility::Collapsed : Visibility::Visible);
-        if (keepAlive) {
-            el.Opacity(0.0);
-            el.MaxWidth(0.0);
-            el.IsHitTestVisible(false);
-        } else {
-            el.ClearValue(UIElement::OpacityProperty());
-            el.ClearValue(FrameworkElement::MaxWidthProperty());
-            el.ClearValue(UIElement::IsHitTestVisibleProperty());
+        // The button around the panel keeps its own padding while the panel is
+        // "shown" (collapsed, it shrinks to nothing by itself): that left a gap
+        // where the button was. So it gets zero width too. Its margin stays
+        // free for the parts placed next to it.
+        FrameworkElement outer{nullptr};
+        for (DependencyObject cur = el, parent = VisualTreeHelper::GetParent(el); parent;
+             cur = parent, parent = VisualTreeHelper::GetParent(parent)) {
+            if (auto pfe = parent.try_as<FrameworkElement>(); pfe && pfe.Name() == L"TaskbarFrameRepeater") {
+                outer = cur.try_as<FrameworkElement>();
+                break;
+            }
+        }
+        for (auto const& target : { el, outer }) {
+            if (!target) continue;
+            if (keepAlive) {
+                target.Opacity(0.0);
+                target.MaxWidth(0.0);
+                target.IsHitTestVisible(false);
+            } else {
+                target.ClearValue(UIElement::OpacityProperty());
+                target.ClearValue(FrameworkElement::MaxWidthProperty());
+                target.ClearValue(UIElement::IsHitTestVisibleProperty());
+            }
         }
     } catch (...) { LOG_IGNORED_EXCEPTION(); }
 }

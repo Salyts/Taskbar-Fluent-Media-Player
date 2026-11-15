@@ -33,6 +33,7 @@
 
 ### Fixes
 
+- With the weather part on and Windows' weather widget hidden, the hidden widget no longer leaves an empty gap on the taskbar.
 - The player no longer shoots out and back when the song changes: apps that clear the title for a moment between songs (Spotify) keep the last song's text through the gap, the smooth position animation pauses for the whole change, and the width glide lands exactly on the new width.
 - A part placed next to a Windows button no longer slides back and forth when the song or app changes: it waits for the button to settle before moving, and the smooth position animation pauses while the player glides to its new width.
 - Layout page: the player is no longer drawn too small right after a part moves in or out of it, and double-clicking a Windows button there works on the first try.
