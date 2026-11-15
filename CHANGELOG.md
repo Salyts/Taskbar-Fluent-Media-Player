@@ -33,6 +33,7 @@
 
 ### Fixes
 
+- On a vertical taskbar, hidden Windows buttons (Start, Search, Task View, the weather widget) no longer leave an empty gap their height tall.
 - The weather part no longer disappears while Windows' Widgets button shows news or a forecast teaser instead of the temperature: only a reading with a temperature counts, the last one stays in between, and it's remembered across restarts.
 - With the weather part on and Windows' weather widget hidden, the hidden widget no longer leaves an empty gap on the taskbar.
 - The player no longer shoots out and back when the song changes: apps that clear the title for a moment between songs (Spotify) keep the last song's text through the gap, the smooth position animation pauses for the whole change, and the width glide lands exactly on the new width.

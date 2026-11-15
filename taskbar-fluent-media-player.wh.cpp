@@ -18119,13 +18119,17 @@ static void SetWidgetsHiddenLook(FrameworkElement const& el, bool hidden) {
         }
         for (auto const& target : { el, outer }) {
             if (!target) continue;
+            // Both ways: on a vertical taskbar the buttons stack by height, and a
+            // zero-wide button still left its whole height as a gap.
             if (keepAlive) {
                 target.Opacity(0.0);
                 target.MaxWidth(0.0);
+                target.MaxHeight(0.0);
                 target.IsHitTestVisible(false);
             } else {
                 target.ClearValue(UIElement::OpacityProperty());
                 target.ClearValue(FrameworkElement::MaxWidthProperty());
+                target.ClearValue(FrameworkElement::MaxHeightProperty());
                 target.ClearValue(UIElement::IsHitTestVisibleProperty());
             }
         }
@@ -18328,13 +18332,16 @@ static void SetNativeHiddenLook(FrameworkElement const& el, bool hidden) {
     if (!el) return;
     try {
         el.Visibility(Visibility::Visible);
+        // Zero both ways: on a vertical taskbar the buttons stack by height.
         if (hidden) {
             if (el.Opacity() != 0.0) el.Opacity(0.0);
             if (el.MaxWidth() != 0.0) el.MaxWidth(0.0);
+            if (el.MaxHeight() != 0.0) el.MaxHeight(0.0);
             if (el.IsHitTestVisible()) el.IsHitTestVisible(false);
         } else {
             el.ClearValue(UIElement::OpacityProperty());
             el.ClearValue(FrameworkElement::MaxWidthProperty());
+            el.ClearValue(FrameworkElement::MaxHeightProperty());
             el.ClearValue(UIElement::IsHitTestVisibleProperty());
         }
     } catch (...) { LOG_IGNORED_EXCEPTION(); }
