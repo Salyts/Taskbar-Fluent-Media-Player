@@ -912,6 +912,10 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       #! $showIf: {weatherEnabled: true}
       $name: Only when nothing plays
       $description: The weather hides while music plays and comes back when it stops, so it and the player take turns.
+    - weatherReplacesPlayer: false
+      #! $showIf: {weatherEnabled: true}
+      $name: Take the player's place when nothing plays
+      $description: While nothing plays, the player hides and the weather shows where the player is. When music plays again, they swap back. Uses the player's position and monitor.
     - weatherShowCondition: true
       #! $showIf: {weatherEnabled: true}
       $name: Show the condition
@@ -2140,6 +2144,7 @@ namespace SettingsUI {
     static std::wstring Loc(const std::wstring& en);
     static void ShowXamlSettingsWindow();  // native WinUI-style settings (XAML Islands)
     static void RefreshOpenSettingsWindow();  // shows the current values, if it's open
+    static void SaveSingleSetting(const std::wstring& key, const std::wstring& value);
 } // namespace SettingsUI
 namespace Runtime {
     static void RecoverMissingPlayer(HWND hWnd);
@@ -2858,6 +2863,7 @@ struct ModSettings {
     bool         weatherEnabled      = false;
     bool         weatherShowCondition = true;
     bool         weatherOnlyWhenIdle  = false;
+    bool         weatherReplacesPlayer = false;
     PlayerPosition weatherPosition   = PlayerPosition::TrayLeft;
     int          weatherMonitor      = 1;
     DetachedBackgroundSettings weatherBg;
@@ -3141,6 +3147,7 @@ static constexpr SettingSpec SETTINGS[] = {
     SBool(L"MainSettings.WeatherSetting.weatherEnabled", &ModSettings::weatherEnabled),
     SBool(L"MainSettings.WeatherSetting.weatherShowCondition", &ModSettings::weatherShowCondition),
     SBool(L"MainSettings.WeatherSetting.weatherOnlyWhenIdle", &ModSettings::weatherOnlyWhenIdle),
+    SBool(L"MainSettings.WeatherSetting.weatherReplacesPlayer", &ModSettings::weatherReplacesPlayer),
     SStr(L"MainSettings.WeatherSetting.weatherPosition", L"tray_left"),
     SIntRaw(L"MainSettings.WeatherSetting.weatherMonitor"),
     SStr(L"MainSettings.WeatherSetting.weatherBackgroundType", L"inherit"),
@@ -3651,6 +3658,10 @@ COLD_UNOPTIMIZED static void LoadSettings() {
     g_settings.weatherPosition = ParseSettingChoice(Str(L"MainSettings.WeatherSetting.weatherPosition", L"tray_left"),
                                                         PLAYER_POSITIONS, PlayerPosition::TrayLeft);
     g_settings.weatherMonitor  = NormalizeMonitor(Int(L"MainSettings.WeatherSetting.weatherMonitor", MONITOR_OFF, 64, 1));
+    if (g_settings.weatherReplacesPlayer) {   // in the player's spot, so the two swap in place
+        g_settings.weatherPosition = g_settings.position;
+        g_settings.weatherMonitor  = GetEffectiveMonitorSetting();
+    }
     g_settings.weatherBg = LoadDetachedBg(
         L"MainSettings.WeatherSetting.weatherBackgroundType",
         L"MainSettings.WeatherSetting.weatherBackgroundColor",
@@ -12367,6 +12378,40 @@ static Grid BuildMiniPlayerIconTray(bool isLight, bool hasMedia) {
     openApp.Opacity(hasMedia ? 1.0 : 0.35);
     row.Children().Append(openApp);
 
+    // What the visualizer listens to: the app in the player, or everything on
+    // the PC. Not with an audio device set, which listens to that device.
+    if (g_settings.vizEnabled && TrimCopy(g_settings.vizAudioDevice).empty()) {
+        auto weakBtn = std::make_shared<winrt::weak_ref<Button>>();
+        auto look = [](Button const& b) {
+            const bool app = g_settings.vizOnlyMediaApp;
+            if (auto t = b.Content().try_as<TextBlock>()) t.Text(app ? L"\uE8D6" : L"\uE767");   // a note, or a speaker
+            ToolTip tt;
+            tt.Content(winrt::box_value(winrt::hstring(Loc(app ? L"Visualizer: the app in the player. Click to listen to everything"
+                                                                : L"Visualizer: everything on the PC. Click to listen to the app only"))));
+            ToolTipService::SetToolTip(b, tt);
+        };
+        auto vizBtn = MakeMiniPlayerTrayIcon(isLight, L"FluentMediaMiniPlayerVizSourceButton", L"\uE8D6", L"", [weakBtn, look]() {
+            const bool app = !g_settings.vizOnlyMediaApp;
+            g_settings.vizOnlyMediaApp = app;
+            SaveSingleSetting(L"MainSettings.VisualizerFunctionsSettings.vizOnlyMediaApp", app ? L"1" : L"0");
+            if (auto b = weakBtn->get()) look(b);
+            // The capture picks the mode up when it starts: start it again, on the
+            // taskbar's thread, which owns it.
+            SpawnTrackedWorker([]() {
+                HWND h = g_taskbarWnd;
+                if (!h || !IsWindow(h)) return;
+                RunFromWindowThread(h, [](void*) {
+                    if (g_unloading || g_applyingSettings || !g_vizCurrentlyVisible) return;
+                    StopVizCaptureThread();
+                    StartVizCaptureThread();
+                }, nullptr);
+            });
+        });
+        *weakBtn = winrt::make_weak(vizBtn);
+        look(vizBtn);
+        row.Children().Append(vizBtn);
+    }
+
     // The mod's own settings window, same as the context menu's Settings item.
     row.Children().Append(MakeMiniPlayerTrayIcon(isLight, L"FluentMediaMiniPlayerSettingsButton", L"\uE713",
                                                  Loc(L"Settings"), []() { ShowXamlSettingsWindow(); }));
@@ -14589,9 +14634,27 @@ static void RestorePlayerTransitions() {
     } catch (...) { LOG_IGNORED_EXCEPTION(); }
 }
 
+static void HoldPlayerTransitions() {
+    try { if (g_playerGrid && g_playerGrid.Transitions()) g_playerGrid.Transitions(nullptr); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+}
+
+// Back once the layout passes a song change sets off are done.
+static std::atomic<bool> g_transitionsRestorePending{false};
+static void RestorePlayerTransitionsSoon() {
+    if (g_unloading || g_transitionsRestorePending.exchange(true)) return;
+    SpawnTrackedWorker([]() {
+        const bool slept = SleepUnlessUnloading(500);
+        g_transitionsRestorePending = false;
+        if (!slept) return;
+        if (HWND h = g_taskbarWnd; h && IsWindow(h))
+            RunFromWindowThread(h, [](void*) {
+                if (!g_unloading && !g_trackChangeSb) RestorePlayerTransitions();
+            }, nullptr);
+    });
+}
+
 // Stops a glide that's still going, leaving the text area at its own size.
 static void StopTrackChangeAnimation() {
-    RestorePlayerTransitions();
     try {
         if (g_trackChangeSb) { g_trackChangeSb.Stop(); g_trackChangeSb = nullptr; }
         if (auto box = g_trackChangeBox.get()) box.ClearValue(FrameworkElement::WidthProperty());
@@ -14599,13 +14662,16 @@ static void StopTrackChangeAnimation() {
     g_trackChangeBox = nullptr;
 }
 
-static void AnimateTrackChange(FrameworkElement const& box, double fromW) {
+static void AnimateTrackChange(FrameworkElement const& box, double fromW, bool fadeText) {
     if (!box || IsSidebarMode()) return;
     try {
-        const auto m = box.Margin();
-        box.Measure({ std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity() });
-        double toW = box.DesiredSize().Width - m.Left - m.Right;
-        if (g_settings.playerMaxWidth > 0) toW = std::min(toW, (double)g_settings.playerMaxWidth);
+        // Where it really ends up: laid out now with the new text (nothing is
+        // drawn in between), so the glide lands exactly there instead of
+        // snapping at the end.
+        box.ClearValue(FrameworkElement::WidthProperty());
+        box.UpdateLayout();
+        const double toW = box.ActualWidth();
+        Wh_Log(L"TrackChange: text area %.0f -> %.0f px%s", fromW, toW, fadeText ? L", fading in" : L"");
         Storyboard sb;
         const auto ease = [] { CubicEase c; c.EasingMode(EasingMode::EaseOut); return c; };
         if (fromW > 1 && toW > 1 && std::abs(toW - fromW) > 2) {
@@ -14621,7 +14687,7 @@ static void AnimateTrackChange(FrameworkElement const& box, double fromW) {
             sb.Children().Append(grow);
             g_trackChangeBox = winrt::make_weak(box);
         }
-        if (auto stack = FindChildByName(box, TEXT_STACK_NAME)) {
+        if (auto stack = fadeText ? FindChildByName(box, TEXT_STACK_NAME) : nullptr) {
             DoubleAnimation fade;
             fade.From(0.0);
             fade.To(1.0);
@@ -14660,10 +14726,43 @@ static void RefreshTrackText(const PlayerSnapshot& m) {
 
     // A new song (not the time ticking in the artist line): remember how wide
     // the text area is now, so it can glide to its new width.
-    static std::wstring s_lastTrack;
+    // Some apps (Spotify) clear the title and artist for a moment between
+    // songs. Shown, the player shrank to nothing and grew back: keep the last
+    // song's text through a blank of up to 1.5 s instead.
+    static std::wstring s_lastTrack, s_lastTitle;
+    static ULONGLONG s_blankSince = 0;
+    static std::atomic<bool> s_blankRecheck{false};
+    if (hasSession && title.empty() && artist.empty() && !s_lastTitle.empty()) {
+        const ULONGLONG now = GetTickCount64();
+        if (!s_blankSince) s_blankSince = now;
+        if (now - s_blankSince < 1500) {
+            if (!g_unloading && !s_blankRecheck.exchange(true)) {
+                SpawnTrackedWorker([]() {
+                    const bool slept = SleepUnlessUnloading(1600);
+                    s_blankRecheck = false;
+                    if (!slept) return;
+                    g_needsUiUpdate = true;
+                    if (g_timerUpdateEvent) SetEvent(g_timerUpdateEvent);
+                });
+            }
+            return;
+        }
+    } else {
+        s_blankSince = 0;
+    }
+
+    // Apps often send the title first and the artist a moment later: only a
+    // new title fades the text in again; either one glides the width.
     const std::wstring trackKey = (hasSession ? L"1" : L"0") + title + L"\x1f" + artist;
     const bool newTrack = !s_lastTrack.empty() && trackKey != s_lastTrack;
+    const bool newTitle = newTrack && title != s_lastTitle;
     s_lastTrack = trackKey;
+    s_lastTitle = title;
+    // A song change lays the player out a few times on the way (new title, then
+    // the scroll setup, then the artist), each nudging where it sits. The smooth
+    // position animation played every nudge as a slide out and back: it's off
+    // for the whole change, and back once the player has settled.
+    if (newTrack) HoldPlayerTransitions();
     FrameworkElement smoothBox{nullptr};
     double smoothFrom = 0;
     if (newTrack && g_settings.smoothTrackChange) {
@@ -14791,7 +14890,8 @@ static void RefreshTrackText(const PlayerSnapshot& m) {
         g_infoContainerShown = showContainer;
     } catch (...) { LOG_IGNORED_EXCEPTION(); }
 
-    if (smoothBox && g_infoContainerShown) AnimateTrackChange(smoothBox, smoothFrom);
+    if (smoothBox && g_infoContainerShown) AnimateTrackChange(smoothBox, smoothFrom, newTitle);
+    if (newTrack && !g_trackChangeSb) RestorePlayerTransitionsSoon();   // no glide to wait for
 }
 
 // A button the current app can't act on (no previous track, no seeking, ...)
@@ -15423,6 +15523,29 @@ static bool PlayerHasInlineContent() {
 
 static std::atomic<bool> g_noMediaRecheckPending{false};
 
+// Nothing has played for 2.5 s (or ever). Before that, look again once it's up.
+static std::atomic<bool> g_weatherIdleRecheckPending{false};
+static bool WeatherIdleNow() {
+    static ULONGLONG s_lastPlaying = 0;
+    bool playing = false;
+    { std::lock_guard<std::mutex> lk(g_mediaMtx); playing = g_media.isPlaying; }
+    const ULONGLONG now = GetTickCount64();
+    if (playing) { s_lastPlaying = now; return false; }
+    if (!s_lastPlaying || now - s_lastPlaying >= 2500) return true;
+    if ((g_settings.weatherOnlyWhenIdle || g_settings.weatherReplacesPlayer) && g_settings.weatherEnabled &&
+        !g_unloading && !g_weatherIdleRecheckPending.exchange(true)) {
+        const int wait = (int)(2600 - (now - s_lastPlaying));
+        SpawnTrackedWorker([wait]() {
+            const bool slept = SleepUnlessUnloading(wait);
+            g_weatherIdleRecheckPending = false;
+            if (!slept) return;
+            g_needsUiUpdate = true;
+            if (g_timerUpdateEvent) SetEvent(g_timerUpdateEvent);
+        });
+    }
+    return false;
+}
+
 static void UpdateVisibility() {
     if (!HasAnyPlayerUi() || g_unloading || g_applyingSettings) return;
 
@@ -15477,8 +15600,14 @@ static void UpdateVisibility() {
     if (g_playerIdleHidden.exchange(idleHide) != idleHide && WidgetsSwapActive() && !g_unloading)
         SpawnTrackedWorker([]() { EnsureWidgetsHideStateApplied(); });
 
+    // "Take the player's place": the weather shows instead of the player once
+    // nothing has played for 2.5 s, so a skip or a short pause doesn't swap them.
+    const bool weatherIdle = WeatherIdleNow();
+    const bool weatherSwap = g_settings.weatherEnabled && g_settings.weatherReplacesPlayer && WeatherAvailable() &&
+                             weatherIdle && !fullscreenHide;
+
     // Detached parts follow `hide`; `hidePlayer` also collapses an empty main bar.
-    bool hidePlayer = hide || (idleHide && WidgetsSwapActive()) || !PlayerHasInlineContent();
+    bool hidePlayer = hide || (idleHide && WidgetsSwapActive()) || !PlayerHasInlineContent() || weatherSwap;
 
     Wh_Log(L"UpdateVisibility: Final decision - hide=%d hidePlayer=%d", hide, hidePlayer);
 
@@ -15574,12 +15703,10 @@ static void UpdateVisibility() {
             if (!dw->grid) continue;
             // A hidden detached info container vanishes on its own, background
             // and margins included, like it does inline.
-            // Weather: not for music stopping, but for music playing, with "Only when nothing plays".
-            bool playingForWeather = false;
-            if (dw == &g_detachedWeather && g_settings.weatherOnlyWhenIdle) {
-                std::lock_guard<std::mutex> lk(g_mediaMtx);
-                playingForWeather = g_media.isPlaying;
-            }
+            // Weather: not for music stopping, but for music playing, with "Only when
+            // nothing plays" or "Take the player's place".
+            const bool playingForWeather = dw == &g_detachedWeather &&
+                (g_settings.weatherOnlyWhenIdle || g_settings.weatherReplacesPlayer) && !weatherIdle;
             const bool hideThis = dw == &g_detachedWeather ? (fullscreenHide || !WeatherAvailable() || playingForWeather)
                                                           : (hide || (dw == &g_detachedInfo && !g_infoContainerShown));
             try {
@@ -20554,8 +20681,12 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
                 L"MainSettings.WeatherSetting.weatherMonitor",
                 L"MainSettings.WeatherSetting.weatherBackground", L"tray_left");
             weatherLook.rows.push_back(RowBool(L"Show the condition", L"MainSettings.WeatherSetting.weatherShowCondition"));
-            weatherWhere.rows.push_back(WithDesc(RowBool(L"Only when nothing plays", L"MainSettings.WeatherSetting.weatherOnlyWhenIdle"),
-                                                 L"Hides while music plays, so it and the player take turns."));
+            weatherWhere.rows.insert(weatherWhere.rows.begin(),
+                WithDesc(RowBool(L"Take the player's place when nothing plays", L"MainSettings.WeatherSetting.weatherReplacesPlayer"),
+                         L"The player hides and the weather shows in its spot until music plays again."));
+            weatherWhere.rows.insert(weatherWhere.rows.begin() + 1,
+                WithDesc(RowBool(L"Only when nothing plays", L"MainSettings.WeatherSetting.weatherOnlyWhenIdle"),
+                         L"Hides while music plays, so it and the player take turns."));
             bool pastMonitor = false;
             for (size_t i = 1; i < all.rows.size(); i++) {   // rows[0] is the switch, which the page has itself
                 (pastMonitor ? weatherLook : weatherWhere).rows.push_back(all.rows[i]);
@@ -21273,6 +21404,22 @@ static bool SaveSettingsNow() {
     return true;
 }
 
+// One setting changed from outside the settings window (the mini player):
+// in effect now and saved, without saving anything else the window has
+// pending, and shown in the window if it's open.
+static void SaveSingleSetting(const std::wstring& key, const std::wstring& value) {
+    {
+        std::lock_guard<std::mutex> lk(g_overrideMutex);
+        g_settingOverrides[key] = value;
+    }
+    {
+        std::lock_guard<std::mutex> store(g_storeMutex);
+        g_savedOverrides[key] = value;
+        if (!PersistStore()) Wh_Log(L"[settings] couldn't save %s", key.c_str());
+    }
+    RefreshOpenSettingsWindow();
+}
+
 static void DiscardSettingsDraftOnClose() {
     ResetOverridesToSaved();
 
@@ -21916,6 +22063,10 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"The app in the player", L"Програму в програвачі", L"Приложение в плеере", L"Die App im Player", L"प्लेयर वाला ऐप", L"播放器中的应用", L"播放器中的應用程式", L"La app del reproductor", L"L'app du lecteur", L"O app do player", L"L'app nel player", L"Aplikację w odtwarzaczu", L"Oynatıcıdaki uygulama", L"プレーヤーのアプリ", L"플레이어의 앱" },
     { L"Everything on the PC", L"Усе на комп'ютері", L"Всё на компьютере", L"Alles auf dem PC", L"PC की हर आवाज़", L"电脑上的所有声音", L"電腦上的所有聲音", L"Todo el PC", L"Tout le PC", L"Tudo no PC", L"Tutto il PC", L"Wszystko na komputerze", L"Bilgisayardaki her şey", L"PC のすべての音", L"PC의 모든 소리" },
     { L"The app ignores other sounds, like a Discord call (Windows 11).", L"Програма ігнорує інші звуки, як-от дзвінок у Discord (Windows 11).", L"Приложение игнорирует другие звуки, например звонок в Discord (Windows 11).", L"„Die App“ ignoriert andere Töne, etwa einen Discord-Anruf (Windows 11).", L"ऐप वाला विकल्प बाकी आवाज़ें, जैसे Discord कॉल, नज़रअंदाज़ करता है (Windows 11)।", L"“应用”会忽略其他声音，例如 Discord 通话 (Windows 11)。", L"「應用程式」會忽略其他聲音，例如 Discord 通話 (Windows 11)。", L"La app ignora otros sonidos, como una llamada de Discord (Windows 11).", L"L'app ignore les autres sons, comme un appel Discord (Windows 11).", L"O app ignora outros sons, como uma chamada no Discord (Windows 11).", L"L'app ignora gli altri suoni, come una chiamata Discord (Windows 11).", L"Aplikacja pomija inne dźwięki, np. rozmowę na Discordzie (Windows 11).", L"Uygulama, Discord araması gibi diğer sesleri yok sayar (Windows 11).", L"アプリは Discord の通話などほかの音を無視します (Windows 11)。", L"앱은 Discord 통화 같은 다른 소리를 무시합니다 (Windows 11)." },
+    { L"Take the player's place when nothing plays", L"Займати місце програвача, коли нічого не грає", L"Занимать место плеера, когда ничего не играет", L"Den Platz des Players einnehmen, wenn nichts läuft", L"कुछ न चलने पर प्लेयर की जगह ले", L"没有播放时代替播放器", L"沒有播放時取代播放器", L"Ocupar el lugar del reproductor cuando no suena nada", L"Prendre la place du lecteur quand rien ne joue", L"Ocupar o lugar do player quando nada estiver tocando", L"Prendere il posto del player quando non suona nulla", L"Zajmij miejsce odtwarzacza, gdy nic nie gra", L"Hiçbir şey çalmıyorken oynatıcının yerini al", L"何も再生していないときはプレーヤーの代わりに表示", L"재생 중이 아닐 때 플레이어 자리에 표시" },
+    { L"The player hides and the weather shows in its spot until music plays again.", L"Програвач ховається, а на його місці показується погода, доки знову не заграє музика.", L"Плеер скрывается, а на его месте показывается погода, пока снова не заиграет музыка.", L"Der Player blendet sich aus und das Wetter erscheint an seiner Stelle, bis wieder Musik läuft.", L"संगीत फिर चलने तक प्लेयर छिप जाता है और उसकी जगह मौसम दिखता है।", L"播放器隐藏，天气显示在它的位置，直到再次播放音乐。", L"播放器隱藏，天氣顯示在它的位置，直到再次播放音樂。", L"El reproductor se oculta y el tiempo aparece en su lugar hasta que vuelva a sonar música.", L"Le lecteur se masque et la météo s'affiche à sa place jusqu'à ce que la musique reprenne.", L"O player some e o clima aparece no lugar dele até a música voltar a tocar.", L"Il player si nasconde e il meteo appare al suo posto finché non riparte la musica.", L"Odtwarzacz się chowa, a w jego miejscu widać pogodę, dopóki znów nie zagra muzyka.", L"Müzik yeniden çalana kadar oynatıcı gizlenir ve yerinde hava durumu görünür.", L"音楽が再生されるまで、プレーヤーは隠れてその場所に天気が表示されます。", L"음악이 다시 재생될 때까지 플레이어가 숨고 그 자리에 날씨가 표시됩니다." },
+    { L"Visualizer: the app in the player. Click to listen to everything", L"Візуалізатор: програма в програвачі. Клацніть, щоб слухати все", L"Визуализатор: приложение в плеере. Щёлкните, чтобы слушать всё", L"Visualizer: die App im Player. Klicken, um alles zu hören", L"विज़ुअलाइज़र: प्लेयर वाला ऐप। सब सुनने के लिए क्लिक करें", L"可视化：播放器中的应用。点击以监听所有声音", L"視覺化：播放器中的應用程式。按一下以監聽所有聲音", L"Visualizador: la app del reproductor. Haz clic para escuchar todo", L"Visualiseur : l'app du lecteur. Cliquez pour tout écouter", L"Visualizador: o app do player. Clique para ouvir tudo", L"Visualizzatore: l'app nel player. Fai clic per ascoltare tutto", L"Wizualizer: aplikacja w odtwarzaczu. Kliknij, aby słuchać wszystkiego", L"Görselleştirici: oynatıcıdaki uygulama. Her şeyi dinlemek için tıklayın", L"ビジュアライザー: プレーヤーのアプリ。クリックですべての音に切り替え", L"비주얼라이저: 플레이어의 앱. 클릭하면 모든 소리를 듣습니다" },
+    { L"Visualizer: everything on the PC. Click to listen to the app only", L"Візуалізатор: усе на комп'ютері. Клацніть, щоб слухати лише програму", L"Визуализатор: всё на компьютере. Щёлкните, чтобы слушать только приложение", L"Visualizer: alles auf dem PC. Klicken, um nur die App zu hören", L"विज़ुअलाइज़र: PC की हर आवाज़। सिर्फ़ ऐप सुनने के लिए क्लिक करें", L"可视化：电脑上的所有声音。点击以仅监听应用", L"視覺化：電腦上的所有聲音。按一下以僅監聽應用程式", L"Visualizador: todo el PC. Haz clic para escuchar solo la app", L"Visualiseur : tout le PC. Cliquez pour n'écouter que l'app", L"Visualizador: tudo no PC. Clique para ouvir só o app", L"Visualizzatore: tutto il PC. Fai clic per ascoltare solo l'app", L"Wizualizer: wszystko na komputerze. Kliknij, aby słuchać tylko aplikacji", L"Görselleştirici: bilgisayardaki her şey. Yalnızca uygulamayı dinlemek için tıklayın", L"ビジュアライザー: PC のすべての音。クリックでアプリのみに切り替え", L"비주얼라이저: PC의 모든 소리. 클릭하면 앱만 듣습니다" },
     { L"Window color", L"Колір вікна", L"Цвет окна", L"Fensterfarbe", L"विंडो का रंग", L"窗口颜色", L"視窗色彩", L"Color de la ventana", L"Couleur de la fenêtre", L"Cor da janela", L"Colore della finestra", L"Kolor okna", L"Pencere rengi", L"ウィンドウの色", L"창 색상" },
     { L"Custom color", L"Власний колір", L"Свой цвет", L"Eigene Farbe", L"कस्टम रंग", L"自定义颜色", L"自訂色彩", L"Color personalizado", L"Couleur personnalisée", L"Cor personalizada", L"Colore personalizzato", L"Własny kolor", L"Özel renk", L"カスタム色", L"사용자 지정 색" },
     { L"Title bar color", L"Колір рядка заголовка", L"Цвет строки заголовка", L"Farbe der Titelleiste", L"शीर्षक पट्टी का रंग", L"标题栏颜色", L"標題列色彩", L"Color de la barra de título", L"Couleur de la barre de titre", L"Cor da barra de título", L"Colore della barra del titolo", L"Kolor paska tytułu", L"Başlık çubuğu rengi", L"タイトル バーの色", L"제목 표시줄 색" },
@@ -22615,6 +22766,8 @@ static const RowRule ROW_RULES[] = {
     { L"MainSettings.WeatherSetting.weatherBackgroundHoverEffect", 6092, true, L"MainSettings.WeatherSetting.weatherBackgroundType", L"inherit" },
     { L"MainSettings.WeatherSetting.weatherShowCondition", 6200, false, L"MainSettings.WeatherSetting.weatherEnabled", L"true" },
     { L"MainSettings.WeatherSetting.weatherOnlyWhenIdle", 6201, false, L"MainSettings.WeatherSetting.weatherEnabled", L"true" },
+    { L"MainSettings.WeatherSetting.weatherOnlyWhenIdle", 6203, false, L"MainSettings.WeatherSetting.weatherReplacesPlayer", L"false" },
+    { L"MainSettings.WeatherSetting.weatherReplacesPlayer", 6202, false, L"MainSettings.WeatherSetting.weatherEnabled", L"true" },
     { L"MainSettings.VisualizerFunctionsSettings.vizStyle", 93, false, L"MainSettings.VisualizerFunctionsSettings.vizEnabled", L"true" },
     { L"MainSettings.VisualizerFunctionsSettings.vizShape", 94, false, L"MainSettings.VisualizerFunctionsSettings.vizEnabled", L"true" },
     { L"MainSettings.VisualizerFunctionsSettings.vizEQ", 95, false, L"MainSettings.VisualizerFunctionsSettings.vizEnabled", L"true" },

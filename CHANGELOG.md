@@ -14,6 +14,8 @@
 - **Smooth track changes.** On a new song the text fades in and the player glides to its new width instead of jumping (Appearance, Animation; on by default). The cover keeps its crossfade.
 - **Hide tray buttons too.** New switches under Windows Buttons, Hide in the tray: the hidden icons arrow, network/volume/battery, language, the clock and Show desktop. Hidden buttons now keep their spot (zero wide instead of removed), so a part set next to a hidden Start button still sits right next to the apps.
 - **Hidden Windows buttons on the Layout page.** Start, Search, Task View and the weather widget, when the mod hides them, show in a box of their own under the taskbar copy instead of on it. Double-click one to show it again, or double-click a Windows button on the taskbar copy to hide it.
+- **Weather takes the player's place.** New option on the Weather page: while nothing plays (for 2.5 seconds, so a skip doesn't count), the player hides and the weather shows in its spot; music brings the player back. It uses the player's position and monitor.
+- **Visualizer source in the mini player.** A button in the mini player's icon row switches the visualizer between the app in the player and everything on the PC, and remembers it.
 - **Weather only when nothing plays.** New option for the weather part: it hides while music plays and comes back when it stops, taking turns with the player.
 - **Weather has its own page** in the settings window (right under Visualizer), and the visualizer's power options sit in a Performance card.
 - **Windows Buttons page.** The old Native Widgets page, reorganized: one list of Windows buttons to hide (Start, Search, Task View and the weather widget), then the weather widget's own options. The Start, Search and Task View switches are new. They come back when the switch or the mod is turned off.
@@ -31,6 +33,7 @@
 
 ### Fixes
 
+- The player no longer shoots out and back when the song changes: apps that clear the title for a moment between songs (Spotify) keep the last song's text through the gap, the smooth position animation pauses for the whole change, and the width glide lands exactly on the new width.
 - A part placed next to a Windows button no longer slides back and forth when the song or app changes: it waits for the button to settle before moving, and the smooth position animation pauses while the player glides to its new width.
 - Layout page: the player is no longer drawn too small right after a part moves in or out of it, and double-clicking a Windows button there works on the first try.
 - The visualizer finds more apps when listening only to the app in the player: when no process carries the app's name, it goes by the app's own sound stream. When it still can't tell, it listens to everything instead of nothing.
