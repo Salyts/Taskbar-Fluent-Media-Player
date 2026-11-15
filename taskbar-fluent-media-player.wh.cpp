@@ -3,7 +3,7 @@
 // @name                Taskbar Fluent Media Player
 // @description         A media player built into the Windows 11 taskbar in native Fluent Design: album art, track info, media controls, an audio visualizer and a mini player popup.
 // @description:ru-RU   Медиаплеер, встроенный в панель задач Windows 11 в стиле Fluent Design: обложка альбома, информация о треке, управление воспроизведением, аудиовизуализатор и мини-плеер.
-// @version             1.7.0
+// @version             1.7.1-alpha
 // @author              Salyts
 // @github              https://github.com/Salyts
 // @homepage            https://discord.gg/vdSrFVMY6J
