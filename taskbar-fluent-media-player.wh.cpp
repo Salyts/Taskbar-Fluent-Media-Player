@@ -1488,7 +1488,7 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
   - smoothTrackChange: true
     $name: Smooth track changes
     $description: On a new song the text fades in and the player glides to its new width instead of jumping.
-  - smoothArtShape: true
+  - smoothArtShape: false
     $name: Morph album art between shapes
     $description: When the cover changes shape (a square cover, then a wide video thumbnail), the art stretches into the new shape instead of jumping.
   #! $hideIf: {settingsView: window}
@@ -2761,7 +2761,7 @@ struct ModSettings {
     bool         enableSmoothPositionAnimation = true;
     bool         enableAlbumArtFade = true;
     bool         smoothTrackChange  = true;
-    bool         smoothArtShape     = true;
+    bool         smoothArtShape     = false;
     int          playerMarginTop      = 0;
     int          playerOffsetX        = 0;  // drawn offset, takes no room (GitHub #88)
     int          playerOffsetY        = 0;
@@ -20565,8 +20565,6 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
             RowBool(L"Fade album art on track change", L"AnimationSettings.enableAlbumArtFade"),
             WithDesc(RowBool(L"Smooth track changes", L"AnimationSettings.smoothTrackChange"),
                      L"The text fades in and the player glides to its new width."),
-            WithDesc(RowBool(L"Morph album art between shapes", L"AnimationSettings.smoothArtShape"),
-                     L"A square cover stretches into a wide thumbnail and back."),
         };
 
         cats.push_back(SettingCategory{ L"Appearance", L"\uE771", { bg, interaction, progressBar, animation } });
@@ -20768,6 +20766,8 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
                               { {L"cover", L"The cover"}, {L"app_icon", L"The app's icon"}, {L"icon", L"An icon"} }),
                      L"\"An icon\" is the one set under \"No album art\"."),
             RowCombo(L"Album art quality", L"AppearanceSettings.AlbumArtDisplaySettings.albumArtQuality", L"medium", albumArtQualityOptions),
+            WithDesc(RowBool(L"Morph album art between shapes", L"AnimationSettings.smoothArtShape"),
+                     L"A square cover stretches into a wide thumbnail and back."),
             RowSlider(L"Album art opacity", L"AppearanceSettings.AlbumArtDisplaySettings.albumArtOpacity", L"100", 0, 100),
             RowText(L"Album art corner radius", L"AppearanceSettings.AlbumArtDisplaySettings.albumArtCornerRadius", L"4"),
         };

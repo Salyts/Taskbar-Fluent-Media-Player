@@ -25,7 +25,7 @@
 ### Animation
 
 - **Smooth track changes.** On a new song the text fades in and the player glides to its new width instead of jumping (Appearance, Animation; on by default).
-- **Morph album art between shapes.** When the cover changes shape (a square cover, then a wide video thumbnail), the new cover fades in first, then the art stretches into its shape, and back the same way. Its own switch, on by default.
+- **Morph album art between shapes.** When the cover changes shape (a square cover, then a wide video thumbnail), the new cover fades in first, then the art stretches into its shape, and back the same way. Album Art page, off by default.
 
 ### Playback, clicks and album art
 
