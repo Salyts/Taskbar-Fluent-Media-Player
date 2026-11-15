@@ -17685,16 +17685,16 @@ static bool WeatherAvailable() {
     return !g_weather.temp.empty();
 }
 
-static void CollectWeatherTexts(DependencyObject const& n, std::vector<std::wstring>& out, int depth) {
-    if (!n || depth > 16 || out.size() >= 4) return;
+static void CollectWeatherTexts(DependencyObject const& n, std::vector<TextBlock>& out, int depth) {
+    if (!n || depth > 16 || out.size() >= 16) return;
     if (auto t = n.try_as<TextBlock>()) {
         std::wstring s = t.Text().c_str();
         bool plain = !s.empty();
         for (wchar_t ch : s) plain = plain && !(ch >= 0xE000 && ch <= 0xF8FF);   // icon glyphs
-        if (plain) out.push_back(s);
+        if (plain) out.push_back(t);
     }
     const int c = VisualTreeHelper::GetChildrenCount(n);
-    for (int i = 0; i < c && out.size() < 4; i++) CollectWeatherTexts(VisualTreeHelper::GetChild(n, i), out, depth + 1);
+    for (int i = 0; i < c && out.size() < 16; i++) CollectWeatherTexts(VisualTreeHelper::GetChild(n, i), out, depth + 1);
 }
 
 static std::wstring FindWeatherIconUri(DependencyObject const& n, int depth) {
@@ -17714,8 +17714,34 @@ static std::wstring FindWeatherIconUri(DependencyObject const& n, int depth) {
     return {};
 }
 
-// On the primary taskbar's thread.
+// The last weather read, kept in the mod's storage so it shows straight away
+// after a restart, and through the times the button shows something else.
+static constexpr const wchar_t* LAST_WEATHER_KEY = L"LastWeather";
+static void LoadLastWeather() {
+    static bool s_loaded = false;
+    if (s_loaded) return;
+    s_loaded = true;
+    wchar_t buf[512]{};
+    Wh_GetStringValue(LAST_WEATHER_KEY, buf, ARRAYSIZE(buf));
+    std::wstring all = buf;
+    std::vector<std::wstring> f;
+    for (size_t at = 0;;) {
+        const size_t sep = all.find(L'\x1f', at);
+        f.push_back(all.substr(at, sep == std::wstring::npos ? std::wstring::npos : sep - at));
+        if (sep == std::wstring::npos) break;
+        at = sep + 1;
+    }
+    if (f.size() == 3 && !f[0].empty()) {
+        std::lock_guard<std::mutex> lk(g_weatherMtx);
+        if (g_weather.temp.empty()) g_weather = WeatherInfo{ f[0], f[1], f[2] };
+    }
+}
+
+// On the primary taskbar's thread. Windows' Widgets button takes turns between
+// the weather and other things (news, "Temps to drop next Tuesday"): only a
+// reading with a temperature (a °) counts, and between those the last one stays.
 static void ReadWeatherOnThread(void*) {
+    LoadLastWeather();
     WeatherInfo w;
     try {
         HWND primary = FindPrimaryTaskbarWnd();
@@ -17724,16 +17750,37 @@ static void ReadWeatherOnThread(void*) {
         auto rootGrid = root ? FindTaskbarRootGrid(root) : nullptr;
         auto repeater = rootGrid ? FindChildByName(rootGrid, L"TaskbarFrameRepeater") : nullptr;
         if (auto widgets = repeater ? FindWidgetsAnchorElement(repeater) : nullptr) {
-            std::vector<std::wstring> texts;
+            std::vector<TextBlock> texts;
             CollectWeatherTexts(widgets, texts, 0);
-            auto hasDigit = [](const std::wstring& t) { return std::any_of(t.begin(), t.end(), iswdigit); };
-            for (auto& t : texts) if (w.temp.empty() && hasDigit(t)) w.temp = t;
-            for (auto& t : texts) if (w.condition.empty() && t != w.temp) w.condition = t;
-            w.icon = FindWeatherIconUri(widgets, 0);
+            auto textOf = [](TextBlock const& t) { return std::wstring(t.Text().c_str()); };
+            for (size_t i = 0; i < texts.size(); i++) {
+                const std::wstring t = textOf(texts[i]);
+                if (t.find(L'\u00B0') == std::wstring::npos) continue;
+                w.temp = t;
+                // The condition is the line next to it, in the same group.
+                if (i + 1 < texts.size() && textOf(texts[i + 1]).find(L'\u00B0') == std::wstring::npos &&
+                    VisualTreeHelper::GetParent(texts[i + 1]) == VisualTreeHelper::GetParent(texts[i]))
+                    w.condition = textOf(texts[i + 1]);
+                else if (i > 0 && VisualTreeHelper::GetParent(texts[i - 1]) == VisualTreeHelper::GetParent(texts[i]))
+                    w.condition = textOf(texts[i - 1]);
+                // Its icon: the image next to it, not a news story's.
+                for (DependencyObject up = VisualTreeHelper::GetParent(texts[i]); up && w.icon.empty();
+                     up = VisualTreeHelper::GetParent(up)) {
+                    w.icon = FindWeatherIconUri(up, 0);
+                    if (up == widgets) break;
+                }
+                break;
+            }
         }
     } catch (...) { LOG_IGNORED_EXCEPTION(); }
-    std::lock_guard<std::mutex> lk(g_weatherMtx);
-    g_weather = std::move(w);
+    if (w.temp.empty()) return;   // showing something else right now: keep the last weather
+    bool changed = false;
+    {
+        std::lock_guard<std::mutex> lk(g_weatherMtx);
+        changed = w.temp != g_weather.temp || w.condition != g_weather.condition || w.icon != g_weather.icon;
+        if (changed) g_weather = w;
+    }
+    if (changed) Wh_SetStringValue(LAST_WEATHER_KEY, (w.temp + L'\x1f' + w.condition + L'\x1f' + w.icon).c_str());
 }
 
 // Fills the weather part from g_weather; on the part's thread.
