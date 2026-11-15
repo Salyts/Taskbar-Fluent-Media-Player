@@ -14579,8 +14579,19 @@ static std::wstring ApplyTextFormat(const std::wstring& fmt, const PlayerSnapsho
 [[clang::no_destroy]] static Storyboard g_trackChangeSb{nullptr};
 [[clang::no_destroy]] static winrt::weak_ref<FrameworkElement> g_trackChangeBox;
 
+// The player's smooth position animation, back after a glide.
+static void RestorePlayerTransitions() {
+    try {
+        if (!g_settings.enableSmoothPositionAnimation || !g_playerGrid || g_playerGrid.Transitions()) return;
+        TransitionCollection transitions;
+        transitions.Append(RepositionThemeTransition());
+        g_playerGrid.Transitions(transitions);
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+}
+
 // Stops a glide that's still going, leaving the text area at its own size.
 static void StopTrackChangeAnimation() {
+    RestorePlayerTransitions();
     try {
         if (g_trackChangeSb) { g_trackChangeSb.Stop(); g_trackChangeSb = nullptr; }
         if (auto box = g_trackChangeBox.get()) box.ClearValue(FrameworkElement::WidthProperty());
@@ -14621,12 +14632,18 @@ static void AnimateTrackChange(FrameworkElement const& box, double fromW) {
             sb.Children().Append(fade);
         }
         if (sb.Children().Size() == 0) return;
+        // The player's own position animation would chase every frame of the
+        // glide: off while it runs, back once it's done.
+        if (g_playerGrid) {
+            try { if (g_playerGrid.Transitions()) g_playerGrid.Transitions(nullptr); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+        }
         winrt::weak_ref<FrameworkElement> weakBox = box;
         sb.Completed([weakBox](auto const& sender, auto const&) {
             try {
                 if (auto b = weakBox.get()) b.ClearValue(FrameworkElement::WidthProperty());   // back to its own size
                 if (auto done = sender.template try_as<Storyboard>()) done.Stop();
             } catch (...) { LOG_IGNORED_EXCEPTION(); }
+            RestorePlayerTransitions();
             g_trackChangeSb = nullptr;
             g_trackChangeBox = nullptr;
         });
@@ -16282,6 +16299,12 @@ static void RecomputeTrackingGroup(const std::wstring& groupKey) {
                               std::abs(curFar - totalFar) > 1.0;
         if (changedMargin) { grp.anchorElement.Margin(m); changedAny = true; }
 
+        // The room just changed: the anchor only moves on the next layout pass,
+        // so positions worked out now would be from where it was. Written then,
+        // the part jumped there and back (and the smooth position animation
+        // turned that into a slide). Wait for that pass; it comes right away.
+        if (!changedMargin) {
+
         // Checked live: while Widgets is hidden its inner panel is collapsed and
         // its position unreliable, so use the outer shell.
         bool usePositionRef = grp.positionReferenceElement && !g_settings.hideNativeWidgetsButton;
@@ -16313,6 +16336,7 @@ static void RecomputeTrackingGroup(const std::wstring& groupKey) {
                 else          mgrid.Margin({pos, 0, 0, 0});
                 changedAny = true;
             }
+        }
         }
 
         const ULONGLONG now = GetTickCount64();
@@ -25161,6 +25185,27 @@ static const wchar_t* LpNativeHideKey(int kind) {
     return nullptr;
 }
 
+// A double-click, counted from the releases themselves: the strip's drag
+// handling can eat the tap gesture DoubleTapped waits for.
+static void LpOnDoubleClick(wux::UIElement const& el, std::function<void(wux::UIElement const&)> action) {
+    auto last = std::make_shared<ULONGLONG>(0);
+    el.AddHandler(wux::UIElement::PointerReleasedEvent(), winrt::box_value(wux::Input::PointerEventHandler(
+        [last, action](winrt::Windows::Foundation::IInspectable const& sender, wux::Input::PointerRoutedEventArgs const& args) {
+            try {
+                if (args.GetCurrentPoint(nullptr).Properties().PointerUpdateKind() !=
+                    winrt::Windows::UI::Input::PointerUpdateKind::LeftButtonReleased) return;
+                const ULONGLONG now = GetTickCount64();
+                if (*last && now - *last <= GetDoubleClickTime()) {
+                    *last = 0;
+                    args.Handled(true);
+                    if (auto who = sender.try_as<wux::UIElement>()) action(who);
+                } else {
+                    *last = now;
+                }
+            } catch (...) { LOG_IGNORED_EXCEPTION(); }
+        })), true);
+}
+
 // Hides or shows a Windows button from the Layout page, and redraws the page.
 static void LpSetNativeHidden(const std::wstring& key, bool hidden) {
     SetOverrideLive(key, hidden ? L"1" : L"0");
@@ -25723,6 +25768,9 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
                 for (auto& p : snap.parts) if (p.x >= end - 1 && section(p.x) == sec) p.x -= delta;
             }
         }
+        // Read mid-resize (a part just moved in or out, a glide), a part can be
+        // caught far too narrow: never less than what it holds needs.
+        for (auto& p : snap.parts) p.w = std::max(p.w, LpDefaultWidth(p.part, snap.height) * 0.9);
         CompactLpSnap(snap, TaskbarIconsCentered());
         PackLpSnap(snap);
 
@@ -25792,9 +25840,8 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
                 if (auto b = el.try_as<wuxc::Border>(); b && !b.Background())
                     b.Background(wuxm::SolidColorBrush(winrt::Windows::UI::Colors::Transparent()));   // something to double-click
                 ToolTipService::SetToolTip(el, winrt::box_value(hstring{ Loc(L"Double-click to hide it from the taskbar") }));
-                const std::wstring key = hideKey;
-                el.DoubleTapped([key](auto const&, wux::Input::DoubleTappedRoutedEventArgs const& args) {
-                    args.Handled(true);
+                LpOnDoubleClick(el, [key = std::wstring(hideKey)](wux::UIElement const& who) {
+                    who.Opacity(0.2);   // gone at once; the page redraws a moment later
                     LpSetNativeHidden(key, true);
                 });
             }
@@ -26061,8 +26108,8 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
             }
             ToolTipService::SetToolTip(chip, winrt::box_value(hstring{ Loc(c.label) + L"\n" + Loc(L"Double-click to show it on the taskbar again") }));
             const std::wstring key = c.key;
-            chip.DoubleTapped([key](auto const&, wux::Input::DoubleTappedRoutedEventArgs const& args) {
-                args.Handled(true);
+            LpOnDoubleClick(chip, [key](wux::UIElement const& who) {
+                who.Opacity(0.2);
                 LpSetNativeHidden(key, false);
             });
             chips.Children().Append(chip);

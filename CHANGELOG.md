@@ -31,6 +31,8 @@
 
 ### Fixes
 
+- A part placed next to a Windows button no longer slides back and forth when the song or app changes: it waits for the button to settle before moving, and the smooth position animation pauses while the player glides to its new width.
+- Layout page: the player is no longer drawn too small right after a part moves in or out of it, and double-clicking a Windows button there works on the first try.
 - The visualizer finds more apps when listening only to the app in the player: when no process carries the app's name, it goes by the app's own sound stream. When it still can't tell, it listens to everything instead of nothing.
 - Visualizer, Sound: "Only listen to the app in the player" is now a "Listen to" choice: the app in the player, or everything on the PC.
 - The progress bar no longer disappears when it is set under a part that is hidden; it spans the player instead (#117).
