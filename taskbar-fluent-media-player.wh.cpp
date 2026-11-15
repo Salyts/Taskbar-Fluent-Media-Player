@@ -1488,6 +1488,9 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
   - smoothTrackChange: true
     $name: Smooth track changes
     $description: On a new song the text fades in and the player glides to its new width instead of jumping.
+  - smoothArtShape: true
+    $name: Morph album art between shapes
+    $description: When the cover changes shape (a square cover, then a wide video thumbnail), the art stretches into the new shape instead of jumping.
   #! $hideIf: {settingsView: window}
   $name: Animation Settings
 
@@ -2758,6 +2761,7 @@ struct ModSettings {
     bool         enableSmoothPositionAnimation = true;
     bool         enableAlbumArtFade = true;
     bool         smoothTrackChange  = true;
+    bool         smoothArtShape     = true;
     int          playerMarginTop      = 0;
     int          playerOffsetX        = 0;  // drawn offset, takes no room (GitHub #88)
     int          playerOffsetY        = 0;
@@ -3276,6 +3280,7 @@ static constexpr SettingSpec SETTINGS[] = {
     SBool(L"AnimationSettings.enableSmoothPositionAnimation", &ModSettings::enableSmoothPositionAnimation),
     SBool(L"AnimationSettings.enableAlbumArtFade", &ModSettings::enableAlbumArtFade),
     SBool(L"AnimationSettings.smoothTrackChange", &ModSettings::smoothTrackChange),
+    SBool(L"AnimationSettings.smoothArtShape", &ModSettings::smoothArtShape),
     SBool(L"NotificationSettings.showSuccessNotification", &ModSettings::showSuccessNotification),
     SStr(L"PlayerMenuSettings.placementMode", L"screen"),
     SIntRaw(L"PlayerMenuSettings.PlayerMenuSettingsNear.miniPlayerHorizontalOffsetNear"),
@@ -11359,10 +11364,10 @@ static FrameworkElement ArtBoxOf(Controls::Image const& img) {
 
 // A cover of another shape (a square one, then a wide video thumbnail): the art
 // box grows or shrinks into it instead of jumping, a circle stretching into a
-// pill and back. Part of "Smooth track changes".
+// pill and back ("Morph album art between shapes").
 [[clang::no_destroy]] static Storyboard g_artMorphSb{nullptr};
 static void MorphArtBox(FrameworkElement const& box, double fromW) {
-    if (!box || !g_settings.smoothTrackChange || IsSidebarMode()) return;
+    if (!box || !g_settings.smoothArtShape || IsSidebarMode()) return;
     try {
         if (g_artMorphSb) { g_artMorphSb.Stop(); g_artMorphSb = nullptr; }
         box.ClearValue(FrameworkElement::WidthProperty());
@@ -20555,6 +20560,8 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
             RowBool(L"Fade album art on track change", L"AnimationSettings.enableAlbumArtFade"),
             WithDesc(RowBool(L"Smooth track changes", L"AnimationSettings.smoothTrackChange"),
                      L"The text fades in and the player glides to its new width."),
+            WithDesc(RowBool(L"Morph album art between shapes", L"AnimationSettings.smoothArtShape"),
+                     L"A square cover stretches into a wide thumbnail and back."),
         };
 
         cats.push_back(SettingCategory{ L"Appearance", L"\uE771", { bg, interaction, progressBar, animation } });
@@ -22374,6 +22381,8 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"Visualizer: everything on the PC. Click to listen to the app only", L"Візуалізатор: усе на комп'ютері. Клацніть, щоб слухати лише програму", L"Визуализатор: всё на компьютере. Щёлкните, чтобы слушать только приложение", L"Visualizer: alles auf dem PC. Klicken, um nur die App zu hören", L"विज़ुअलाइज़र: PC की हर आवाज़। सिर्फ़ ऐप सुनने के लिए क्लिक करें", L"可视化：电脑上的所有声音。点击以仅监听应用", L"視覺化：電腦上的所有聲音。按一下以僅監聽應用程式", L"Visualizador: todo el PC. Haz clic para escuchar solo la app", L"Visualiseur : tout le PC. Cliquez pour n'écouter que l'app", L"Visualizador: tudo no PC. Clique para ouvir só o app", L"Visualizzatore: tutto il PC. Fai clic per ascoltare solo l'app", L"Wizualizer: wszystko na komputerze. Kliknij, aby słuchać tylko aplikacji", L"Görselleştirici: bilgisayardaki her şey. Yalnızca uygulamayı dinlemek için tıklayın", L"ビジュアライザー: PC のすべての音。クリックでアプリのみに切り替え", L"비주얼라이저: PC의 모든 소리. 클릭하면 앱만 듣습니다" },
     { L"Hide the year on the clock", L"Ховати рік на годиннику", L"Скрывать год на часах", L"Jahr in der Uhr ausblenden", L"घड़ी में साल छिपाएँ", L"时钟上不显示年份", L"時鐘上不顯示年份", L"Ocultar el año en el reloj", L"Masquer l'année sur l'horloge", L"Ocultar o ano no relógio", L"Nascondi l'anno nell'orologio", L"Ukryj rok na zegarze", L"Saatte yılı gizle", L"時計の年を隠す", L"시계에서 연도 숨기기" },
     { L"15/11/2026 shows as 15/11.", L"15/11/2026 показується як 15/11.", L"15/11/2026 показывается как 15/11.", L"15/11/2026 wird als 15/11 angezeigt.", L"15/11/2026, 15/11 के रूप में दिखेगा।", L"15/11/2026 显示为 15/11。", L"15/11/2026 顯示為 15/11。", L"15/11/2026 se muestra como 15/11.", L"15/11/2026 s'affiche 15/11.", L"15/11/2026 aparece como 15/11.", L"15/11/2026 appare come 15/11.", L"15/11/2026 wyświetla się jako 15/11.", L"15/11/2026, 15/11 olarak görünür.", L"15/11/2026 は 15/11 と表示されます。", L"15/11/2026이 15/11로 표시됩니다." },
+    { L"Morph album art between shapes", L"Плавно змінювати форму обкладинки", L"Плавно менять форму обложки", L"Albumcover zwischen Formen überblenden", L"एल्बम आर्ट का आकार धीरे से बदलें", L"专辑封面在形状间平滑变换", L"專輯封面在形狀間平滑變換", L"Transformar la carátula entre formas", L"Transformer la pochette d'une forme à l'autre", L"Transformar a capa entre formatos", L"Trasforma la copertina tra le forme", L"Płynna zmiana kształtu okładki", L"Albüm kapağını şekiller arasında dönüştür", L"アルバムアートの形をなめらかに変える", L"앨범 아트 모양을 부드럽게 바꾸기" },
+    { L"A square cover stretches into a wide thumbnail and back.", L"Квадратна обкладинка розтягується в широку мініатюру й назад.", L"Квадратная обложка растягивается в широкую миниатюру и обратно.", L"Ein quadratisches Cover dehnt sich zu einem breiten Vorschaubild und zurück.", L"चौकोर कवर चौड़े थंबनेल में फैलता है और वापस आता है।", L"方形封面会伸展成宽缩略图，再变回来。", L"方形封面會伸展成寬縮圖，再變回來。", L"Una carátula cuadrada se estira hasta una miniatura ancha y vuelve.", L"Une pochette carrée s'étire en vignette large, et inversement.", L"Uma capa quadrada se estica até uma miniatura larga e volta.", L"Una copertina quadrata si allarga in una miniatura larga e torna indietro.", L"Kwadratowa okładka rozciąga się w szeroką miniaturę i z powrotem.", L"Kare kapak geniş küçük resme uzar ve geri döner.", L"四角いカバーが横長のサムネイルへ伸び、また戻ります。", L"정사각형 커버가 넓은 썸네일로 늘어났다가 돌아옵니다." },
     { L"Window color", L"Колір вікна", L"Цвет окна", L"Fensterfarbe", L"विंडो का रंग", L"窗口颜色", L"視窗色彩", L"Color de la ventana", L"Couleur de la fenêtre", L"Cor da janela", L"Colore della finestra", L"Kolor okna", L"Pencere rengi", L"ウィンドウの色", L"창 색상" },
     { L"Custom color", L"Власний колір", L"Свой цвет", L"Eigene Farbe", L"कस्टम रंग", L"自定义颜色", L"自訂色彩", L"Color personalizado", L"Couleur personnalisée", L"Cor personalizada", L"Colore personalizzato", L"Własny kolor", L"Özel renk", L"カスタム色", L"사용자 지정 색" },
     { L"Title bar color", L"Колір рядка заголовка", L"Цвет строки заголовка", L"Farbe der Titelleiste", L"शीर्षक पट्टी का रंग", L"标题栏颜色", L"標題列色彩", L"Color de la barra de título", L"Couleur de la barre de titre", L"Cor da barra de título", L"Colore della barra del titolo", L"Kolor paska tytułu", L"Başlık çubuğu rengi", L"タイトル バーの色", L"제목 표시줄 색" },
