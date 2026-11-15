@@ -2133,6 +2133,8 @@ namespace UI {
     static bool PlayerHasInlineContent();
     static void RefreshThemeColors();
     static void ResetScrollState(TextScrollState& s);
+    static void HoldPlayerTransitions();
+    static void RestorePlayerTransitionsSoon();
 } // namespace UI
 namespace Taskbar {
     enum class TaskbarEdge { Bottom, Top, Left, Right };
@@ -11344,8 +11346,69 @@ static void RemoveArtFadeGhosts(Panel const& panel) {
     }
 }
 
+// The player's album art box: the art's outermost container (Tag set in
+// BuildAlbumArtContainer). Null for the mini player's art.
+static FrameworkElement ArtBoxOf(Controls::Image const& img) {
+    try {
+        for (DependencyObject cur = img; cur; cur = VisualTreeHelper::GetParent(cur))
+            if (auto fe = cur.try_as<FrameworkElement>())
+                if (winrt::unbox_value_or<winrt::hstring>(fe.Tag(), L"") == L"FluentMediaArtContainer") return fe;
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    return nullptr;
+}
+
+// A cover of another shape (a square one, then a wide video thumbnail): the art
+// box grows or shrinks into it instead of jumping, a circle stretching into a
+// pill and back. Part of "Smooth track changes".
+[[clang::no_destroy]] static Storyboard g_artMorphSb{nullptr};
+static void MorphArtBox(FrameworkElement const& box, double fromW) {
+    if (!box || !g_settings.smoothTrackChange || IsSidebarMode()) return;
+    try {
+        if (g_artMorphSb) { g_artMorphSb.Stop(); g_artMorphSb = nullptr; }
+        box.ClearValue(FrameworkElement::WidthProperty());
+        box.UpdateLayout();
+        const double toW = box.ActualWidth();
+        if (fromW <= 1 || toW <= 1 || std::abs(toW - fromW) <= 1) return;
+        HoldPlayerTransitions();
+        box.Width(fromW);
+        Storyboard sb;
+        DoubleAnimation grow;
+        grow.From(fromW);
+        grow.To(toW);
+        grow.Duration(DurationHelper::FromTimeSpan(std::chrono::milliseconds(320)));
+        CubicEase ease;
+        ease.EasingMode(EasingMode::EaseOut);
+        grow.EasingFunction(ease);
+        grow.EnableDependentAnimation(true);
+        Storyboard::SetTarget(grow, box);
+        Storyboard::SetTargetProperty(grow, L"Width");
+        sb.Children().Append(grow);
+        winrt::weak_ref<FrameworkElement> weakBox = box;
+        sb.Completed([weakBox](auto const& sender, auto const&) {
+            try {
+                if (auto b = weakBox.get()) b.ClearValue(FrameworkElement::WidthProperty());
+                if (auto done = sender.template try_as<Storyboard>()) done.Stop();
+            } catch (...) { LOG_IGNORED_EXCEPTION(); }
+            g_artMorphSb = nullptr;
+            RestorePlayerTransitionsSoon();
+        });
+        g_artMorphSb = sb;
+        sb.Begin();
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+}
+
 static void SetImageSourceWithFade(Controls::Image const& img, BitmapImage const& bmp, Storyboard& running) {
     if (!img) return;
+    // How wide the art is now, before the new cover changes it.
+    FrameworkElement artBox = ArtBoxOf(img);
+    double artFromW = 0;
+    try { if (artBox) artFromW = artBox.ActualWidth(); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    if (artBox) {
+        winrt::weak_ref<FrameworkElement> weakArtBox = artBox;
+        bmp.ImageOpened([weakArtBox, artFromW](auto const&, auto const&) {
+            if (auto b = weakArtBox.get()) MorphArtBox(b, artFromW);
+        });
+    }
     // A held animation would beat the local Opacity values set below.
     if (running) {
         try { running.Stop(); } catch (...) { LOG_IGNORED_EXCEPTION(); }
