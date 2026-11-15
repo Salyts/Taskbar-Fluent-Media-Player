@@ -11415,7 +11415,7 @@ static void SetImageSourceWithFade(Controls::Image const& img, BitmapImage const
     try { if (artBox) artFromW = artBox.ActualWidth(); } catch (...) { LOG_IGNORED_EXCEPTION(); }
     if (artBox) {
         winrt::weak_ref<FrameworkElement> weakArtBox = artBox;
-        bmp.ImageOpened([weakArtBox, artFromW](auto const&, auto const&) {
+        bmp.ImageOpened([weakArtBox, artFromW](winrt::Windows::Foundation::IInspectable const&, RoutedEventArgs const&) {
             if (auto b = weakArtBox.get()) MorphArtBox(b, artFromW);
         });
     }
