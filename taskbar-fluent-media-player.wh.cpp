@@ -1463,6 +1463,9 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
   - enableAlbumArtFade: true
     $name: Fade album art on track change
     $description: The new cover fades in over the old one instead of popping in once it has loaded
+  - smoothTrackChange: true
+    $name: Smooth track changes
+    $description: On a new song the text fades in and the player glides to its new width instead of jumping.
   #! $hideIf: {settingsView: window}
   $name: Animation Settings
 
@@ -2718,6 +2721,7 @@ struct ModSettings {
     bool         enableHoverAnimation = true;   // fade hover/press bg (Salyts 1.6)
     bool         enableSmoothPositionAnimation = true;
     bool         enableAlbumArtFade = true;
+    bool         smoothTrackChange  = true;
     int          playerMarginTop      = 0;
     int          playerOffsetX        = 0;  // drawn offset, takes no room (GitHub #88)
     int          playerOffsetY        = 0;
@@ -3227,6 +3231,7 @@ static constexpr SettingSpec SETTINGS[] = {
     SBool(L"BehaviorSettings.showFullTitleOnHover", &ModSettings::showFullTitleOnHover),
     SBool(L"AnimationSettings.enableSmoothPositionAnimation", &ModSettings::enableSmoothPositionAnimation),
     SBool(L"AnimationSettings.enableAlbumArtFade", &ModSettings::enableAlbumArtFade),
+    SBool(L"AnimationSettings.smoothTrackChange", &ModSettings::smoothTrackChange),
     SBool(L"NotificationSettings.showSuccessNotification", &ModSettings::showSuccessNotification),
     SStr(L"PlayerMenuSettings.placementMode", L"screen"),
     SIntRaw(L"PlayerMenuSettings.PlayerMenuSettingsNear.miniPlayerHorizontalOffsetNear"),
@@ -14520,11 +14525,90 @@ static std::wstring ApplyTextFormat(const std::wstring& fmt, const PlayerSnapsho
     return out.substr(first, out.find_last_not_of(TRIM) - first + 1);
 }
 
+// "Smooth track changes": the text area glides from its old width to the new
+// one, and the text fades in, instead of the player snapping to a new size.
+[[clang::no_destroy]] static Storyboard g_trackChangeSb{nullptr};
+[[clang::no_destroy]] static winrt::weak_ref<FrameworkElement> g_trackChangeBox;
+
+// Stops a glide that's still going, leaving the text area at its own size.
+static void StopTrackChangeAnimation() {
+    try {
+        if (g_trackChangeSb) { g_trackChangeSb.Stop(); g_trackChangeSb = nullptr; }
+        if (auto box = g_trackChangeBox.get()) box.ClearValue(FrameworkElement::WidthProperty());
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    g_trackChangeBox = nullptr;
+}
+
+static void AnimateTrackChange(FrameworkElement const& box, double fromW) {
+    if (!box || IsSidebarMode()) return;
+    try {
+        const auto m = box.Margin();
+        box.Measure({ std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity() });
+        double toW = box.DesiredSize().Width - m.Left - m.Right;
+        if (g_settings.playerMaxWidth > 0) toW = std::min(toW, (double)g_settings.playerMaxWidth);
+        Storyboard sb;
+        const auto ease = [] { CubicEase c; c.EasingMode(EasingMode::EaseOut); return c; };
+        if (fromW > 1 && toW > 1 && std::abs(toW - fromW) > 2) {
+            box.Width(fromW);
+            DoubleAnimation grow;
+            grow.From(fromW);
+            grow.To(toW);
+            grow.Duration(DurationHelper::FromTimeSpan(std::chrono::milliseconds(280)));
+            grow.EasingFunction(ease());
+            grow.EnableDependentAnimation(true);
+            Storyboard::SetTarget(grow, box);
+            Storyboard::SetTargetProperty(grow, L"Width");
+            sb.Children().Append(grow);
+            g_trackChangeBox = winrt::make_weak(box);
+        }
+        if (auto stack = FindChildByName(box, TEXT_STACK_NAME)) {
+            DoubleAnimation fade;
+            fade.From(0.0);
+            fade.To(1.0);
+            fade.Duration(DurationHelper::FromTimeSpan(std::chrono::milliseconds(240)));
+            fade.EasingFunction(ease());
+            Storyboard::SetTarget(fade, stack);
+            Storyboard::SetTargetProperty(fade, L"Opacity");
+            sb.Children().Append(fade);
+        }
+        if (sb.Children().Size() == 0) return;
+        winrt::weak_ref<FrameworkElement> weakBox = box;
+        sb.Completed([weakBox](auto const& sender, auto const&) {
+            try {
+                if (auto b = weakBox.get()) b.ClearValue(FrameworkElement::WidthProperty());   // back to its own size
+                if (auto done = sender.template try_as<Storyboard>()) done.Stop();
+            } catch (...) { LOG_IGNORED_EXCEPTION(); }
+            g_trackChangeSb = nullptr;
+            g_trackChangeBox = nullptr;
+        });
+        g_trackChangeSb = sb;
+        sb.Begin();
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+}
+
 // Title and artist lines, their tooltips and marquees, and the text container.
 static void RefreshTrackText(const PlayerSnapshot& m) {
     const std::wstring& title  = m.title;
     const std::wstring& artist = m.artist;
     const bool hasSession = m.hasSession;
+
+    // A new song (not the time ticking in the artist line): remember how wide
+    // the text area is now, so it can glide to its new width.
+    static std::wstring s_lastTrack;
+    const std::wstring trackKey = (hasSession ? L"1" : L"0") + title + L"\x1f" + artist;
+    const bool newTrack = !s_lastTrack.empty() && trackKey != s_lastTrack;
+    s_lastTrack = trackKey;
+    FrameworkElement smoothBox{nullptr};
+    double smoothFrom = 0;
+    if (newTrack && g_settings.smoothTrackChange) {
+        try {
+            if (auto fe = FindMediaChild(TEXT_CONTAINER_NAME); fe && fe.Visibility() == Visibility::Visible) {
+                smoothBox = fe;
+                smoothFrom = fe.ActualWidth();
+            }
+        } catch (...) { LOG_IGNORED_EXCEPTION(); }
+        StopTrackChangeAnimation();
+    }
 
     // Show the container again before filling it: a collapsed one measures 0 wide.
     try {
@@ -14640,6 +14724,8 @@ static void RefreshTrackText(const PlayerSnapshot& m) {
         }
         g_infoContainerShown = showContainer;
     } catch (...) { LOG_IGNORED_EXCEPTION(); }
+
+    if (smoothBox && g_infoContainerShown) AnimateTrackChange(smoothBox, smoothFrom);
 }
 
 // A button the current app can't act on (no previous track, no seeking, ...)
@@ -19901,6 +19987,8 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
                      L"Fade the hover/press background in and out"),
             RowBool(L"Smooth position animation", L"AnimationSettings.enableSmoothPositionAnimation"),
             RowBool(L"Fade album art on track change", L"AnimationSettings.enableAlbumArtFade"),
+            WithDesc(RowBool(L"Smooth track changes", L"AnimationSettings.smoothTrackChange"),
+                     L"The text fades in and the player glides to its new width."),
         };
 
         cats.push_back(SettingCategory{ L"Appearance", L"\uE771", { bg, interaction, progressBar, animation } });
@@ -21643,6 +21731,14 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"Widgets is turned off in Windows", L"Віджети вимкнено в Windows", L"Виджеты отключены в Windows", L"Widgets ist in Windows ausgeschaltet", L"Windows में विजेट्स बंद हैं", L"Windows 中的小组件已关闭", L"Windows 中的小工具已關閉", L"Los widgets están desactivados en Windows", L"Les widgets sont désactivés dans Windows", L"Os widgets estão desativados no Windows", L"I widget sono disattivati in Windows", L"Widżety są wyłączone w systemie Windows", L"Pencere Öğeleri Windows'ta kapalı", L"Windows でウィジェットがオフになっています", L"Windows에서 위젯이 꺼져 있습니다" },
     { L"Turn on", L"Увімкнути", L"Включить", L"Einschalten", L"चालू करें", L"打开", L"開啟", L"Activar", L"Activer", L"Ativar", L"Attiva", L"Włącz", L"Aç", L"オンにする", L"켜기" },
     { L"The weather comes from Windows' Widgets button. This turns it on and keeps that button hidden, so only this weather shows.", L"Погода береться з кнопки віджетів Windows. Це ввімкне її й сховає саму кнопку, тож буде видно лише цю погоду.", L"Погода берётся с кнопки виджетов Windows. Это включит её и скроет саму кнопку, так что будет видна только эта погода.", L"Das Wetter kommt von der Widgets-Schaltfläche von Windows. Das schaltet sie ein und blendet sie aus, sodass nur dieses Wetter erscheint.", L"मौसम Windows के विजेट्स बटन से आता है। यह उसे चालू करके छिपा देता है, ताकि सिर्फ़ यह मौसम दिखे।", L"天气来自 Windows 的小组件按钮。这会打开它并隐藏该按钮，只显示这里的天气。", L"天氣來自 Windows 的小工具按鈕。這會開啟它並隱藏該按鈕，只顯示這裡的天氣。", L"El tiempo viene del botón de Widgets de Windows. Esto lo activa y oculta ese botón, así solo se ve este tiempo.", L"La météo vient du bouton Widgets de Windows. Ceci l'active et masque ce bouton, pour n'afficher que cette météo.", L"O clima vem do botão de Widgets do Windows. Isso o ativa e oculta esse botão, para mostrar só este clima.", L"Il meteo arriva dal pulsante Widget di Windows. Questo lo attiva e nasconde quel pulsante, così si vede solo questo meteo.", L"Pogoda pochodzi z przycisku widżetów Windows. To go włączy i ukryje, więc widać będzie tylko tę pogodę.", L"Hava durumu Windows'un Pencere Öğeleri düğmesinden gelir. Bu onu açar ve düğmeyi gizler, böylece yalnızca bu hava durumu görünür.", L"天気は Windows のウィジェット ボタンから取得します。オンにしてそのボタンは隠すので、ここの天気だけが表示されます。", L"날씨는 Windows 위젯 버튼에서 가져옵니다. 위젯을 켜고 그 버튼은 숨겨서 이 날씨만 보이게 합니다." },
+    { L"Smooth track changes", L"Плавна зміна треків", L"Плавная смена треков", L"Sanfte Titelwechsel", L"ट्रैक बदलने पर स्मूद बदलाव", L"平滑切换曲目", L"平滑切換曲目", L"Cambios de pista suaves", L"Changements de piste en douceur", L"Troca de faixa suave", L"Cambi di brano fluidi", L"Płynna zmiana utworów", L"Yumuşak parça geçişleri", L"曲の切り替えをなめらかに", L"부드러운 곡 전환" },
+    { L"The text fades in and the player glides to its new width.", L"Текст плавно з'являється, а програвач плавно змінює ширину.", L"Текст плавно появляется, а плеер плавно меняет ширину.", L"Der Text blendet ein und der Player gleitet auf seine neue Breite.", L"टेक्स्ट धीरे से उभरता है और प्लेयर नई चौड़ाई तक सरकता है।", L"文字淡入，播放器平滑过渡到新宽度。", L"文字淡入，播放器平滑過渡到新寬度。", L"El texto aparece suavemente y el reproductor se ajusta poco a poco a su nuevo ancho.", L"Le texte apparaît en fondu et le lecteur glisse vers sa nouvelle largeur.", L"O texto aparece suavemente e o player desliza para a nova largura.", L"Il testo appare in dissolvenza e il player scorre alla nuova larghezza.", L"Tekst płynnie się pojawia, a odtwarzacz płynnie zmienia szerokość.", L"Metin yavaşça belirir ve oynatıcı yeni genişliğine kayar.", L"文字はフェードインし、プレーヤーは新しい幅へなめらかに変わります。", L"텍스트가 서서히 나타나고 플레이어가 새 너비로 부드럽게 바뀝니다." },
+    { L"Hidden Windows buttons", L"Приховані кнопки Windows", L"Скрытые кнопки Windows", L"Ausgeblendete Windows-Schaltflächen", L"छिपे हुए Windows बटन", L"已隐藏的 Windows 按钮", L"已隱藏的 Windows 按鈕", L"Botones de Windows ocultos", L"Boutons Windows masqués", L"Botões do Windows ocultos", L"Pulsanti di Windows nascosti", L"Ukryte przyciski Windows", L"Gizli Windows düğmeleri", L"非表示の Windows ボタン", L"숨긴 Windows 버튼" },
+    { L"Hidden from the taskbar by the mod. Double-click one to show it again.", L"Мод сховав їх з панелі завдань. Двічі клацніть, щоб показати знову.", L"Мод скрыл их с панели задач. Дважды щёлкните, чтобы показать снова.", L"Vom Mod auf der Taskleiste ausgeblendet. Doppelklick zeigt sie wieder.", L"मॉड ने इन्हें टास्कबार से छिपाया है। फिर दिखाने के लिए डबल-क्लिक करें।", L"由模组从任务栏隐藏。双击可重新显示。", L"由模組從工作列隱藏。按兩下可重新顯示。", L"El mod los oculta de la barra de tareas. Haz doble clic en uno para volver a mostrarlo.", L"Masqués de la barre des tâches par le mod. Double-cliquez pour en réafficher un.", L"Ocultados da barra de tarefas pelo mod. Clique duas vezes para mostrar de novo.", L"Nascosti dalla barra delle applicazioni dalla mod. Doppio clic per mostrarli di nuovo.", L"Ukryte na pasku zadań przez mod. Kliknij dwukrotnie, aby pokazać ponownie.", L"Mod tarafından görev çubuğundan gizlendi. Yeniden göstermek için çift tıklayın.", L"Mod がタスク バーから隠しています。ダブルクリックで再表示します。", L"모드가 작업 표시줄에서 숨겼습니다. 두 번 클릭하면 다시 표시됩니다." },
+    { L"Double-click to show it on the taskbar again", L"Двічі клацніть, щоб знову показати на панелі завдань", L"Дважды щёлкните, чтобы снова показать на панели задач", L"Doppelklick zeigt sie wieder auf der Taskleiste", L"टास्कबार पर फिर दिखाने के लिए डबल-क्लिक करें", L"双击可在任务栏上重新显示", L"按兩下可在工作列上重新顯示", L"Doble clic para volver a mostrarlo en la barra de tareas", L"Double-cliquez pour le réafficher dans la barre des tâches", L"Clique duas vezes para mostrar de novo na barra de tarefas", L"Doppio clic per mostrarlo di nuovo nella barra delle applicazioni", L"Kliknij dwukrotnie, aby znów pokazać na pasku zadań", L"Görev çubuğunda yeniden göstermek için çift tıklayın", L"ダブルクリックでタスク バーに再表示", L"두 번 클릭하면 작업 표시줄에 다시 표시" },
+    { L"Start", L"Пуск", L"Пуск", L"Start", L"स्टार्ट", L"开始", L"開始", L"Inicio", L"Démarrer", L"Iniciar", L"Start", L"Start", L"Başlat", L"スタート", L"시작" },
+    { L"Search", L"Пошук", L"Поиск", L"Suche", L"खोज", L"搜索", L"搜尋", L"Búsqueda", L"Recherche", L"Pesquisa", L"Cerca", L"Wyszukiwanie", L"Arama", L"検索", L"검색" },
+    { L"Task View", L"Подання завдань", L"Представление задач", L"Aufgabenansicht", L"टास्क व्यू", L"任务视图", L"工作檢視", L"Vista de tareas", L"Applications actives", L"Visão de Tarefas", L"Visualizzazione attività", L"Widok zadań", L"Görev Görünümü", L"タスク ビュー", L"작업 보기" },
     { L"Window color", L"Колір вікна", L"Цвет окна", L"Fensterfarbe", L"विंडो का रंग", L"窗口颜色", L"視窗色彩", L"Color de la ventana", L"Couleur de la fenêtre", L"Cor da janela", L"Colore della finestra", L"Kolor okna", L"Pencere rengi", L"ウィンドウの色", L"창 색상" },
     { L"Custom color", L"Власний колір", L"Свой цвет", L"Eigene Farbe", L"कस्टम रंग", L"自定义颜色", L"自訂色彩", L"Color personalizado", L"Couleur personnalisée", L"Cor personalizada", L"Colore personalizzato", L"Własny kolor", L"Özel renk", L"カスタム色", L"사용자 지정 색" },
     { L"Title bar color", L"Колір рядка заголовка", L"Цвет строки заголовка", L"Farbe der Titelleiste", L"शीर्षक पट्टी का रंग", L"标题栏颜色", L"標題列色彩", L"Color de la barra de título", L"Couleur de la barre de titre", L"Cor da barra de título", L"Colore della barra del titolo", L"Kolor paska tytułu", L"Başlık çubuğu rengi", L"タイトル バーの色", L"제목 표시줄 색" },
@@ -24320,6 +24416,7 @@ static void TakeLpSnapOnThread(void* param) {
         if (trayFrame) { double x, w; if (rectOf(trayFrame, x, w)) { trayX = x; trayR = x + w; } }
 
         auto repeater = FindChildByName(rootGrid, L"TaskbarFrameRepeater");
+        bool hiddenWidgetsShell = false;
         if (repeater) {
             const int n = VisualTreeHelper::GetChildrenCount(repeater);
             for (int i = 0; i < n; i++) {
@@ -24334,11 +24431,10 @@ static void TakeLpSnapOnThread(void* param) {
                         try {
                             const double hx = c.TransformToVisual(root).TransformPoint({ 0, 0 }).X;
                             if (hx >= 0 && hx < W) {
-                                LpItem item{ LpWidgetsHidden, hx, H * 2.4 };
-                                snap->items.push_back(item);
-                                // Still a spot either side of it: the mod anchors to the hidden shell.
-                                slot(PlayerPosition::TaskbarAfterWidgetsLeft, hx - 3);
-                                slot(PlayerPosition::TaskbarAfterWidgetsRight, hx + item.w + 3);
+                                // Hidden, it shows in "Hidden Windows buttons" below, not on
+                                // the taskbar. Its spot stays: the mod anchors to the hidden shell.
+                                hiddenWidgetsShell = true;
+                                slot(PlayerPosition::TaskbarAfterWidgetsRight, hx + 3);
                             }
                         } catch (...) { LOG_IGNORED_EXCEPTION(); }
                     }
@@ -24359,7 +24455,7 @@ static void TakeLpSnapOnThread(void* param) {
             }
             // No Widgets button at all (off in Windows): the start of the taskbar is
             // still a spot, where parts sit side by side and take their room.
-            bool sawWidgets = false;
+            bool sawWidgets = hiddenWidgetsShell;
             for (auto& it : snap->items) sawWidgets = sawWidgets || it.kind == LpWidgets || it.kind == LpWidgetsHidden;
             if (!sawWidgets && TaskbarIconsCentered()) slot(PlayerPosition::TaskbarAfterWidgetsRight, 8);
             static const PlayerPosition anchored[] = {
@@ -25691,6 +25787,75 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         (z == 1 ? st->attachZone : st->hiddenZone) = winrt::make_weak(zone);
     }
     stack.Children().Append(zones);
+
+    // Windows' own buttons the mod hides: what's gone from the taskbar above,
+    // and a double-click brings one back.
+    {
+        struct NativeChip { const wchar_t* key; int kind; const wchar_t* label; double w; };
+        static const NativeChip CHIPS[] = {
+            { L"MainSettings.NativeWidgetsSetting.hideStartButton",         LpStart,      L"Start",          1.0 },
+            { L"MainSettings.NativeWidgetsSetting.hideSearchButton",        LpSearchIcon, L"Search",         1.0 },
+            { L"MainSettings.NativeWidgetsSetting.hideTaskViewButton",      LpTaskView,   L"Task View",      1.0 },
+            { L"MainSettings.NativeWidgetsSetting.hideNativeWidgetsButton", LpWidgets,    L"Weather widget", 2.6 },
+        };
+        wuxc::StackPanel chips;
+        chips.Orientation(wuxc::Orientation::Horizontal);
+        chips.Spacing(6);
+        for (const NativeChip& c : CHIPS) {
+            if (!LpOn(c.key)) continue;
+            wuxc::Border chip;
+            chip.CornerRadius(wux::CornerRadius{ 4, 4, 4, 4 });
+            chip.BorderThickness(wux::Thickness{ 1, 1, 1, 1 });
+            chip.BorderBrush(zoneLine);
+            chip.Padding(wux::Thickness{ 4, 2, 8, 2 });
+            chip.Background(wuxm::SolidColorBrush(winrt::Windows::UI::Colors::Transparent()));
+            wuxc::StackPanel row;
+            row.Orientation(wuxc::Orientation::Horizontal);
+            row.Spacing(4);
+            LpItem it{ c.kind, 0, zih * c.w };
+            auto look = MakeLpItem(it, zih * c.w, zih - 4, L"", L"");
+            look.Opacity(0.55);
+            row.Children().Append(look);
+            if (c.kind != LpWidgets) {
+                wuxc::TextBlock name; name.Text(hstring{ Loc(c.label) }); name.FontSize(11); name.Opacity(0.8);
+                name.VerticalAlignment(wux::VerticalAlignment::Center);
+                row.Children().Append(name);
+            }
+            chip.Child(row);
+            ToolTipService::SetToolTip(chip, winrt::box_value(hstring{ Loc(L"Double-click to show it on the taskbar again") }));
+            const std::wstring key = c.key;
+            chip.DoubleTapped([key](auto const&, wux::Input::DoubleTappedRoutedEventArgs const& args) {
+                args.Handled(true);
+                SetOverrideLive(key, L"0");
+                ApplySettingsLiveNow();
+                if (s_hostWnd) {
+                    PostMessageW(s_hostWnd, WM_XS_REFRESH, 0, 0);
+                    SetTimer(s_hostWnd, RELAYOUT_TIMER, 450, nullptr);
+                    SetTimer(s_hostWnd, SETTLE_TIMER, 1300, nullptr);
+                }
+            });
+            chips.Children().Append(chip);
+        }
+        if (chips.Children().Size() > 0) {
+            wuxc::Border box;
+            box.CornerRadius(wux::CornerRadius{ 6, 6, 6, 6 });
+            box.BorderThickness(wux::Thickness{ 1, 1, 1, 1 });
+            box.BorderBrush(zoneLine);
+            box.Padding(wux::Thickness{ 10, 6, 10, 8 });
+            box.Margin(wux::Thickness{ 0, 8, 0, 0 });
+            wuxc::StackPanel inner; inner.Spacing(6);
+            wuxc::TextBlock t; t.Text(hstring{ Loc(L"Hidden Windows buttons") }); t.FontSize(12); t.Opacity(0.7);
+            inner.Children().Append(t);
+            inner.Children().Append(chips);
+            wuxc::TextBlock note;
+            note.Text(hstring{ Loc(L"Hidden from the taskbar by the mod. Double-click one to show it again.") });
+            note.FontSize(11); note.Opacity(0.6);
+            note.TextWrapping(wux::TextWrapping::Wrap);
+            inner.Children().Append(note);
+            box.Child(inner);
+            stack.Children().Append(box);
+        }
+    }
 
     wuxc::TextBlock caption;
     caption.Text(hstring{ st->hint });

@@ -11,6 +11,8 @@
 - **Album art shows.** New option under Album Art: the cover, the icon of the app that plays, or always the stand-in icon (#113, #120).
 - **Mini player.** Mica and Mica Alt looks for the menu background (#112), and an option to fold the cover area away when a song has no cover (#122).
 - **Weather keeps working with Windows' button hidden.** "Hide the weather widget" now hides the button without stopping its weather updates while the weather part is on, so the part has something to show. With Widgets turned off in Windows, the Weather page says so and has a Turn on button.
+- **Smooth track changes.** On a new song the text fades in and the player glides to its new width instead of jumping (Appearance, Animation; on by default). The cover keeps its crossfade.
+- **Hidden Windows buttons on the Layout page.** Start, Search, Task View and the weather widget, when the mod hides them, show in a box of their own under the taskbar copy instead of on it. Double-click one to show it again.
 - **Weather only when nothing plays.** New option for the weather part: it hides while music plays and comes back when it stops, taking turns with the player.
 - **Weather has its own page** in the settings window (right under Visualizer), and the visualizer's power options sit in a Performance card.
 - **Windows Buttons page.** The old Native Widgets page, reorganized: one list of Windows buttons to hide (Start, Search, Task View and the weather widget), then the weather widget's own options. The Start, Search and Task View switches are new. They come back when the switch or the mod is turned off.
