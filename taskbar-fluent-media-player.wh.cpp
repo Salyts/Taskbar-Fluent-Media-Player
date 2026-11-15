@@ -16000,6 +16000,21 @@ static FrameworkElement FindElementInRepeater(FrameworkElement const& repeater, 
     return nullptr;
 }
 
+// Windows' Start button. By its ID first: Task View can carry the same name,
+// and the repeater's children aren't always in the order they're shown.
+static FrameworkElement FindStartButton(FrameworkElement const& repeater) {
+    if (!repeater) return nullptr;
+    const int n = VisualTreeHelper::GetChildrenCount(repeater);
+    for (int i = 0; i < n; i++) {
+        auto child = VisualTreeHelper::GetChild(repeater, i).try_as<FrameworkElement>();
+        if (!child) continue;
+        try {
+            if (winrt::Windows::UI::Xaml::Automation::AutomationProperties::GetAutomationId(child) == L"StartButton") return child;
+        } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    }
+    return FindElementInRepeater(repeater, START_BUTTON_NAMES, ARRAYSIZE(START_BUTTON_NAMES));
+}
+
 static FrameworkElement FindElementByClassName(FrameworkElement const& parent, const wchar_t* className) {
     if (!parent) return nullptr;
 
@@ -16173,10 +16188,10 @@ static FrameworkElement ResolveTrackingAnchor(FrameworkElement const& repeater, 
     if (!repeater) return nullptr;
     if (position == PlayerPosition::TaskbarLeftStart) {
         outSide = L"left";
-        return FindElementInRepeater(repeater, START_BUTTON_NAMES, ARRAYSIZE(START_BUTTON_NAMES));
+        return FindStartButton(repeater);
     } else if (position == PlayerPosition::TaskbarRightStart) {
         outSide = L"right";
-        return FindElementInRepeater(repeater, START_BUTTON_NAMES, ARRAYSIZE(START_BUTTON_NAMES));
+        return FindStartButton(repeater);
     } else if (position == PlayerPosition::TaskbarAfterSearchLeft) {
         outSide = L"left";
         return FindElementByClassName(repeater, L"Taskbar.TaskbarExtensionElement");
@@ -16417,7 +16432,7 @@ static bool AttachTrackingMember(HWND hWnd, PlayerPosition position, Grid const&
         const bool vertical = IsVerticalTaskbarEdge(GetTaskbarEdgeForWnd(hWnd));
         if (!vertical && !TaskbarIconsCentered() &&
             position != PlayerPosition::TaskbarLeftStart && position != PlayerPosition::TaskbarRightStart) {
-            auto start = FindElementInRepeater(repeater, START_BUTTON_NAMES, ARRAYSIZE(START_BUTTON_NAMES));
+            auto start = FindStartButton(repeater);
             bool startOk = false;
             try { startOk = start && start.Visibility() == Visibility::Visible && (!laidOut || IsUsableTrackingAnchor(start, targetGrid)); }
             catch (...) { LOG_IGNORED_EXCEPTION(); }
@@ -24600,11 +24615,12 @@ static void TakeLpSnapOnThread(void* param) {
                 std::wstring id;
                 try { id = winrt::Windows::UI::Xaml::Automation::AutomationProperties::GetAutomationId(c).c_str(); } catch (...) { LOG_IGNORED_EXCEPTION(); }
                 int kind = LpOtherButton;
+                // By ID first: Task View shares Start's class and can share its name.
                 bool start = id == L"StartButton";
-                for (auto* s : START_BUTTON_NAMES) start = start || name == s;
-                if (start) kind = LpStart;
+                if (id.empty()) for (auto* s : START_BUTTON_NAMES) start = start || name == s;
+                if (id == L"TaskViewButton") kind = LpTaskView;
+                else if (start) kind = LpStart;
                 else if (cls == L"Taskbar.TaskbarExtensionElement" || cls.find(L"Search") != std::wstring::npos) kind = w > H * 2.2 ? LpSearchBox : LpSearchIcon;
-                else if (id == L"TaskViewButton") kind = LpTaskView;
                 else if (cls == L"Taskbar.AugmentedEntryPointButton" || name == L"AugmentedEntryPointButton") kind = LpWidgets;
                 else if (cls == L"Taskbar.TaskListButton") kind = LpApp;
                 if (LpKindHiddenByMod(kind)) continue;
@@ -26062,11 +26078,6 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
             wuxc::TextBlock t; t.Text(hstring{ Loc(L"Hidden Windows buttons") }); t.FontSize(12); t.Opacity(0.7);
             inner.Children().Append(t);
             inner.Children().Append(chips);
-            wuxc::TextBlock note;
-            note.Text(hstring{ Loc(L"Hidden from the taskbar by the mod. Double-click one to show it again, or a Windows button on the taskbar above to hide it.") });
-            note.FontSize(11); note.Opacity(0.6);
-            note.TextWrapping(wux::TextWrapping::Wrap);
-            inner.Children().Append(note);
             box.Child(inner);
             stack.Children().Append(box);
         }
