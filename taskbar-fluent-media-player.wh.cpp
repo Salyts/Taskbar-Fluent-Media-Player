@@ -1047,6 +1047,9 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
     - hideShowDesktop: false
       $name: Hide Show desktop
       $description: The thin strip at the far right.
+    - clockHideYear: false
+      $name: Hide the year on the clock
+      $description: The date on the taskbar clock without the year (15/11/2026 shows as 15/11). Windows' own date format stays as it is everywhere else.
     $name: Windows buttons
   #! $hideIf: {settingsView: window}
   $name: Main Settings
@@ -2730,6 +2733,7 @@ struct ModSettings {
     bool         hideLanguageButton   = false;
     bool         hideClock            = false;
     bool         hideShowDesktop      = false;
+    bool         clockHideYear        = false;
     int          infoOrder            = 2;
     bool         infoDetached             = false;
     PlayerPosition infoDetachedPosition     = PlayerPosition::TaskbarLeftEdge;
@@ -3080,6 +3084,7 @@ static constexpr SettingSpec SETTINGS[] = {
     SBool(L"MainSettings.NativeWidgetsSetting.hideLanguageButton", &ModSettings::hideLanguageButton),
     SBool(L"MainSettings.NativeWidgetsSetting.hideClock", &ModSettings::hideClock),
     SBool(L"MainSettings.NativeWidgetsSetting.hideShowDesktop", &ModSettings::hideShowDesktop),
+    SBool(L"MainSettings.NativeWidgetsSetting.clockHideYear", &ModSettings::clockHideYear),
     SBool(L"MainSettings.TextAreaSetting.showTrackTitle", &ModSettings::showTrackTitle),
     SBool(L"MainSettings.TextAreaSetting.showTrackArtist", &ModSettings::showTrackArtist),
     SBool(L"MainSettings.TextAreaSetting.showArtistAsTime", &ModSettings::showArtistAsTime),
@@ -18351,7 +18356,106 @@ static void ApplyWidgetsHideStateNow(void* param) {
 static bool AnyNativeButtonHidden() {
     return g_settings.hideStartButton || g_settings.hideSearchButton || g_settings.hideTaskViewButton ||
            g_settings.hideHiddenIconsButton || g_settings.hideNetworkButton || g_settings.hideLanguageButton ||
-           g_settings.hideClock || g_settings.hideShowDesktop;
+           g_settings.hideClock || g_settings.hideShowDesktop || g_settings.clockHideYear;
+}
+
+// ---- "Hide the year on the clock": the date line of Windows' clock, without
+// the year. Windows writes that text itself every so often, so each date line
+// is watched and the year taken out again whenever it does.
+static std::wstring ClockDateWithoutYear(const std::wstring& t) {
+    if (t.empty() || t.find(L':') != std::wstring::npos) return t;   // a time, not a date
+    SYSTEMTIME st{};
+    GetLocalTime(&st);
+    const std::wstring y4 = std::to_wstring(st.wYear);
+    const std::wstring y2 = y4.substr(2);
+    auto isDigit = [](wchar_t c) { return c >= L'0' && c <= L'9'; };
+    size_t at = std::wstring::npos, len = 0;
+    if (size_t p = t.find(y4); p != std::wstring::npos) {
+        at = p; len = y4.size();
+    } else {
+        // Two-digit years: only as a whole number at either end ("15/11/26"),
+        // and only while there are still three numbers: "26/11" is the 26th.
+        int groups = 0;
+        for (size_t i = 0; i < t.size(); i++) if (isDigit(t[i]) && (i == 0 || !isDigit(t[i - 1]))) groups++;
+        if (groups < 3) return t;
+        if (t.size() > 2 && t.compare(t.size() - 2, 2, y2) == 0 && !isDigit(t[t.size() - 3])) { at = t.size() - 2; len = 2; }
+        else if (t.size() > 2 && t.compare(0, 2, y2) == 0 && !isDigit(t[2])) { at = 0; len = 2; }
+    }
+    if (at == std::wstring::npos) return t;
+    // The separator next to it goes too: "15/11/2026" -> "15/11", "2026-11-15" -> "11-15".
+    size_t from = at, to = at + len;
+    if (from > 0 && !isDigit(t[from - 1])) {
+        from--;
+        while (from > 0 && t[from - 1] == L' ') from--;
+    } else if (to < t.size() && !isDigit(t[to])) {
+        to++;
+        while (to < t.size() && t[to] == L' ') to++;
+    }
+    std::wstring out = t.substr(0, from) + t.substr(to);
+    const size_t a = out.find_first_not_of(L" ,."), b = out.find_last_not_of(L" ,.");
+    return a == std::wstring::npos ? t : out.substr(a, b - a + 1);
+}
+
+struct ClockDateHook {
+    winrt::weak_ref<TextBlock> tb;
+    int64_t token = 0;
+    std::shared_ptr<std::wstring> original;   // what Windows last wrote, for putting it back
+};
+[[clang::no_destroy]] static std::optional<std::vector<ClockDateHook>> g_clockDateHooks{std::in_place};
+
+static void CollectClockTexts(DependencyObject const& n, std::vector<TextBlock>& out, int depth) {
+    if (!n || depth > 14) return;
+    if (auto t = n.try_as<TextBlock>()) out.push_back(t);
+    const int c = VisualTreeHelper::GetChildrenCount(n);
+    for (int i = 0; i < c; i++) CollectClockTexts(VisualTreeHelper::GetChild(n, i), out, depth + 1);
+}
+
+// On one taskbar's thread, with g_hiddenNativeButtonsMtx held.
+static void ApplyClockYearOnThread(FrameworkElement const& root) {
+    const bool want = g_settings.clockHideYear && !g_unloading;
+    auto& hooks = *g_clockDateHooks;
+    for (int i = (int)hooks.size() - 1; i >= 0; --i) {
+        auto tb = hooks[i].tb.get();
+        if (!tb) { hooks.erase(hooks.begin() + i); continue; }
+        try {
+            auto dispatcher = tb.Dispatcher();
+            if (dispatcher && !dispatcher.HasThreadAccess()) continue;   // another taskbar's
+            if (want) continue;
+            tb.UnregisterPropertyChangedCallback(TextBlock::TextProperty(), hooks[i].token);
+            if (!hooks[i].original->empty()) tb.Text(winrt::hstring{ *hooks[i].original });   // the year back
+        } catch (...) { LOG_IGNORED_EXCEPTION(); }
+        hooks.erase(hooks.begin() + i);
+    }
+    if (!want || !root) return;
+    try {
+        auto trayFrame = FindChildByName(root, L"SystemTrayFrameGrid");
+        if (!trayFrame) return;
+        std::vector<TextBlock> texts;
+        for (const wchar_t* name : { L"NotificationCenterButton", L"ClockButton" })
+            if (auto clock = FindChildByName(trayFrame, name)) CollectClockTexts(clock, texts, 0);
+        for (auto& tb : texts) {
+            if (std::any_of(hooks.begin(), hooks.end(), [&](const ClockDateHook& h) { return h.tb.get() == tb; })) continue;
+            const std::wstring now = tb.Text().c_str();
+            const std::wstring stripped = ClockDateWithoutYear(now);
+            if (stripped == now) continue;   // not the date line
+            auto original = std::make_shared<std::wstring>(now);
+            const int64_t token = tb.RegisterPropertyChangedCallback(TextBlock::TextProperty(),
+                [original](DependencyObject const& sender, DependencyProperty const&) {
+                    try {
+                        auto t = sender.try_as<TextBlock>();
+                        if (!t) return;
+                        const std::wstring cur = t.Text().c_str();
+                        const std::wstring cut = ClockDateWithoutYear(cur);
+                        if (cut == cur) return;   // ours, already without the year
+                        *original = cur;
+                        t.Text(winrt::hstring{ cut });
+                    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+                });
+            hooks.push_back({ winrt::make_weak(tb), token, original });
+            tb.Text(winrt::hstring{ stripped });
+            Wh_Log(L"Clock: date \"%s\" shown as \"%s\"", now.c_str(), stripped.c_str());
+        }
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
 }
 
 // 1 Start, 2 Search, 3 Task View, 0 anything else. By what the button says it
@@ -18458,12 +18562,16 @@ static void ApplyNativeButtonHidingOnThread(void* param) {
             Wh_Log(L"NativeButtons: hid kind %d on taskbar %p", kind, wnd);
         }
     }
+    try {
+        auto xamlRoot = GetTaskbarXamlRoot(wnd);
+        ApplyClockYearOnThread(xamlRoot ? xamlRoot.Content().try_as<FrameworkElement>() : nullptr);
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
 }
 
 static void EnsureNativeButtonsHidden() {
     {
         std::lock_guard<std::mutex> lk(g_hiddenNativeButtonsMtx);
-        if (g_hiddenNativeButtons->empty() && (g_unloading || !AnyNativeButtonHidden())) return;
+        if (g_hiddenNativeButtons->empty() && g_clockDateHooks->empty() && (g_unloading || !AnyNativeButtonHidden())) return;
     }
     std::vector<HWND> taskbars;
     EnumWindows([](HWND h, LPARAM out) -> BOOL {
@@ -20474,6 +20582,8 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
                      L"The clock and date, with the notifications. Windows + N still opens them."),
             WithDesc(RowBool(L"Hide Show desktop", L"MainSettings.NativeWidgetsSetting.hideShowDesktop"),
                      L"The thin strip at the far right."),
+            WithDesc(RowBool(L"Hide the year on the clock", L"MainSettings.NativeWidgetsSetting.clockHideYear"),
+                     L"15/11/2026 shows as 15/11."),
         };
         SettingCard weatherWidget;
         weatherWidget.title = L"Weather widget";
@@ -22199,6 +22309,8 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"The player hides and the weather shows in its spot until music plays again.", L"Програвач ховається, а на його місці показується погода, доки знову не заграє музика.", L"Плеер скрывается, а на его месте показывается погода, пока снова не заиграет музыка.", L"Der Player blendet sich aus und das Wetter erscheint an seiner Stelle, bis wieder Musik läuft.", L"संगीत फिर चलने तक प्लेयर छिप जाता है और उसकी जगह मौसम दिखता है।", L"播放器隐藏，天气显示在它的位置，直到再次播放音乐。", L"播放器隱藏，天氣顯示在它的位置，直到再次播放音樂。", L"El reproductor se oculta y el tiempo aparece en su lugar hasta que vuelva a sonar música.", L"Le lecteur se masque et la météo s'affiche à sa place jusqu'à ce que la musique reprenne.", L"O player some e o clima aparece no lugar dele até a música voltar a tocar.", L"Il player si nasconde e il meteo appare al suo posto finché non riparte la musica.", L"Odtwarzacz się chowa, a w jego miejscu widać pogodę, dopóki znów nie zagra muzyka.", L"Müzik yeniden çalana kadar oynatıcı gizlenir ve yerinde hava durumu görünür.", L"音楽が再生されるまで、プレーヤーは隠れてその場所に天気が表示されます。", L"음악이 다시 재생될 때까지 플레이어가 숨고 그 자리에 날씨가 표시됩니다." },
     { L"Visualizer: the app in the player. Click to listen to everything", L"Візуалізатор: програма в програвачі. Клацніть, щоб слухати все", L"Визуализатор: приложение в плеере. Щёлкните, чтобы слушать всё", L"Visualizer: die App im Player. Klicken, um alles zu hören", L"विज़ुअलाइज़र: प्लेयर वाला ऐप। सब सुनने के लिए क्लिक करें", L"可视化：播放器中的应用。点击以监听所有声音", L"視覺化：播放器中的應用程式。按一下以監聽所有聲音", L"Visualizador: la app del reproductor. Haz clic para escuchar todo", L"Visualiseur : l'app du lecteur. Cliquez pour tout écouter", L"Visualizador: o app do player. Clique para ouvir tudo", L"Visualizzatore: l'app nel player. Fai clic per ascoltare tutto", L"Wizualizer: aplikacja w odtwarzaczu. Kliknij, aby słuchać wszystkiego", L"Görselleştirici: oynatıcıdaki uygulama. Her şeyi dinlemek için tıklayın", L"ビジュアライザー: プレーヤーのアプリ。クリックですべての音に切り替え", L"비주얼라이저: 플레이어의 앱. 클릭하면 모든 소리를 듣습니다" },
     { L"Visualizer: everything on the PC. Click to listen to the app only", L"Візуалізатор: усе на комп'ютері. Клацніть, щоб слухати лише програму", L"Визуализатор: всё на компьютере. Щёлкните, чтобы слушать только приложение", L"Visualizer: alles auf dem PC. Klicken, um nur die App zu hören", L"विज़ुअलाइज़र: PC की हर आवाज़। सिर्फ़ ऐप सुनने के लिए क्लिक करें", L"可视化：电脑上的所有声音。点击以仅监听应用", L"視覺化：電腦上的所有聲音。按一下以僅監聽應用程式", L"Visualizador: todo el PC. Haz clic para escuchar solo la app", L"Visualiseur : tout le PC. Cliquez pour n'écouter que l'app", L"Visualizador: tudo no PC. Clique para ouvir só o app", L"Visualizzatore: tutto il PC. Fai clic per ascoltare solo l'app", L"Wizualizer: wszystko na komputerze. Kliknij, aby słuchać tylko aplikacji", L"Görselleştirici: bilgisayardaki her şey. Yalnızca uygulamayı dinlemek için tıklayın", L"ビジュアライザー: PC のすべての音。クリックでアプリのみに切り替え", L"비주얼라이저: PC의 모든 소리. 클릭하면 앱만 듣습니다" },
+    { L"Hide the year on the clock", L"Ховати рік на годиннику", L"Скрывать год на часах", L"Jahr in der Uhr ausblenden", L"घड़ी में साल छिपाएँ", L"时钟上不显示年份", L"時鐘上不顯示年份", L"Ocultar el año en el reloj", L"Masquer l'année sur l'horloge", L"Ocultar o ano no relógio", L"Nascondi l'anno nell'orologio", L"Ukryj rok na zegarze", L"Saatte yılı gizle", L"時計の年を隠す", L"시계에서 연도 숨기기" },
+    { L"15/11/2026 shows as 15/11.", L"15/11/2026 показується як 15/11.", L"15/11/2026 показывается как 15/11.", L"15/11/2026 wird als 15/11 angezeigt.", L"15/11/2026, 15/11 के रूप में दिखेगा।", L"15/11/2026 显示为 15/11。", L"15/11/2026 顯示為 15/11。", L"15/11/2026 se muestra como 15/11.", L"15/11/2026 s'affiche 15/11.", L"15/11/2026 aparece como 15/11.", L"15/11/2026 appare come 15/11.", L"15/11/2026 wyświetla się jako 15/11.", L"15/11/2026, 15/11 olarak görünür.", L"15/11/2026 は 15/11 と表示されます。", L"15/11/2026이 15/11로 표시됩니다." },
     { L"Window color", L"Колір вікна", L"Цвет окна", L"Fensterfarbe", L"विंडो का रंग", L"窗口颜色", L"視窗色彩", L"Color de la ventana", L"Couleur de la fenêtre", L"Cor da janela", L"Colore della finestra", L"Kolor okna", L"Pencere rengi", L"ウィンドウの色", L"창 색상" },
     { L"Custom color", L"Власний колір", L"Свой цвет", L"Eigene Farbe", L"कस्टम रंग", L"自定义颜色", L"自訂色彩", L"Color personalizado", L"Couleur personnalisée", L"Cor personalizada", L"Colore personalizzato", L"Własny kolor", L"Özel renk", L"カスタム色", L"사용자 지정 색" },
     { L"Title bar color", L"Колір рядка заголовка", L"Цвет строки заголовка", L"Farbe der Titelleiste", L"शीर्षक पट्टी का रंग", L"标题栏颜色", L"標題列色彩", L"Color de la barra de título", L"Couleur de la barre de titre", L"Cor da barra de título", L"Colore della barra del titolo", L"Kolor paska tytułu", L"Başlık çubuğu rengi", L"タイトル バーの色", L"제목 표시줄 색" },
