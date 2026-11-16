@@ -222,6 +222,9 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       #! $showIf: {settingsView: full}
       $name: Full-height invisible hit area
       $description: Extends the clickable/hoverable area of the player to the full height of the taskbar, even if the player itself is shorter. Disable this if you don't want the player to react to clicks/hovers above or below its visible bounds.
+    - playerHoverScale: 100
+      $name: Grow on hover (%)
+      $description: The player grows a little while the pointer is over it. 100 = off, up to 115.
     $name: Media player
 
   - ProgressBarSettings:
@@ -281,6 +284,10 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       #! $showIf: {showProgressBar: true}
       $name: Show the progress bar only on hover
       $description: The bar fades in while the pointer is over the player (or the part it sits under), ready to drag.
+    - progressBarHoverHeight: 0
+      #! $showIf: {showProgressBar: true}
+      $name: Progress bar height on hover (px, 0 = same)
+      $description: The bar grows to this height while the pointer is over the player, so it's easier to grab.
     $name: Progress bar
 
   - AlbumArtSetting:
@@ -1711,6 +1718,18 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
   - miniPlayerHideEmptyArt: false
     $name: Hide the cover area without a cover
     $description: The square where the cover goes folds away in the mini player menu when a song has none.
+  - miniPlayerLayout: full
+    $name: Mini player layout
+    $description: Full shows the big cover on top. Compact is a short card with a small cover next to the title.
+    $options:
+    - full: Full
+    - compact: Compact
+  - miniPlayerVisualizer: false
+    $name: Visualizer in the mini player
+    $description: Bars under the playback buttons that move with the music. They listen the same way as the player's visualizer.
+  - miniPlayerBounce: false
+    $name: Bouncy opening
+    $description: The mini player overshoots a little and settles as it opens.
   - miniPlayerSeekBarGradient: false
     $name: Album gradient seek bar
     $description: Color the seek bar with two colors from the album cover, the first on the left end and the second on the right. Overrides the seek bar color while there's album art.
@@ -2708,6 +2727,11 @@ struct ModSettings {
     bool         hideMediaSessionsList = false;
     bool         hideMiniPlayerIconTray = false;
     bool         miniPlayerHideEmptyArt = false;
+    bool         miniPlayerCompact    = false;
+    bool         miniPlayerVisualizer = false;
+    bool         miniPlayerBounce     = false;
+    int          playerHoverScale     = 100;
+    int          progressBarHoverHeight = 0;
     bool         miniPlayerSeekBarGradient = false;
     bool         miniPlayerSeekBarHoverEffect = false;
     int          miniPlayerCornerRadius = 6;
@@ -3342,6 +3366,11 @@ static constexpr SettingSpec SETTINGS[] = {
     SBool(L"PlayerMenuSettings.hideMediaSessionsList", &ModSettings::hideMediaSessionsList),
     SBool(L"PlayerMenuSettings.hideMiniPlayerIconTray", &ModSettings::hideMiniPlayerIconTray),
     SBool(L"PlayerMenuSettings.miniPlayerHideEmptyArt", &ModSettings::miniPlayerHideEmptyArt),
+    SStr(L"PlayerMenuSettings.miniPlayerLayout", L"full"),
+    SBool(L"PlayerMenuSettings.miniPlayerVisualizer", &ModSettings::miniPlayerVisualizer),
+    SBool(L"PlayerMenuSettings.miniPlayerBounce", &ModSettings::miniPlayerBounce),
+    SInt(L"MainSettings.PlayerSetting.playerHoverScale", 100, 115, &ModSettings::playerHoverScale),
+    SInt(L"MainSettings.ProgressBarSettings.progressBarHoverHeight", 0, 20, &ModSettings::progressBarHoverHeight),
     SBool(L"PlayerMenuSettings.miniPlayerSeekBarGradient", &ModSettings::miniPlayerSeekBarGradient),
     SBool(L"PlayerMenuSettings.miniPlayerSeekBarHoverEffect", &ModSettings::miniPlayerSeekBarHoverEffect),
     SInt(L"PlayerMenuSettings.miniPlayerCornerRadius", 0, 24, &ModSettings::miniPlayerCornerRadius),
@@ -3722,6 +3751,7 @@ COLD_UNOPTIMIZED static void LoadSettings() {
     g_settings.weatherPosition = ParseSettingChoice(Str(L"MainSettings.WeatherSetting.weatherPosition", L"tray_left"),
                                                         PLAYER_POSITIONS, PlayerPosition::TrayLeft);
     g_settings.weatherMonitor  = NormalizeMonitor(Int(L"MainSettings.WeatherSetting.weatherMonitor", MONITOR_OFF, 64, 1));
+    g_settings.miniPlayerCompact = Str(L"PlayerMenuSettings.miniPlayerLayout", L"full") == L"compact";
     {
         const std::wstring align = Str(L"MainSettings.TextAreaSetting.infoTextAlign", L"auto");
         g_settings.infoTextAlign = align == L"left" ? 0 : align == L"center" ? 1 : align == L"right" ? 2 : -1;
@@ -12575,12 +12605,79 @@ static Grid BuildMiniPlayerIconTray(bool isLight, bool hasMedia) {
     return bar;
 }
 
+// "Visualizer in the mini player": a row of bars under the buttons, from the
+// same audio bands as the player's visualizer. If that one isn't running (off,
+// or hidden), the mini player starts the listening while it's open.
+static bool g_miniVizStartedCapture = false;
+static Grid BuildMiniPlayerVisualizer() {
+    static constexpr int BARS = 28;
+    static constexpr double STRIP_H = 30.0;
+    Grid strip;
+    strip.Name(L"FluentMediaMiniPlayerVisualizer");
+    strip.Height(STRIP_H);
+    strip.Margin({4, 0, 4, 12});
+    strip.ColumnSpacing(3);
+    auto bars = std::make_shared<std::vector<winrt::Windows::UI::Xaml::Shapes::Rectangle>>();
+    const winrt::Windows::UI::Color color = g_cachedPaletteHash != 0 ? VizEnsureContrast(g_cachedAlbumPalette.primary) : MiniTitleColor();
+    for (int i = 0; i < BARS; i++) {
+        ColumnDefinition col; col.Width({1.0, GridUnitType::Star});
+        strip.ColumnDefinitions().Append(col);
+        winrt::Windows::UI::Xaml::Shapes::Rectangle r;
+        r.Fill(MakeBrush({0xD0, color.R, color.G, color.B}));
+        r.RadiusX(1.5); r.RadiusY(1.5);
+        r.Height(3);
+        r.VerticalAlignment(VerticalAlignment::Center);
+        Grid::SetColumn(r, i);
+        strip.Children().Append(r);
+        bars->push_back(r);
+    }
+    auto peaks = std::make_shared<std::vector<float>>(BARS, 0.f);
+    DispatcherTimer timer;
+    timer.Interval(winrt::Windows::Foundation::TimeSpan{ std::chrono::milliseconds(33) });
+    timer.Tick([bars, peaks](auto const&, auto const&) {
+        float bands[VIZ_NUM_BANDS];
+        for (int b = 0; b < VIZ_NUM_BANDS; b++) bands[b] = g_vizBands[b].load(std::memory_order_relaxed);
+        for (int i = 0; i < BARS; i++) {
+            // Mirrored around the middle: the bass in the center, like the "Mirror" shape.
+            const float t = std::fabs((float)i - (BARS - 1) * 0.5f) / ((BARS - 1) * 0.5f);
+            const float pos = (1.f - t) * 0.f + t * (VIZ_NUM_BANDS - 1);
+            const int lo = (int)pos, hi = std::min(lo + 1, VIZ_NUM_BANDS - 1);
+            const float v = bands[lo] * (1.f - (pos - lo)) + bands[hi] * (pos - lo);
+            float& p = (*peaks)[i];
+            p += (std::clamp(v * 1.4f, 0.f, 1.f) - p) * (v > p ? 0.6f : 0.2f);
+            const double h = std::round((3.0 + p * (STRIP_H - 3.0)) * 2.0) / 2.0;
+            try { if (std::abs((*bars)[i].Height() - h) > 0.4) (*bars)[i].Height(h); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+        }
+    });
+    winrt::weak_ref<DispatcherTimer> weakTimer = timer;
+    strip.Loaded([timer](winrt::Windows::Foundation::IInspectable const&, RoutedEventArgs const&) {
+        try { timer.Start(); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+        if (HWND h = g_taskbarWnd; h && IsWindow(h))
+            RunFromWindowThread(h, [](void*) {
+                if (g_unloading || g_vizCurrentlyVisible || g_miniVizStartedCapture) return;
+                StartVizCaptureThread();
+                g_miniVizStartedCapture = true;
+            }, nullptr);
+    });
+    strip.Unloaded([weakTimer](winrt::Windows::Foundation::IInspectable const&, RoutedEventArgs const&) {
+        try { if (auto t = weakTimer.get()) t.Stop(); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+        if (HWND h = g_taskbarWnd; h && IsWindow(h))
+            RunFromWindowThread(h, [](void*) {
+                if (!g_miniVizStartedCapture) return;
+                g_miniVizStartedCapture = false;
+                if (!g_vizCurrentlyVisible) StopVizCaptureThreadAsync();   // the player's own visualizer keeps it
+            }, nullptr);
+    });
+    return strip;
+}
+
 COLD_UNOPTIMIZED static Grid BuildMiniPlayerFlyoutContent() {
     Grid outer;
     outer.Name(L"FluentMediaMiniPlayerRoot");
     outer.MinWidth(360);
     outer.MaxWidth(360);
-    outer.MinHeight(400);
+    if (!g_settings.miniPlayerCompact) outer.MinHeight(400);
+    const bool compact = g_settings.miniPlayerCompact;
 
     bool isPlaying = false;
     bool hasMedia = false;
@@ -12656,16 +12753,18 @@ COLD_UNOPTIMIZED static Grid BuildMiniPlayerFlyoutContent() {
 
     Border artBorder;
     artBorder.Name(L"FluentMediaMiniPlayerArtBorder");
-    // The cover fills the popup's width as a square.
-    artBorder.HorizontalAlignment(HorizontalAlignment::Stretch);
-    artBorder.Height(300);
+    // The cover fills the popup's width as a square; in the compact layout it's
+    // a small square next to the title.
+    artBorder.HorizontalAlignment(compact ? HorizontalAlignment::Left : HorizontalAlignment::Stretch);
+    if (compact) artBorder.Width(72);
+    artBorder.Height(compact ? 72 : 300);
     artBorder.SizeChanged([](winrt::Windows::Foundation::IInspectable const& sender, SizeChangedEventArgs const& e) {
         const double w = e.NewSize().Width;
         if (auto fe = sender.try_as<FrameworkElement>(); fe && w > 0 && std::abs(fe.Height() - w) > 0.5) fe.Height(w);
     });
     artBorder.CornerRadius({6, 6, 6, 6});
     artBorder.Background(MakeBrush({0x40, 0x80, 0x80, 0x80}));
-    artBorder.Margin({0, 0, 0, 10});
+    artBorder.Margin(compact ? Thickness{0, 0, 12, 0} : Thickness{0, 0, 0, 10});
     {
         artBorder.BorderThickness(g_settings.showMiniPlayerBorder ? Thickness{2, 2, 2, 2} : Thickness{1, 1, 1, 1});
         if (g_settings.showMiniPlayerBorder) {
@@ -12710,7 +12809,7 @@ COLD_UNOPTIMIZED static Grid BuildMiniPlayerFlyoutContent() {
     artInnerGrid.Children().Append(artImage);
     artBorder.Child(artInnerGrid);
     if (thumbBytes.empty() && g_settings.miniPlayerHideEmptyArt) artBorder.Visibility(Visibility::Collapsed);
-    content.Children().Append(artBorder);
+    if (!compact) content.Children().Append(artBorder);
 
     TextBlock titleBlock;
     titleBlock.Name(L"FluentMediaMiniPlayerTitleText");
@@ -12718,8 +12817,8 @@ COLD_UNOPTIMIZED static Grid BuildMiniPlayerFlyoutContent() {
     titleBlock.FontWeight(winrt::Windows::UI::Text::FontWeights::SemiBold());
     titleBlock.TextTrimming(TextTrimming::CharacterEllipsis);
     titleBlock.TextWrapping(TextWrapping::NoWrap);
-    titleBlock.HorizontalAlignment(HorizontalAlignment::Center);
-    titleBlock.TextAlignment(TextAlignment::Center);
+    titleBlock.HorizontalAlignment(compact ? HorizontalAlignment::Left : HorizontalAlignment::Center);
+    titleBlock.TextAlignment(compact ? TextAlignment::Left : TextAlignment::Center);
     titleBlock.Foreground(MakeBrush(MiniTitleColor()));
     titleBlock.Margin({0, 0, 0, 4});
     {
@@ -12733,20 +12832,40 @@ COLD_UNOPTIMIZED static Grid BuildMiniPlayerFlyoutContent() {
         }
         titleBlock.Text(winrt::hstring(displayTitle));
     }
-    content.Children().Append(wrapDebugBorder(titleBlock, {0xFF, 0xFF, 0xFF, 0x00}));
+    if (!compact) content.Children().Append(wrapDebugBorder(titleBlock, {0xFF, 0xFF, 0xFF, 0x00}));
 
     TextBlock artistBlock;
     artistBlock.Name(L"FluentMediaMiniPlayerArtistText");
     artistBlock.FontSize(13);
     artistBlock.TextTrimming(TextTrimming::CharacterEllipsis);
     artistBlock.TextWrapping(TextWrapping::NoWrap);
-    artistBlock.HorizontalAlignment(HorizontalAlignment::Center);
-    artistBlock.TextAlignment(TextAlignment::Center);
+    artistBlock.HorizontalAlignment(compact ? HorizontalAlignment::Left : HorizontalAlignment::Center);
+    artistBlock.TextAlignment(compact ? TextAlignment::Left : TextAlignment::Center);
     artistBlock.Opacity(0.65);
     artistBlock.Foreground(MakeBrush(MiniArtistColor()));
     artistBlock.Margin({0, 0, 0, 5});
     artistBlock.Text(artist.empty() ? winrt::hstring(L" ") : winrt::hstring(artist));
-    content.Children().Append(wrapDebugBorder(artistBlock, {0xFF, 0x00, 0xFF, 0x00}));
+    if (compact) {
+        // Compact: the small cover on the left, title and artist beside it.
+        Grid header;
+        header.Name(L"FluentMediaMiniPlayerCompactHeader");
+        ColumnDefinition artCol;  artCol.Width({1.0, GridUnitType::Auto});
+        ColumnDefinition textCol; textCol.Width({1.0, GridUnitType::Star});
+        header.ColumnDefinitions().Append(artCol);
+        header.ColumnDefinitions().Append(textCol);
+        header.Margin({0, 0, 0, 6});
+        Grid::SetColumn(artBorder, 0);
+        header.Children().Append(artBorder);
+        StackPanel lines;
+        lines.VerticalAlignment(VerticalAlignment::Center);
+        lines.Children().Append(wrapDebugBorder(titleBlock, {0xFF, 0xFF, 0xFF, 0x00}));
+        lines.Children().Append(wrapDebugBorder(artistBlock, {0xFF, 0x00, 0xFF, 0x00}));
+        Grid::SetColumn(lines, 1);
+        header.Children().Append(lines);
+        content.Children().Append(header);
+    } else {
+        content.Children().Append(wrapDebugBorder(artistBlock, {0xFF, 0x00, 0xFF, 0x00}));
+    }
 
     // Seek bar: elapsed | slider | duration (Salyts 1.6.1).
     {
@@ -13175,6 +13294,9 @@ COLD_UNOPTIMIZED static Grid BuildMiniPlayerFlyoutContent() {
     }
 
     content.Children().Append(wrapDebugBorder(controlsRow, {0xFF, 0x00, 0x00, 0xFF}));
+    if (g_settings.miniPlayerVisualizer) {
+        if (auto bars = BuildMiniPlayerVisualizer()) content.Children().Append(bars);
+    }
 
     {
         Border sep;
@@ -13568,10 +13690,18 @@ static void ShowMiniPlayerFlyout(FrameworkElement const& target) {
                     anim.From(startOffset);
                     anim.To(0.0);
                     anim.Duration(winrt::Windows::UI::Xaml::DurationHelper::FromTimeSpan(
-                        std::chrono::milliseconds(250)));
-                    auto ease = CircleEase();
-                    ease.EasingMode(EasingMode::EaseOut);
-                    anim.EasingFunction(ease);
+                        std::chrono::milliseconds(g_settings.miniPlayerBounce ? 420 : 250)));
+                    if (g_settings.miniPlayerBounce) {
+                        // "Bouncy opening": a little past its place, then back.
+                        BackEase ease;
+                        ease.Amplitude(0.35);
+                        ease.EasingMode(EasingMode::EaseOut);
+                        anim.EasingFunction(ease);
+                    } else {
+                        auto ease = CircleEase();
+                        ease.EasingMode(EasingMode::EaseOut);
+                        anim.EasingFunction(ease);
+                    }
                     Storyboard::SetTarget(anim, content);
                     Storyboard::SetTargetProperty(anim, propertyPath);
                     sb.Children().Append(anim);
@@ -13878,10 +14008,30 @@ static void FadeElement(UIElement const& el, double to) {
         sb.Begin();
     } catch (...) { LOG_IGNORED_EXCEPTION(); }
 }
+static void AnimateHeight(FrameworkElement const& el, double to) {
+    try {
+        Storyboard sb;
+        DoubleAnimation a;
+        a.To(to);
+        a.Duration(DurationHelper::FromTimeSpan(std::chrono::milliseconds(140)));
+        a.EnableDependentAnimation(true);
+        CubicEase ease;
+        ease.EasingMode(EasingMode::EaseOut);
+        a.EasingFunction(ease);
+        Storyboard::SetTarget(a, el);
+        Storyboard::SetTargetProperty(a, L"Height");
+        sb.Children().Append(a);
+        sb.Begin();
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+}
 static void WireProgressBarHover(Border const& track) {
-    track.Opacity(0.0);
+    // "Only on hover" fades it in and out; "Height on hover" grows it.
+    const bool fade = g_settings.progressBarOnHover;
+    const double restH = std::max(1.0, (double)g_settings.progressBarHeight);
+    const double hoverH = std::max(restH, (double)g_settings.progressBarHoverHeight);
+    if (fade) track.Opacity(0.0);
     auto wired = std::make_shared<bool>(false);
-    track.Loaded([wired](winrt::Windows::Foundation::IInspectable const& sender, RoutedEventArgs const&) {
+    track.Loaded([wired, fade, restH, hoverH](winrt::Windows::Foundation::IInspectable const& sender, RoutedEventArgs const&) {
         if (*wired) return;
         auto bar = sender.try_as<Border>();
         if (!bar) return;
@@ -13899,12 +14049,18 @@ static void WireProgressBarHover(Border const& track) {
         *wired = true;
         winrt::weak_ref<Border> weakBar = bar;
         host.AddHandler(UIElement::PointerEnteredEvent(), winrt::box_value(PointerEventHandler(
-            [weakBar](winrt::Windows::Foundation::IInspectable const&, PointerRoutedEventArgs const&) {
-                if (auto b = weakBar.get()) FadeElement(b, 1.0);
+            [weakBar, fade, hoverH](winrt::Windows::Foundation::IInspectable const&, PointerRoutedEventArgs const&) {
+                auto b = weakBar.get();
+                if (!b) return;
+                if (fade) FadeElement(b, 1.0);
+                if (hoverH > b.Height()) AnimateHeight(b, hoverH);
             })), true);
         host.AddHandler(UIElement::PointerExitedEvent(), winrt::box_value(PointerEventHandler(
-            [weakBar](winrt::Windows::Foundation::IInspectable const&, PointerRoutedEventArgs const&) {
-                if (auto b = weakBar.get(); b && !g_mainProgressDragging) FadeElement(b, 0.0);
+            [weakBar, fade, restH, hoverH](winrt::Windows::Foundation::IInspectable const&, PointerRoutedEventArgs const&) {
+                auto b = weakBar.get();
+                if (!b || g_mainProgressDragging) return;
+                if (fade) FadeElement(b, 0.0);
+                if (hoverH > restH) AnimateHeight(b, restH);
             })), true);
     });
 }
@@ -14003,7 +14159,7 @@ static Border BuildMainProgressBar() {
     track.IsHitTestVisible(g_settings.progressBarSeekable);
     track.Background(MakeBrush(ParseColorWithSpecialValues(g_settings.progressBarTrackColor,
                                                            OpacityToAlpha(g_settings.progressBarTrackOpacity))));
-    if (g_settings.progressBarOnHover) WireProgressBarHover(track);
+    if (g_settings.progressBarOnHover || g_settings.progressBarHoverHeight > (int)h) WireProgressBarHover(track);
 
     Border fill;
     fill.Name(L"FluentMedia_ProgressBarFill");
@@ -14653,6 +14809,36 @@ COLD_UNOPTIMIZED static Grid BuildPlayerGrid() {
         });
 
         wrapper.Tag(winrt::box_value(winrt::hstring(L"FluentMediaBarWrapper")));
+
+        // "Grow on hover": scales around its middle. A CompositeTransform, so the
+        // "Player offset" can share it (see InjectPlayerGrid).
+        if (g_settings.playerHoverScale > 100 && !sidebar) {
+            CompositeTransform grow;
+            wrapper.RenderTransform(grow);
+            wrapper.RenderTransformOrigin({0.5f, 0.5f});
+            const double s = g_settings.playerHoverScale / 100.0;
+            auto scaleTo = [grow](double to) {
+                try {
+                    Storyboard sb;
+                    for (const wchar_t* prop : { L"ScaleX", L"ScaleY" }) {
+                        DoubleAnimation a;
+                        a.To(to);
+                        a.Duration(DurationHelper::FromTimeSpan(std::chrono::milliseconds(170)));
+                        CubicEase ease;
+                        ease.EasingMode(EasingMode::EaseOut);
+                        a.EasingFunction(ease);
+                        Storyboard::SetTarget(a, grow);
+                        Storyboard::SetTargetProperty(a, prop);
+                        sb.Children().Append(a);
+                    }
+                    sb.Begin();
+                } catch (...) { LOG_IGNORED_EXCEPTION(); }
+            };
+            wrapper.AddHandler(UIElement::PointerEnteredEvent(), winrt::box_value(PointerEventHandler(
+                [scaleTo, s](winrt::Windows::Foundation::IInspectable const&, PointerRoutedEventArgs const&) { scaleTo(s); })), true);
+            wrapper.AddHandler(UIElement::PointerExitedEvent(), winrt::box_value(PointerEventHandler(
+                [scaleTo](winrt::Windows::Foundation::IInspectable const&, PointerRoutedEventArgs const&) { scaleTo(1.0); })), true);
+        }
 
         wrapper.PointerWheelChanged([](auto const&, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e) {
             if (g_unloading) return;
@@ -17368,10 +17554,15 @@ static bool InjectPlayerGrid() {
         // changing the room it takes. The margins push the taskbar apart
         // instead, which looks wrong on floating taskbar themes.
         if (g_settings.playerOffsetX != 0 || g_settings.playerOffsetY != 0) {
-            winrt::Windows::UI::Xaml::Media::TranslateTransform shift;
-            shift.X((double)g_settings.playerOffsetX);
-            shift.Y((double)g_settings.playerOffsetY);
-            playerGrid.RenderTransform(shift);
+            if (auto shared = playerGrid.RenderTransform().try_as<winrt::Windows::UI::Xaml::Media::CompositeTransform>()) {
+                shared.TranslateX((double)g_settings.playerOffsetX);   // "Grow on hover" uses the same one
+                shared.TranslateY((double)g_settings.playerOffsetY);
+            } else {
+                winrt::Windows::UI::Xaml::Media::TranslateTransform shift;
+                shift.X((double)g_settings.playerOffsetX);
+                shift.Y((double)g_settings.playerOffsetY);
+                playerGrid.RenderTransform(shift);
+            }
         }
 
         if (targetStack) {
@@ -20546,6 +20737,13 @@ COLD_UNOPTIMIZED static SettingCategory BuildPlayerMenuCategory() {
         RowBoolInverted(L"Show icon tray", L"PlayerMenuSettings.hideMiniPlayerIconTray"),
         WithDesc(RowBool(L"Hide the cover area without a cover", L"PlayerMenuSettings.miniPlayerHideEmptyArt"),
                  L"The cover's square folds away when a song has none."),
+        WithDesc(RowCombo(L"Mini player layout", L"PlayerMenuSettings.miniPlayerLayout", L"full",
+                          { {L"full", L"Full"}, {L"compact", L"Compact"} }),
+                 L"Compact is a short card with a small cover next to the title."),
+        WithDesc(RowBool(L"Visualizer in the mini player", L"PlayerMenuSettings.miniPlayerVisualizer"),
+                 L"Bars under the buttons that move with the music."),
+        WithDesc(RowBool(L"Bouncy opening", L"PlayerMenuSettings.miniPlayerBounce"),
+                 L"Overshoots a little and settles as it opens."),
     };
 
     const std::vector<ComboOption> miniPlayerIconStyleOptions = {
@@ -20722,6 +20920,8 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
             WithDesc(RowText(L"Width (px, 0 = full width)", L"MainSettings.ProgressBarSettings.progressBarWidth", L"0", true),
                      L"0 = full width of what it's under."),
             RowSlider(L"Height", L"MainSettings.ProgressBarSettings.progressBarHeight", L"2", 1, 20),
+            WithDesc(RowSlider(L"Height on hover", L"MainSettings.ProgressBarSettings.progressBarHoverHeight", L"0", 0, 20),
+                     L"Grows to this while you hover the player. 0 = same."),
             RowColorAlpha(L"Color", L"MainSettings.ProgressBarSettings.progressBarColor", L"-1 -1 -1",
                           L"Progress bar opacity", L"MainSettings.ProgressBarSettings.progressBarOpacity"),
             WithDesc(RowColorAlpha(L"Background color", L"MainSettings.ProgressBarSettings.progressBarTrackColor", L"128 128 128",
@@ -20738,6 +20938,8 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
             WithDesc(RowBool(L"Smooth hover animation", L"AppearanceSettings.BackgroundStyleSettings.enableHoverAnimation"),
                      L"Fade the hover/press background in and out"),
             RowBool(L"Smooth position animation", L"AnimationSettings.enableSmoothPositionAnimation"),
+            WithDesc(RowSlider(L"Grow on hover (%)", L"MainSettings.PlayerSetting.playerHoverScale", L"100", 100, 115),
+                     L"The player grows a little under the pointer. 100 = off."),
             RowBool(L"Fade album art on track change", L"AnimationSettings.enableAlbumArtFade"),
             WithDesc(RowBool(L"Smooth track changes", L"AnimationSettings.smoothTrackChange"),
                      L"The text fades in and the player glides to its new width."),
@@ -22578,6 +22780,18 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"Auto", L"Авто", L"Авто", L"Auto", L"ऑटो", L"自动", L"自動", L"Auto", L"Auto", L"Auto", L"Auto", L"Auto", L"Otomatik", L"自動", L"자동" },
     { L"Turn the text", L"Повертати текст", L"Поворачивать текст", L"Text drehen", L"टेक्स्ट घुमाएँ", L"旋转文字", L"旋轉文字", L"Girar el texto", L"Faire pivoter le texte", L"Girar o texto", L"Ruota il testo", L"Obracaj tekst", L"Metni döndür", L"テキストを回転", L"텍스트 회전" },
     { L"Off keeps it horizontal, for a wide vertical taskbar.", L"Вимкнено — текст горизонтальний, для широкої вертикальної панелі.", L"Выключено — текст горизонтальный, для широкой вертикальной панели.", L"Aus lässt ihn waagerecht, für eine breite senkrechte Taskleiste.", L"बंद करने पर टेक्स्ट सीधा रहता है, चौड़ी वर्टिकल टास्कबार के लिए।", L"关闭时保持水平，适合较宽的竖向任务栏。", L"關閉時保持水平，適合較寬的直向工作列。", L"Desactivado lo deja horizontal, para una barra de tareas vertical ancha.", L"Désactivé, il reste horizontal, pour une barre des tâches verticale large.", L"Desligado o mantém horizontal, para uma barra de tarefas vertical larga.", L"Disattivato lo lascia orizzontale, per una barra verticale larga.", L"Wyłączone zostawia go poziomo, dla szerokiego pionowego paska.", L"Kapalıyken yatay kalır, geniş dikey görev çubuğu için.", L"オフにすると横書きのまま。幅の広い縦のタスク バー向け。", L"끄면 가로로 유지됩니다. 넓은 세로 작업 표시줄용." },
+    { L"Mini player layout", L"Вигляд міні-програвача", L"Вид мини-плеера", L"Layout des Mini-Players", L"मिनी प्लेयर लेआउट", L"迷你播放器布局", L"迷你播放器版面", L"Diseño del minirreproductor", L"Disposition du mini-lecteur", L"Layout do miniplayer", L"Layout del mini player", L"Układ mini odtwarzacza", L"Mini oynatıcı düzeni", L"ミニ プレーヤーのレイアウト", L"미니 플레이어 레이아웃" },
+    { L"Full", L"Повний", L"Полный", L"Voll", L"पूरा", L"完整", L"完整", L"Completo", L"Complet", L"Completo", L"Completo", L"Pełny", L"Tam", L"フル", L"전체" },
+    { L"Compact", L"Компактний", L"Компактный", L"Kompakt", L"कॉम्पैक्ट", L"紧凑", L"精簡", L"Compacto", L"Compact", L"Compacto", L"Compatto", L"Kompaktowy", L"Kompakt", L"コンパクト", L"간결" },
+    { L"Compact is a short card with a small cover next to the title.", L"Компактний — невелика картка з маленькою обкладинкою біля назви.", L"Компактный — небольшая карточка с маленькой обложкой рядом с названием.", L"Kompakt ist eine kurze Karte mit kleinem Cover neben dem Titel.", L"कॉम्पैक्ट एक छोटा कार्ड है, शीर्षक के पास छोटा कवर।", L"紧凑：较短的卡片，小封面在标题旁。", L"精簡：較短的卡片，小封面在標題旁。", L"Compacto es una tarjeta corta con una carátula pequeña junto al título.", L"Compact est une carte courte avec une petite pochette à côté du titre.", L"Compacto é um cartão curto com uma capa pequena ao lado do título.", L"Compatto è una scheda corta con una copertina piccola accanto al titolo.", L"Kompaktowy to krótka karta z małą okładką obok tytułu.", L"Kompakt, başlığın yanında küçük kapaklı kısa bir karttır.", L"コンパクトは、タイトルの横に小さなカバーが付いた短いカードです。", L"간결은 제목 옆에 작은 커버가 있는 짧은 카드입니다." },
+    { L"Visualizer in the mini player", L"Візуалізатор у міні-програвачі", L"Визуализатор в мини-плеере", L"Visualizer im Mini-Player", L"मिनी प्लेयर में विज़ुअलाइज़र", L"迷你播放器中的可视化", L"迷你播放器中的視覺化", L"Visualizador en el minirreproductor", L"Visualiseur dans le mini-lecteur", L"Visualizador no miniplayer", L"Visualizzatore nel mini player", L"Wizualizer w mini odtwarzaczu", L"Mini oynatıcıda görselleştirici", L"ミニ プレーヤーにビジュアライザー", L"미니 플레이어의 비주얼라이저" },
+    { L"Bars under the buttons that move with the music.", L"Смужки під кнопками, що рухаються в такт музиці.", L"Полоски под кнопками, двигающиеся под музыку.", L"Balken unter den Tasten, die sich mit der Musik bewegen.", L"बटनों के नीचे बार जो संगीत के साथ हिलते हैं।", L"按钮下方随音乐跳动的频谱条。", L"按鈕下方隨音樂跳動的頻譜條。", L"Barras bajo los botones que se mueven con la música.", L"Des barres sous les boutons qui bougent avec la musique.", L"Barras sob os botões que se movem com a música.", L"Barre sotto i pulsanti che si muovono con la musica.", L"Słupki pod przyciskami poruszające się z muzyką.", L"Düğmelerin altında müzikle hareket eden çubuklar.", L"ボタンの下で音楽に合わせて動くバー。", L"버튼 아래에서 음악에 맞춰 움직이는 막대." },
+    { L"Bouncy opening", L"Пружне відкриття", L"Пружинящее открытие", L"Federndes Öffnen", L"उछाल के साथ खुलना", L"弹性打开", L"彈性開啟", L"Apertura con rebote", L"Ouverture rebondissante", L"Abertura com quique", L"Apertura con rimbalzo", L"Sprężyste otwieranie", L"Esnek açılış", L"弾むように開く", L"통통 튀는 열기" },
+    { L"Overshoots a little and settles as it opens.", L"Трохи проскакує й повертається на місце під час відкриття.", L"Немного проскакивает и встаёт на место при открытии.", L"Schießt beim Öffnen etwas über und setzt sich dann.", L"खुलते समय थोड़ा आगे जाकर अपनी जगह पर आता है।", L"打开时略微越过再回到原位。", L"開啟時略微越過再回到原位。", L"Se pasa un poco y se asienta al abrirse.", L"Dépasse un peu puis se pose à l'ouverture.", L"Passa um pouco do ponto e se acomoda ao abrir.", L"Supera un po' la posizione e si assesta all'apertura.", L"Przy otwieraniu lekko przeskakuje i wraca na miejsce.", L"Açılırken biraz taşar ve yerine oturur.", L"開くときに少し行き過ぎてから落ち着きます。", L"열릴 때 살짝 지나쳤다가 자리를 잡습니다." },
+    { L"Height on hover", L"Висота при наведенні", L"Высота при наведении", L"Höhe beim Darüberfahren", L"होवर पर ऊँचाई", L"悬停时高度", L"暫留時高度", L"Altura al pasar el ratón", L"Hauteur au survol", L"Altura ao passar o mouse", L"Altezza al passaggio del mouse", L"Wysokość po najechaniu", L"Üzerine gelince yükseklik", L"ホバー時の高さ", L"마우스를 올렸을 때 높이" },
+    { L"Grows to this while you hover the player. 0 = same.", L"Збільшується до цього, поки вказівник над програвачем. 0 = як є.", L"Растёт до этого, пока указатель над плеером. 0 = как есть.", L"Wächst darauf, solange du über dem Player bist. 0 = gleich.", L"प्लेयर पर होवर करते समय इतना बढ़ता है। 0 = वही।", L"悬停播放器时增大到此值。0 = 不变。", L"暫留播放器時增大到此值。0 = 不變。", L"Crece hasta esto al pasar sobre el reproductor. 0 = igual.", L"Grandit jusque-là au survol du lecteur. 0 = identique.", L"Cresce até isso ao passar sobre o player. 0 = igual.", L"Cresce fino a questo al passaggio sul player. 0 = uguale.", L"Rośnie do tej wartości po najechaniu na odtwarzacz. 0 = bez zmian.", L"Oynatıcının üzerine gelince buna büyür. 0 = aynı.", L"プレーヤーにホバー中はこの高さになります。0 = 変更なし。", L"플레이어 위에 있을 때 이만큼 커집니다. 0 = 그대로." },
+    { L"Grow on hover (%)", L"Збільшення при наведенні (%)", L"Увеличение при наведении (%)", L"Vergrößern beim Darüberfahren (%)", L"होवर पर बड़ा करें (%)", L"悬停时放大 (%)", L"暫留時放大 (%)", L"Agrandar al pasar el ratón (%)", L"Agrandir au survol (%)", L"Aumentar ao passar o mouse (%)", L"Ingrandisci al passaggio (%)", L"Powiększ po najechaniu (%)", L"Üzerine gelince büyüt (%)", L"ホバー時に拡大 (%)", L"마우스를 올리면 확대 (%)" },
+    { L"The player grows a little under the pointer. 100 = off.", L"Програвач трохи збільшується під вказівником. 100 = вимкнено.", L"Плеер немного увеличивается под указателем. 100 = выключено.", L"Der Player wird unter dem Mauszeiger etwas größer. 100 = aus.", L"पॉइंटर के नीचे प्लेयर थोड़ा बड़ा होता है। 100 = बंद।", L"指针下的播放器略微放大。100 = 关闭。", L"指標下的播放器略微放大。100 = 關閉。", L"El reproductor crece un poco bajo el puntero. 100 = desactivado.", L"Le lecteur grandit un peu sous le pointeur. 100 = désactivé.", L"O player cresce um pouco sob o ponteiro. 100 = desligado.", L"Il player cresce un po' sotto il puntatore. 100 = disattivato.", L"Odtwarzacz lekko rośnie pod wskaźnikiem. 100 = wyłączone.", L"Oynatıcı işaretçinin altında biraz büyür. 100 = kapalı.", L"ポインターの下でプレーヤーが少し大きくなります。100 = オフ。", L"포인터 아래에서 플레이어가 조금 커집니다. 100 = 끔." },
     { L"Window color", L"Колір вікна", L"Цвет окна", L"Fensterfarbe", L"विंडो का रंग", L"窗口颜色", L"視窗色彩", L"Color de la ventana", L"Couleur de la fenêtre", L"Cor da janela", L"Colore della finestra", L"Kolor okna", L"Pencere rengi", L"ウィンドウの色", L"창 색상" },
     { L"Custom color", L"Власний колір", L"Свой цвет", L"Eigene Farbe", L"कस्टम रंग", L"自定义颜色", L"自訂色彩", L"Color personalizado", L"Couleur personnalisée", L"Cor personalizada", L"Colore personalizzato", L"Własny kolor", L"Özel renk", L"カスタム色", L"사용자 지정 색" },
     { L"Title bar color", L"Колір рядка заголовка", L"Цвет строки заголовка", L"Farbe der Titelleiste", L"शीर्षक पट्टी का रंग", L"标题栏颜色", L"標題列色彩", L"Color de la barra de título", L"Couleur de la barre de titre", L"Cor da barra de título", L"Colore della barra del titolo", L"Kolor paska tytułu", L"Başlık çubuğu rengi", L"タイトル バーの色", L"제목 표시줄 색" },
@@ -23081,6 +23295,7 @@ static const RowRule ROW_RULES[] = {
     { L"MainSettings.ProgressBarSettings.progressBarTrackOpacity", 6402, false, L"MainSettings.ProgressBarSettings.showProgressBar", L"true" },
     { L"MainSettings.ProgressBarSettings.progressBarHideIdle", 6403, false, L"MainSettings.ProgressBarSettings.showProgressBar", L"true" },
     { L"MainSettings.ProgressBarSettings.progressBarOnHover", 6404, false, L"MainSettings.ProgressBarSettings.showProgressBar", L"true" },
+    { L"MainSettings.ProgressBarSettings.progressBarHoverHeight", 6406, false, L"MainSettings.ProgressBarSettings.showProgressBar", L"true" },
     { L"MainSettings.AlbumArtSetting.albumArtOrder", 11, false, L"MainSettings.AlbumArtSetting.showAlbumArt", L"true" },
     { L"MainSettings.AlbumArtSetting.albumArtDetached", 12, false, L"MainSettings.AlbumArtSetting.showAlbumArt", L"true" },
     { L"MainSettings.AlbumArtSetting.albumArtDetachedPosition", 13, false, L"MainSettings.AlbumArtSetting.showAlbumArt", L"true" },
