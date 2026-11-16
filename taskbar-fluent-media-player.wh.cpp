@@ -14181,14 +14181,27 @@ static Border BuildMainProgressBar() {
     content.Children().Append(fill);
     if (g_settings.progressBarSeekable) {
         // The bar is only a few pixels tall, so the part you can grab reaches
-        // past it, without moving anything else.
-        static constexpr double SEEK_GRAB_HEIGHT = 12.0;
-        const double reach = std::max(0.0, (SEEK_GRAB_HEIGHT - h) / 2.0);
+        // past it, without moving anything else: 22 px, or more with "Height on
+        // hover". At the player's bottom (or top) edge it reaches inward only,
+        // since half of it would be off the taskbar.
+        const double grabH = std::max(22.0, (double)g_settings.progressBarHoverHeight + 14.0);
+        const double reach = std::max(0.0, (grabH - h) / 2.0);
         Border grab;
         grab.Margin({0, -reach, 0, -reach});
         grab.Background(MakeBrush({0x00, 0, 0, 0}));
         AttachMainProgressSeek(grab, track, fill);
         content.Children().Append(grab);
+        winrt::weak_ref<Border> weakGrab = grab;
+        track.Loaded([weakGrab, reach](winrt::Windows::Foundation::IInspectable const& sender, RoutedEventArgs const&) {
+            try {
+                auto bar = sender.try_as<FrameworkElement>();
+                auto g = weakGrab.get();
+                if (!bar || !g) return;
+                const auto va = bar.VerticalAlignment();
+                if (va == VerticalAlignment::Bottom)   g.Margin({0, -2 * reach, 0, 0});
+                else if (va == VerticalAlignment::Top) g.Margin({0, 0, 0, -2 * reach});
+            } catch (...) { LOG_IGNORED_EXCEPTION(); }
+        });
     }
     track.Child(content);
     g_mainProgressFillRef = fill;

@@ -67,6 +67,7 @@
 
 ### Fixes
 
+- The progress bar is easier to grab: the area you can click or drag is 22 px tall (more with "Height on hover"), and at the player's edge it reaches inward instead of off the taskbar.
 - The player no longer shoots out and back when the song changes: apps that clear the title for a moment between songs (Spotify) keep the last song's text through the gap, the smooth position animation pauses for the change, and the width glide lands exactly on the new width.
 - A part placed next to a Windows button no longer slides back and forth when the song or app changes.
 - On a vertical taskbar, hidden Windows buttons no longer leave a gap their height tall.
