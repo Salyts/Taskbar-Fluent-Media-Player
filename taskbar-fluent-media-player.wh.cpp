@@ -44,6 +44,7 @@ A full media player on your Windows 11 taskbar, styled to fit in with the rest o
 - **Smooth song changes:** the text fades in and the player glides to its new width.
 - **Lighter on power:** a frame rate setting for the visualizer, pausing on battery saver, and nothing animates with the screen off or a game fullscreen.
 - **Progress bar:** its own background color, hide it when nothing plays, show it only on hover, or let it grow on hover.
+- **New looks:** a Glass background, album art that spins like a record, and a glow while playing. Mica and Mica Alt look like Mica now.
 - **Mini player:** a compact layout, its own visualizer, and a bouncy opening. The player itself can grow a little on hover, or show only its cover until you hover it.
 
 ## New in 1.7
@@ -74,7 +75,7 @@ A full media player on your Windows 11 taskbar, styled to fit in with the rest o
 
 ### Appearance
 
-- **Backgrounds:** Acrylic, Mica, Mica Alt, a blurred album cover, a solid color or a gradient, with adjustable corner radius.
+- **Backgrounds:** Acrylic, Mica, Mica Alt, Glass, a blurred album cover, a solid color or a gradient, with adjustable corner radius and an optional glow while playing.
 - **Colors:** `R G B` or hex, with a separate color for light and dark theme if you want. They can also follow the album art or your accent color.
 - **Text:** scrolling titles in Bounce or Loop mode, left, center or right aligned, full font control, and your own text for a missing title, a missing artist, or nothing playing.
 - **Album art:** size, corner radius, the source app's icon in a corner, a pause overlay, and a placeholder icon when there's no art. It can show the app's icon instead of the cover.
@@ -354,6 +355,7 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       - "acrylic":        "Acrylic"
       - "mica":           "Mica"
       - "mica_alt":       "Mica Alt"
+      - "glass":          "Glass"
     - albumArtDetachedBackgroundColor: "35 35 35"
       #! $showIf: {showAlbumArt: true, albumArtDetached: true, albumArtDetachedBackgroundType: [solid, acrylic, mica, mica_alt]}
       $name: Detached album art background color (RGB)
@@ -491,6 +493,7 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       - "acrylic":        "Acrylic"
       - "mica":           "Mica"
       - "mica_alt":       "Mica Alt"
+      - "glass":          "Glass"
     - infoDetachedBackgroundColor: "35 35 35"
       #! $showIf: {infoDetached: true, infoDetachedBackgroundType: [solid, acrylic, mica, mica_alt]}
       $name: Detached info background color (RGB)
@@ -658,6 +661,7 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       - "acrylic":        "Acrylic"
       - "mica":           "Mica"
       - "mica_alt":       "Mica Alt"
+      - "glass":          "Glass"
     - buttonsDetachedBackgroundColor: "35 35 35"
       #! $showIf: {showMediaButtons: true, buttonsDetached: true, buttonsDetachedBackgroundType: [solid, acrylic, mica, mica_alt]}
       $name: Detached buttons background color (RGB)
@@ -827,6 +831,7 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       - "acrylic":        "Acrylic"
       - "mica":           "Mica"
       - "mica_alt":       "Mica Alt"
+      - "glass":          "Glass"
     - vizDetachedBackgroundColor: "35 35 35"
       #! $showIf: {vizEnabled: true, vizDetached: true, vizDetachedBackgroundType: [solid, acrylic, mica, mica_alt]}
       $name: Detached visualizer background color (RGB)
@@ -1011,6 +1016,7 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       - "acrylic":        "Acrylic"
       - "mica":           "Mica"
       - "mica_alt":       "Mica Alt"
+      - "glass":          "Glass"
     - weatherBackgroundColor: "35 35 35"
       #! $showIf: {weatherEnabled: true, weatherBackgroundType: [solid, acrylic, mica, mica_alt]}
       $name: Weather background color (RGB)
@@ -1107,6 +1113,7 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       - "acrylic":        "Acrylic"
       - "mica":           "Mica"
       - "mica_alt":       "Mica Alt"
+      - "glass":          "Glass"
       - "album_art_blur": "Blurred album cover"
     - solidColor: "35 35 35"
       #! $showIf: {backgroundType: [solid, acrylic, mica, mica_alt]}
@@ -1132,7 +1139,11 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       $name: Acrylic tint opacity (0-100)
     - micaOpacity: 50
       #! $showIf: {backgroundType: [mica, mica_alt]}
-      $name: Mica/Mica Alt opacity (0-100)
+      $name: Mica/Mica Alt strength (0-100)
+      $description: How much of Mica's base color covers what's behind. Lower shows more of the wallpaper's colors.
+    - playerGlow: false
+      $name: Glow while playing
+      $description: An outline in the album's color that softly breathes while music plays.
     - blurOpacity: 65
       #! $showIf: {backgroundType: album_art_blur}
       $name: Album art blur opacity (0-100)
@@ -1327,6 +1338,9 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       - "cover":    "The cover"
       - "app_icon": "The app's icon"
       - "icon":     "An icon"
+    - albumArtDisc: false
+      $name: Spin like a record while playing
+      $description: The album art turns round, with a hole in the middle, and spins slowly while music plays.
     - morphArtShape: false
       $name: Morph album art between shapes
       $description: When the cover changes shape (a square cover, then a wide video thumbnail), the new cover shows first, then the art stretches into its shape instead of jumping.
@@ -2407,7 +2421,7 @@ static bool IsFilledIconStyle(IconStyle s) { return s == IconStyle::FluentFilled
 
 // Inherit is only valid for a detached widget's own background, where it
 // means "look exactly like the main player".
-enum class BackgroundType { Inherit, None, Solid, Gradient, Acrylic, Mica, MicaAlt, AlbumArtBlur };
+enum class BackgroundType { Inherit, None, Solid, Gradient, Acrylic, Mica, MicaAlt, AlbumArtBlur, Glass };
 static constexpr SettingChoice<BackgroundType> BACKGROUND_TYPES[] = {
     {L"inherit",        BackgroundType::Inherit},
     {L"none",           BackgroundType::None},
@@ -2417,12 +2431,13 @@ static constexpr SettingChoice<BackgroundType> BACKGROUND_TYPES[] = {
     {L"mica",           BackgroundType::Mica},
     {L"mica_alt",       BackgroundType::MicaAlt},
     {L"album_art_blur", BackgroundType::AlbumArtBlur},
+    {L"glass",          BackgroundType::Glass},
 };
 // The types that paint a fill of their own (album art blur is drawn by a
 // separate image layer, None is transparent).
 static bool IsPaintedBackground(BackgroundType t) {
     return t == BackgroundType::Solid || t == BackgroundType::Gradient || t == BackgroundType::Acrylic ||
-           t == BackgroundType::Mica || t == BackgroundType::MicaAlt;
+           t == BackgroundType::Mica || t == BackgroundType::MicaAlt || t == BackgroundType::Glass;
 }
 
 // Where the player (or a detached widget) sits: overlaid on the taskbar at an
@@ -2787,6 +2802,8 @@ struct ModSettings {
     int          albumArtMaxWidth     = 64;
     int          albumArtMinHeight    = 32;
     int          albumArtMaxHeight    = 32;
+    bool         albumArtDisc         = false;
+    bool         playerGlow           = false;
     int          albumArtOpacity      = 100;
     int          albumArtLeftMargin   = 0;
     int          albumArtRightMargin  = 0;
@@ -3295,6 +3312,8 @@ static constexpr SettingSpec SETTINGS[] = {
     SInt(L"AppearanceSettings.BackgroundStyleSettings.micaOpacity", 0, 100, &ModSettings::micaOpacity),
     SInt(L"AppearanceSettings.BackgroundStyleSettings.blurOpacity", 0, 100, &ModSettings::blurOpacity),
     SInt(L"AppearanceSettings.BackgroundStyleSettings.blurRadius", 0, 50, &ModSettings::blurRadius),
+    SBool(L"AppearanceSettings.BackgroundStyleSettings.playerGlow", &ModSettings::playerGlow),
+    SBool(L"AppearanceSettings.AlbumArtDisplaySettings.albumArtDisc", &ModSettings::albumArtDisc),
     SStr(L"AppearanceSettings.BackgroundStyleSettings.cornerRadius", L"4"),
     SStr(L"AppearanceSettings.BackgroundStyleSettings.enablePlayerHoverEffect", L"auto"),
     SStr(L"AppearanceSettings.BackgroundStyleSettings.enableMediaButtonsHoverEffect", L"auto"),
@@ -6590,20 +6609,22 @@ static bool UpdateAlbumBlurBgCache(const std::vector<BYTE>& thumbBytes,
         artHash = artHash * 31 + thumbBytes[i];
 
     int blurRadius = std::clamp(g_settings.blurRadius, 0, 50);
+    const int cacheKey = blurRadius * 2 + (IsSystemLightTheme() ? 1 : 0);   // the wash follows the theme
 
     // The output is now panel-independent (cover aspect), so the key is just the
     // art + radius. Changing the Blur radius re-renders; resizing the player does
     // not (UniformToFill adapts).
-    if (g_blurBgCache.artHash == artHash && g_blurBgCache.radius == blurRadius &&
+    if (g_blurBgCache.artHash == artHash && g_blurBgCache.radius == cacheKey &&
         !g_blurBgCache.blurredPixels.empty())
         return true;
 
     std::vector<BYTE> srcPixels; int srcW = 0, srcH = 0;
     if (!DecodeImageToBGRA(thumbBytes, srcPixels, srcW, srcH, 256)) return false;
 
-    // Work at a bounded size that PRESERVES the cover's aspect ratio (cap the
-    // longest side). No 1/8 pre-shrink smear, and no squish to the panel shape.
-    const int WORK_CAP = 256;
+    // A small working size, blurred, then scaled up by XAML: a smooth wash
+    // instead of a grainy blur of a big cover (the old 256 px work size kept
+    // the cover's texture). Keeps the cover's aspect ratio.
+    const int WORK_CAP = 72;
     int outW = srcW, outH = srcH;
     int maxDim = std::max(srcW, srcH);
     if (maxDim > WORK_CAP) {
@@ -6619,9 +6640,17 @@ static bool UpdateAlbumBlurBgCache(const std::vector<BYTE>& thumbBytes,
         // 3 box-blur passes approximate a Gaussian; radius is honest (1 = a
         // subtle blur, scaling smoothly up to 50 = heavy) since we blur at real
         // resolution. Radius 0 skips this entirely -> sharp cover.
+        const int r = std::max(1, (int)std::lround(blurRadius * (double)WORK_CAP / 256.0 * 1.6));
         for (int i = 0; i < 3; ++i) {
-            ApplyBoxBlurBGRA(blurred, outW, outH, blurRadius);
+            ApplyBoxBlurBGRA(blurred, outW, outH, r);
         }
+    }
+    // A wash of the theme's base color, so text on top stays readable on any cover.
+    {
+        const bool light = IsSystemLightTheme();
+        const int baseC = light ? 243 : 24, keep = 72, mix = 100 - keep;
+        for (size_t i = 0; i + 3 < blurred.size(); i += 4)
+            for (int c = 0; c < 3; c++) blurred[i + c] = (BYTE)((blurred[i + c] * keep + baseC * mix) / 100);
     }
 
     int targetW = outW, targetH = outH;
@@ -6629,7 +6658,7 @@ static bool UpdateAlbumBlurBgCache(const std::vector<BYTE>& thumbBytes,
     g_blurBgCache.width   = targetW;
     g_blurBgCache.height  = targetH;
     g_blurBgCache.artHash = artHash;
-    g_blurBgCache.radius  = blurRadius;
+    g_blurBgCache.radius  = cacheKey;
     return true;
 }
 
@@ -7018,10 +7047,45 @@ static Brush MakeBackgroundBrushFromParams(const BackgroundStyleParams& p) {
         } catch (...) { LOG_IGNORED_EXCEPTION(); }
     }
 
+    // Mica and Mica Alt: Windows' own recipes (their base colors, tinted over a
+    // blur of what's behind), so the player picks up the wallpaper's colors like
+    // Mica does. They used to be a flat color. The opacity setting is how much
+    // of the base color covers it.
     if (t == BackgroundType::Mica || t == BackgroundType::MicaAlt) {
-        BYTE micaAlpha = (BYTE)((p.micaOpacity / 100.0) * 255);
-        auto col = winrt::Windows::UI::Color{micaAlpha, color1.R, color1.G, color1.B};
-        return MakeBrush(col);
+        const bool light = IsSystemLightTheme();
+        const bool alt = t == BackgroundType::MicaAlt;
+        const winrt::Windows::UI::Color base = light
+            ? (alt ? winrt::Windows::UI::Color{0xFF, 0xDA, 0xDA, 0xDA} : winrt::Windows::UI::Color{0xFF, 0xF3, 0xF3, 0xF3})
+            : (alt ? winrt::Windows::UI::Color{0xFF, 0x0A, 0x0A, 0x0A} : winrt::Windows::UI::Color{0xFF, 0x20, 0x20, 0x20});
+        const double strength = std::clamp(p.micaOpacity, 0, 100) / 100.0;
+        try {
+            winrt::Windows::UI::Xaml::Media::AcrylicBrush brush;
+            brush.BackgroundSource(winrt::Windows::UI::Xaml::Media::AcrylicBackgroundSource::HostBackdrop);
+            brush.TintColor(base);
+            brush.TintOpacity(std::clamp(0.25 + strength * 0.65, 0.0, 1.0));
+            brush.TintLuminosityOpacity(std::clamp((alt ? 0.75 : 0.6) + strength * 0.35, 0.0, 1.0));
+            brush.FallbackColor(base);
+            return brush;
+        } catch (...) { LOG_IGNORED_EXCEPTION(); }
+        return MakeBrush(base);
+    }
+
+    // Glass: clear and lightly frosted, the edge drawn by a separate highlight
+    // (see BuildPlayerGrid).
+    if (t == BackgroundType::Glass) {
+        const bool light = IsSystemLightTheme();
+        const winrt::Windows::UI::Color tint = light ? winrt::Windows::UI::Color{0xFF, 0xFA, 0xFA, 0xFA}
+                                                     : winrt::Windows::UI::Color{0xFF, 0x18, 0x18, 0x18};
+        try {
+            winrt::Windows::UI::Xaml::Media::AcrylicBrush brush;
+            brush.BackgroundSource(winrt::Windows::UI::Xaml::Media::AcrylicBackgroundSource::HostBackdrop);
+            brush.TintColor(tint);
+            brush.TintOpacity(light ? 0.10 : 0.06);
+            brush.TintLuminosityOpacity(light ? 0.30 : 0.18);
+            brush.FallbackColor(winrt::Windows::UI::Color{0x99, tint.R, tint.G, tint.B});
+            return brush;
+        } catch (...) { LOG_IGNORED_EXCEPTION(); }
+        return MakeBrush({0x66, tint.R, tint.G, tint.B});
     }
 
     if (t == BackgroundType::Solid) {
@@ -10323,6 +10387,38 @@ struct PlayerClicks {
     }
 };
 
+// Animations that run only while music plays (the spinning record, the glow).
+// Kept weakly: they go with their elements. Paused where they are otherwise.
+[[clang::no_destroy]] static std::vector<winrt::weak_ref<Storyboard>> g_playingAnimations;
+static bool g_playingAnimationsOn = false;
+static void KeepPlayingAnimation(Storyboard const& sb) {
+    g_playingAnimations.push_back(winrt::make_weak(sb));
+    try { sb.Begin(); if (!g_playingAnimationsOn) sb.Pause(); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+}
+static winrt::Windows::UI::Color PlayerGlowColor() {
+    if (g_cachedPaletteHash != 0) return VizEnsureContrast(g_cachedAlbumPalette.primary);
+    return ParseColorWithSpecialValues(L"-1 -1 -1", 255);   // the accent color
+}
+static void UpdatePlayingAnimations(bool playing) {
+    g_playingAnimationsOn = playing;
+    auto& list = g_playingAnimations;
+    for (size_t i = 0; i < list.size();) {
+        auto sb = list[i].get();
+        if (!sb) { list.erase(list.begin() + i); continue; }
+        try {
+            auto d = sb.Dispatcher();
+            if (!d || d.HasThreadAccess()) { if (playing) sb.Resume(); else sb.Pause(); }
+        } catch (...) { LOG_IGNORED_EXCEPTION(); }
+        ++i;
+    }
+    if (auto glow = FindMediaChild(L"FluentMedia_Glow").try_as<Border>()) {
+        try {
+            glow.Visibility(playing ? Visibility::Visible : Visibility::Collapsed);
+            glow.BorderBrush(MakeBrush(PlayerGlowColor()));
+        } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    }
+}
+
 // One of the player's four containers (with BuildTextContainer,
 // BuildButtonsContainer, BuildVisualizerElement): null when turned off, so
 // BuildPlayerGrid places whichever exist in one loop.
@@ -10388,7 +10484,8 @@ COLD_UNOPTIMIZED static Grid BuildAlbumArtContainer() {
 
     bool isSquare = (g_settings.albumArtMinWidth == g_settings.albumArtMinHeight) &&
                    (g_settings.albumArtMaxWidth == g_settings.albumArtMaxHeight);
-    artImage.Stretch(isSquare ? Stretch::UniformToFill : Stretch::Uniform);
+    const bool disc = g_settings.albumArtDisc && !IsSidebarMode();
+    artImage.Stretch(isSquare || disc ? Stretch::UniformToFill : Stretch::Uniform);
 
     artImage.HorizontalAlignment(HorizontalAlignment::Center);
     artImage.VerticalAlignment(VerticalAlignment::Center);
@@ -10410,10 +10507,12 @@ COLD_UNOPTIMIZED static Grid BuildAlbumArtContainer() {
         const float radius = (float)maxRadius;
         shape.CornerRadius({radius, radius});
         visual.Clip(compositor.CreateGeometricClip(shape));
-        artInnerGrid.SizeChanged([shape](winrt::Windows::Foundation::IInspectable const&,
+        artInnerGrid.SizeChanged([shape, disc](winrt::Windows::Foundation::IInspectable const&,
                                          winrt::Windows::UI::Xaml::SizeChangedEventArgs const& e) {
             try {
-                shape.Size({(float)e.NewSize().Width, (float)e.NewSize().Height});
+                const float w = (float)e.NewSize().Width, h = (float)e.NewSize().Height;
+                shape.Size({w, h});
+                if (disc) shape.CornerRadius({w / 2, h / 2});   // a record is round
             } catch (...) { LOG_IGNORED_EXCEPTION(); }
         });
         roundedClip = true;
@@ -10597,6 +10696,41 @@ COLD_UNOPTIMIZED static Grid BuildAlbumArtContainer() {
     }
 
     artContainer.Tag(winrt::box_value(winrt::hstring(L"FluentMediaArtContainer")));
+
+    // "Spin like a record while playing": round, square, with a spindle hole,
+    // turning slowly while music plays (it stops where it is when paused).
+    if (disc) {
+        try {
+            const double side = std::max(16.0, (double)(g_settings.albumArtMaxHeight > 0 ? g_settings.albumArtMaxHeight : 32));
+            artContainer.Width(side);
+            artContainer.MinWidth(0);
+            artContainer.MaxWidth(side);
+            placeholder.RadiusX(side / 2);
+            placeholder.RadiusY(side / 2);
+            winrt::Windows::UI::Xaml::Shapes::Ellipse hole;
+            hole.Width(std::max(3.0, side * 0.14));
+            hole.Height(std::max(3.0, side * 0.14));
+            hole.Fill(MakeBrush(IsSystemLightTheme() ? winrt::Windows::UI::Color{0xE6, 0xF3, 0xF3, 0xF3}
+                                                    : winrt::Windows::UI::Color{0xE6, 0x1C, 0x1C, 0x1C}));
+            hole.HorizontalAlignment(HorizontalAlignment::Center);
+            hole.VerticalAlignment(VerticalAlignment::Center);
+            hole.IsHitTestVisible(false);
+            artContainer.Children().Append(hole);
+            RotateTransform turn;
+            artContainer.RenderTransformOrigin({0.5f, 0.5f});
+            artContainer.RenderTransform(turn);
+            Storyboard spin;
+            DoubleAnimation a;
+            a.From(0.0);
+            a.To(360.0);
+            a.Duration(DurationHelper::FromTimeSpan(std::chrono::milliseconds(6000)));
+            a.RepeatBehavior(RepeatBehaviorHelper::Forever());
+            Storyboard::SetTarget(a, turn);
+            Storyboard::SetTargetProperty(a, L"Angle");
+            spin.Children().Append(a);
+            KeepPlayingAnimation(spin);
+        } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    }
     return artContainer;
 }
 
@@ -11476,7 +11610,7 @@ static FrameworkElement ArtBoxOf(Controls::Image const& img) {
 // between shapes").
 [[clang::no_destroy]] static Storyboard g_artMorphSb{nullptr};
 static void MorphArtBox(FrameworkElement const& box, double fromW) {
-    if (!box || !g_settings.smoothArtShape || IsSidebarMode()) return;
+    if (!box || !g_settings.smoothArtShape || g_settings.albumArtDisc || IsSidebarMode()) return;   // a record keeps its size
     try {
         if (g_artMorphSb) { g_artMorphSb.Stop(); g_artMorphSb = nullptr; }
         box.ClearValue(FrameworkElement::WidthProperty());
@@ -14738,6 +14872,59 @@ COLD_UNOPTIMIZED static Grid BuildPlayerGrid() {
         Canvas::SetZIndex(panel, 2);           
 
         wrapper.Children().Append(backgroundBorder);
+        // Glass: a light catching the top edge and fading down the sides.
+        if (g_settings.backgroundType == BackgroundType::Glass) {
+            Border edge;
+            edge.Name(L"FluentMedia_GlassEdge");
+            edge.CornerRadius(backgroundBorder.CornerRadius());
+            edge.Margin(backgroundBorder.Margin());
+            edge.BorderThickness({1, 1, 1, 1});
+            edge.IsHitTestVisible(false);
+            const bool light = IsSystemLightTheme();
+            LinearGradientBrush shine;
+            shine.StartPoint({0.f, 0.f});
+            shine.EndPoint({0.f, 1.f});
+            GradientStop top, mid, bottom;
+            top.Color(light ? winrt::Windows::UI::Color{0xC0, 0xFF, 0xFF, 0xFF} : winrt::Windows::UI::Color{0x70, 0xFF, 0xFF, 0xFF});
+            top.Offset(0.0);
+            mid.Color({0x10, 0xFF, 0xFF, 0xFF});
+            mid.Offset(0.55);
+            bottom.Color(light ? winrt::Windows::UI::Color{0x30, 0x00, 0x00, 0x00} : winrt::Windows::UI::Color{0x28, 0xFF, 0xFF, 0xFF});
+            bottom.Offset(1.0);
+            shine.GradientStops().Append(top);
+            shine.GradientStops().Append(mid);
+            shine.GradientStops().Append(bottom);
+            edge.BorderBrush(shine);
+            Canvas::SetZIndex(edge, 0);
+            wrapper.Children().Append(edge);
+        }
+        // "Glow while playing": an album-colored outline that breathes while music plays.
+        if (g_settings.playerGlow) {
+            Border glow;
+            glow.Name(L"FluentMedia_Glow");
+            glow.CornerRadius(backgroundBorder.CornerRadius());
+            glow.Margin(backgroundBorder.Margin());
+            glow.BorderThickness({1.5, 1.5, 1.5, 1.5});
+            glow.IsHitTestVisible(false);
+            glow.Visibility(Visibility::Collapsed);
+            glow.BorderBrush(MakeBrush(PlayerGlowColor()));
+            Canvas::SetZIndex(glow, 1);
+            wrapper.Children().Append(glow);
+            Storyboard pulse;
+            DoubleAnimation a;
+            a.From(0.25);
+            a.To(0.95);
+            a.Duration(DurationHelper::FromTimeSpan(std::chrono::milliseconds(1600)));
+            a.AutoReverse(true);
+            a.RepeatBehavior(RepeatBehaviorHelper::Forever());
+            SineEase ease;
+            ease.EasingMode(EasingMode::EaseInOut);
+            a.EasingFunction(ease);
+            Storyboard::SetTarget(a, glow);
+            Storyboard::SetTargetProperty(a, L"Opacity");
+            pulse.Children().Append(a);
+            KeepPlayingAnimation(pulse);
+        }
         wrapper.Children().Append(playerButton);
         if (vizBehind) {
             try {
@@ -16090,6 +16277,7 @@ static void RefreshPlayerContents() {
     RefreshTrackText(m);
     RefreshMediaButtons(m);
     RefreshPauseOverlay(m);
+    UpdatePlayingAnimations(m.isPlaying);
     if (RefreshAlbumArt(m)) ApplyPaletteColors();
     RefreshDetachedBlurs();
     RefreshAppIcon(m.appIconBytes);
@@ -20960,7 +21148,8 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
     };
     const std::vector<ComboOption> backgroundTypeOptions = {
         {L"none", L"None (transparent)"}, {L"solid", L"Solid color"}, {L"gradient", L"Gradient"},
-        {L"acrylic", L"Acrylic"}, {L"mica", L"Mica"}, {L"mica_alt", L"Mica Alt"}, {L"album_art_blur", L"Blurred album cover"}
+        {L"acrylic", L"Acrylic"}, {L"mica", L"Mica"}, {L"mica_alt", L"Mica Alt"}, {L"glass", L"Glass"},
+        {L"album_art_blur", L"Blurred album cover"}
     };
     const std::vector<ComboOption> scrollModeOptions = {
         {L"bounce", L"Bounce (back and forth)"}, {L"loop", L"Loop (continuous)"}
@@ -21019,9 +21208,12 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
             RowSlider(L"Gradient angle", L"AppearanceSettings.BackgroundStyleSettings.gradientAngle", L"50", 0, 360),
             RowSlider(L"Gradient balance", L"AppearanceSettings.BackgroundStyleSettings.gradientBalance", L"50", 0, 100),
             RowSlider(L"Acrylic tint opacity", L"AppearanceSettings.BackgroundStyleSettings.acrylicTintOpacity", L"50", 0, 100),
-            RowSlider(L"Mica opacity", L"AppearanceSettings.BackgroundStyleSettings.micaOpacity", L"50", 0, 100),
+            WithDesc(RowSlider(L"Mica strength", L"AppearanceSettings.BackgroundStyleSettings.micaOpacity", L"50", 0, 100),
+                     L"Lower shows more of the wallpaper's colors."),
             RowSlider(L"Blur opacity", L"AppearanceSettings.BackgroundStyleSettings.blurOpacity", L"65", 0, 100),
             RowSlider(L"Blur radius", L"AppearanceSettings.BackgroundStyleSettings.blurRadius", L"11", 0, 50),
+            WithDesc(RowBool(L"Glow while playing", L"AppearanceSettings.BackgroundStyleSettings.playerGlow"),
+                     L"An outline in the album's color that breathes while music plays."),
         };
         SettingCard interaction;
         interaction.section = L"Player";
@@ -21284,6 +21476,8 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
                               { {L"cover", L"The cover"}, {L"app_icon", L"The app's icon"}, {L"icon", L"An icon"} }),
                      L"\"An icon\" is the one set under \"No album art\"."),
             RowCombo(L"Album art quality", L"AppearanceSettings.AlbumArtDisplaySettings.albumArtQuality", L"medium", albumArtQualityOptions),
+            WithDesc(RowBool(L"Spin like a record while playing", L"AppearanceSettings.AlbumArtDisplaySettings.albumArtDisc"),
+                     L"Round, with a hole in the middle, turning slowly while music plays."),
             WithDesc(RowBool(L"Morph album art between shapes", L"AppearanceSettings.AlbumArtDisplaySettings.morphArtShape"),
                      L"A square cover stretches into a wide thumbnail and back."),
             RowSlider(L"Album art opacity", L"AppearanceSettings.AlbumArtDisplaySettings.albumArtOpacity", L"100", 0, 100),
@@ -21446,7 +21640,7 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
         const std::vector<ComboOption> detachedBgTypeOptions = {
             {L"inherit", L"Inherit (same as main player)"}, {L"none", L"None (transparent)"},
             {L"solid", L"Solid color"}, {L"gradient", L"Gradient"},
-            {L"acrylic", L"Acrylic"}, {L"mica", L"Mica"}, {L"mica_alt", L"Mica Alt"}
+            {L"acrylic", L"Acrylic"}, {L"mica", L"Mica"}, {L"mica_alt", L"Mica Alt"}, {L"glass", L"Glass"}
         };
         auto BuildDetachedContainerCard = [&](const std::wstring& title, const std::wstring& detachKey,
                                                const std::wstring& positionKey, const std::wstring& monitorKey,
@@ -22929,6 +23123,13 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"The player grows a little under the pointer. 100 = off.", L"Програвач трохи збільшується під вказівником. 100 = вимкнено.", L"Плеер немного увеличивается под указателем. 100 = выключено.", L"Der Player wird unter dem Mauszeiger etwas größer. 100 = aus.", L"पॉइंटर के नीचे प्लेयर थोड़ा बड़ा होता है। 100 = बंद।", L"指针下的播放器略微放大。100 = 关闭。", L"指標下的播放器略微放大。100 = 關閉。", L"El reproductor crece un poco bajo el puntero. 100 = desactivado.", L"Le lecteur grandit un peu sous le pointeur. 100 = désactivé.", L"O player cresce um pouco sob o ponteiro. 100 = desligado.", L"Il player cresce un po' sotto il puntatore. 100 = disattivato.", L"Odtwarzacz lekko rośnie pod wskaźnikiem. 100 = wyłączone.", L"Oynatıcı işaretçinin altında biraz büyür. 100 = kapalı.", L"ポインターの下でプレーヤーが少し大きくなります。100 = オフ。", L"포인터 아래에서 플레이어가 조금 커집니다. 100 = 끔." },
     { L"Show only the cover until hovered", L"Лише обкладинка, доки не навести", L"Только обложка, пока не навести", L"Nur das Cover, bis man darüberfährt", L"होवर होने तक सिर्फ़ कवर दिखाएँ", L"悬停前只显示封面", L"暫留前只顯示封面", L"Solo la carátula hasta pasar el ratón", L"Seulement la pochette jusqu'au survol", L"Só a capa até passar o mouse", L"Solo la copertina finché non ci passi sopra", L"Tylko okładka, dopóki nie najedziesz", L"Üzerine gelene kadar yalnızca kapak", L"ホバーするまでカバーだけ表示", L"마우스를 올리기 전까지 커버만 표시" },
     { L"Widens to show the text and buttons under the pointer. Album art has to come first.", L"Під вказівником розширюється й показує текст і кнопки. Обкладинка має бути першою.", L"Под указателем расширяется и показывает текст и кнопки. Обложка должна быть первой.", L"Wird unter dem Mauszeiger breiter und zeigt Text und Tasten. Das Albumcover muss zuerst kommen.", L"पॉइंटर के नीचे चौड़ा होकर टेक्स्ट और बटन दिखाता है। एल्बम आर्ट पहले होना चाहिए।", L"在指针下展开以显示文字和按钮。专辑封面需排在最前。", L"在指標下展開以顯示文字和按鈕。專輯封面需排在最前。", L"Se ensancha bajo el puntero para mostrar el texto y los botones. La carátula debe ir primero.", L"S'élargit sous le pointeur pour montrer le texte et les boutons. La pochette doit être en premier.", L"Alarga sob o ponteiro para mostrar o texto e os botões. A capa tem de vir primeiro.", L"Si allarga sotto il puntatore per mostrare testo e pulsanti. La copertina deve essere per prima.", L"Pod wskaźnikiem rozszerza się, pokazując tekst i przyciski. Okładka musi być pierwsza.", L"İşaretçinin altında genişleyerek metni ve düğmeleri gösterir. Albüm kapağı önce gelmelidir.", L"ポインターの下で広がり、テキストとボタンを表示します。アルバムアートが先頭にある必要があります。", L"포인터 아래에서 넓어져 텍스트와 버튼을 보여 줍니다. 앨범 아트가 맨 앞에 있어야 합니다." },
+    { L"Glass", L"Скло", L"Стекло", L"Glas", L"ग्लास", L"玻璃", L"玻璃", L"Cristal", L"Verre", L"Vidro", L"Vetro", L"Szkło", L"Cam", L"ガラス", L"유리" },
+    { L"Mica strength", L"Сила Mica", L"Сила Mica", L"Mica-Stärke", L"Mica की तीव्रता", L"Mica 强度", L"Mica 強度", L"Intensidad de Mica", L"Intensité de Mica", L"Intensidade do Mica", L"Intensità Mica", L"Siła Mica", L"Mica yoğunluğu", L"Mica の強さ", L"Mica 강도" },
+    { L"Lower shows more of the wallpaper's colors.", L"Менше значення — більше кольорів шпалер.", L"Меньше значение — больше цветов обоев.", L"Niedriger zeigt mehr Farben des Hintergrundbilds.", L"कम करने पर वॉलपेपर के रंग ज़्यादा दिखते हैं।", L"越低越能透出壁纸的颜色。", L"越低越能透出桌布的色彩。", L"Más bajo muestra más los colores del fondo de pantalla.", L"Plus bas laisse voir davantage les couleurs du fond d'écran.", L"Mais baixo mostra mais as cores do papel de parede.", L"Più basso mostra di più i colori dello sfondo.", L"Niżej pokazuje więcej kolorów tapety.", L"Düşük değer duvar kâğıdının renklerini daha çok gösterir.", L"低いほど壁紙の色が透けて見えます。", L"낮을수록 배경 화면의 색이 더 보입니다." },
+    { L"Glow while playing", L"Сяйво під час відтворення", L"Свечение во время воспроизведения", L"Leuchten beim Abspielen", L"चलते समय चमक", L"播放时发光", L"播放時發光", L"Brillo al reproducir", L"Lueur pendant la lecture", L"Brilho ao tocar", L"Bagliore durante la riproduzione", L"Poświata podczas odtwarzania", L"Çalarken parlama", L"再生中に光る", L"재생 중 빛나기" },
+    { L"An outline in the album's color that breathes while music plays.", L"Контур кольору обкладинки, що «дихає», поки грає музика.", L"Контур цвета обложки, который «дышит», пока играет музыка.", L"Ein Rand in der Albumfarbe, der beim Abspielen sanft pulsiert.", L"एल्बम के रंग की रूपरेखा जो संगीत चलते समय धीरे-धीरे धड़कती है।", L"专辑颜色的轮廓，播放音乐时轻轻呼吸。", L"專輯色彩的輪廓，播放音樂時輕輕呼吸。", L"Un contorno del color del álbum que respira mientras suena la música.", L"Un contour à la couleur de l'album qui respire pendant la lecture.", L"Um contorno na cor do álbum que respira enquanto a música toca.", L"Un contorno del colore dell'album che respira mentre suona la musica.", L"Obrys w kolorze albumu, który oddycha podczas muzyki.", L"Müzik çalarken nefes alan albüm renginde bir kenar.", L"再生中に呼吸するように明滅する、アルバム色の輪郭。", L"음악이 재생되는 동안 숨 쉬듯 빛나는 앨범 색 윤곽." },
+    { L"Spin like a record while playing", L"Обертати, як платівку, під час відтворення", L"Вращать, как пластинку, во время воспроизведения", L"Wie eine Schallplatte drehen beim Abspielen", L"चलते समय रिकॉर्ड की तरह घुमाएँ", L"播放时像唱片一样旋转", L"播放時像唱片一樣旋轉", L"Girar como un disco al reproducir", L"Tourner comme un vinyle pendant la lecture", L"Girar como um disco ao tocar", L"Ruota come un vinile durante la riproduzione", L"Obracaj jak płytę podczas odtwarzania", L"Çalarken plak gibi dönsün", L"再生中はレコードのように回転", L"재생 중 레코드처럼 회전" },
+    { L"Round, with a hole in the middle, turning slowly while music plays.", L"Кругла, з отвором посередині, повільно обертається, поки грає музика.", L"Круглая, с отверстием посередине, медленно вращается, пока играет музыка.", L"Rund, mit Loch in der Mitte, dreht sich langsam beim Abspielen.", L"गोल, बीच में छेद के साथ, संगीत चलते समय धीरे घूमता है।", L"圆形、中间有孔，播放时缓慢旋转。", L"圓形、中間有孔，播放時緩慢旋轉。", L"Redonda, con un agujero en el centro, gira despacio mientras suena.", L"Ronde, percée au centre, elle tourne lentement pendant la lecture.", L"Redonda, com um furo no meio, gira devagar enquanto toca.", L"Rotonda, con un foro al centro, ruota lentamente durante la musica.", L"Okrągła, z otworem pośrodku, obraca się powoli podczas muzyki.", L"Yuvarlak, ortası delik, müzik çalarken yavaşça döner.", L"丸く中央に穴があり、再生中ゆっくり回ります。", L"가운데 구멍이 있는 원형으로, 음악이 나오는 동안 천천히 돕니다." },
     { L"Window color", L"Колір вікна", L"Цвет окна", L"Fensterfarbe", L"विंडो का रंग", L"窗口颜色", L"視窗色彩", L"Color de la ventana", L"Couleur de la fenêtre", L"Cor da janela", L"Colore della finestra", L"Kolor okna", L"Pencere rengi", L"ウィンドウの色", L"창 색상" },
     { L"Custom color", L"Власний колір", L"Свой цвет", L"Eigene Farbe", L"कस्टम रंग", L"自定义颜色", L"自訂色彩", L"Color personalizado", L"Couleur personnalisée", L"Cor personalizada", L"Colore personalizzato", L"Własny kolor", L"Özel renk", L"カスタム色", L"사용자 지정 색" },
     { L"Title bar color", L"Колір рядка заголовка", L"Цвет строки заголовка", L"Farbe der Titelleiste", L"शीर्षक पट्टी का रंग", L"标题栏颜色", L"標題列色彩", L"Color de la barra de título", L"Couleur de la barre de titre", L"Cor da barra de título", L"Colore della barra del titolo", L"Kolor paska tytułu", L"Başlık çubuğu rengi", L"タイトル バーの色", L"제목 표시줄 색" },
