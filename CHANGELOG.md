@@ -31,6 +31,10 @@
 
 - **Scroll to skip.** New mouse wheel action "Skip 5 seconds back or forward" for the player and the album art, and the wheel over the mini player's seek bar does the same (#121, #123).
 - **Album art shows** the cover, the icon of the app that plays, or always the stand-in icon (#113, #120).
+- **Progress bar options.** Its own background color, "Hide when nothing is playing", and "Only on hover": the bar fades in while you hover the player, ready to drag.
+- **Text alignment** for the title and artist: left, center or right (Info page).
+- **Upright text on a vertical taskbar.** "Turn the text" (Info, Vertical taskbar) can be turned off for a wide vertical taskbar.
+- **Blurred album cover background with the album art off.** It no longer needs the art on the player.
 - **A double-click doesn't run the single click too.** New option (Behaviour & Clicks) for when a button has both (#115).
 
 ### Mini player

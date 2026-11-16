@@ -22,7 +22,7 @@ A media player built into the Windows 11 taskbar, styled to fit in with the rest
 
 ### The player
 
-- Album art, title and artist, playback buttons, an audio visualizer and a progress bar you can click or drag to seek.
+- Album art, title and artist, playback buttons, an audio visualizer and a progress bar you can click or drag to seek. The bar can show only on hover.
 - Buttons for play/pause, previous, next, 5 second rewind and skip, shuffle and repeat. Show only the ones you want, in any order.
 - When more than one app is playing, switch between them with a button, a click, or by scrolling over the album art.
 - The player hides when nothing is playing, in fullscreen, or after a delay you choose, and comes back when something plays.
@@ -33,7 +33,7 @@ A media player built into the Windows 11 taskbar, styled to fit in with the rest
 - 25 positions: either side of the clock, next to the tray icons, by the Start button, over the taskbar edges and more.
 - Pick a monitor with a button, numbered like Windows. Click the selected one again to hide the player.
 - Pull the album art, track info, buttons or visualizer out of the player and put each one somewhere else, with its own background and monitor.
-- Works on vertical taskbars: the text and album art turn to read along them and the buttons stack up.
+- Works on vertical taskbars: the text and album art turn to read along them (or stay upright) and the buttons stack up.
 - Drag the player and its parts around on a copy of your taskbar in the settings window.
 
 ### Weather
@@ -51,7 +51,7 @@ A media player built into the Windows 11 taskbar, styled to fit in with the rest
 - Backgrounds: Acrylic, Mica, Mica Alt, a blurred album cover, a solid color or a gradient.
 - Colors can be `R G B` or hex, can differ between light and dark theme, and can follow the album art or your accent color.
 - Mirror the layout, change the order of the parts, and set sizes, margins and corner radius.
-- Scrolling titles that fade at the edges, full font control, and your own text for when there's no title, artist or session.
+- Scrolling titles that fade at the edges, left, center or right aligned, full font control, and your own text for when there's no title, artist or session.
 - Smooth song changes: the text fades in, the player glides to its new width, and (if you turn it on) the album art morphs between a square cover and a wide thumbnail.
 - Album art can show the cover, the app's icon, or an icon of your choice.
 

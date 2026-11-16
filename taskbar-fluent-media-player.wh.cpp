@@ -24,13 +24,6 @@ A full media player on your Windows 11 taskbar, styled to fit in with the rest o
 
 **[Report a bug or suggest a feature](https://github.com/Salyts/Taskbar-Fluent-Media-Player/issues)** · **[Discord](https://discord.com/channels/923944342991818753/1508829079187619840)** · **[Документация на русском](https://github.com/Salyts/Taskbar-Fluent-Media-Player/blob/main/README_RU.md)** · **[Donate](https://buymeacoffee.com/tfmp)**
 
-## What it looks like
-
-| Dark theme | Light theme |
-|---|---|
-| ![Dark theme](https://i.imgur.com/mhqfRNn.png) | ![Light theme](https://i.imgur.com/iplchN5.png) |
-| ![Dark theme](https://i.imgur.com/d73md9J.png) | ![Light theme](https://i.imgur.com/ZD02C2V.png) |
-
 ## Change settings in the mod's own window
 
 **Right-click the player on your taskbar and pick Settings.** The mod has its own settings window, so skip the Settings tab up here in Windhawk.
@@ -40,8 +33,17 @@ A full media player on your Windows 11 taskbar, styled to fit in with the rest o
 - Every option is in there, sorted into pages, in the Windows 11 style.
 - Changes show up on the player while you make them, and **Save** keeps them.
 - It comes in 15 languages and follows your Windows language by default.
-- Its background can be Mica or Acrylic, with adjustable transparency and blur. Acrylic shows what's behind the window, live wallpapers included.
+- Its background can be Mica, Acrylic, a blurred album cover or a color of your own, with adjustable transparency and blur.
+- The Layout page has a copy of your taskbar: drag the player and its parts to where you want them.
 - Updating from an older version? Your settings are copied over the first time it runs, so you don't lose anything.
+
+## New in 1.7.1
+
+- **Weather:** the weather from Windows' Widgets button as a part of its own, anywhere on the taskbar. It can show only when nothing plays, or take the player's place until music plays again.
+- **Hide Windows' own buttons:** Start, Search, Task View, Widgets, and in the tray the hidden icons arrow, network and volume, language, the clock and Show desktop. You can also hide the year on the clock.
+- **Smooth song changes:** the text fades in and the player glides to its new width.
+- **Lighter on power:** a frame rate setting for the visualizer, pausing on battery saver, and nothing animates with the screen off or a game fullscreen.
+- **Progress bar:** its own background color, hide it when nothing plays, or show it only on hover.
 
 ## New in 1.7
 
@@ -57,6 +59,7 @@ A full media player on your Windows 11 taskbar, styled to fit in with the rest o
 
 ### The player
 
+- Album art, title and artist, playback buttons, an audio visualizer and a progress bar you can drag to seek.
 - Buttons for play/pause, previous, next, 5 second rewind and skip, shuffle and repeat. Show only the ones you want, in any order.
 - When more than one app is playing, switch between them with a button, a click, or by scrolling over the album art.
 - It hides when nothing is playing, in fullscreen, or after a delay you choose, then comes back as soon as something plays.
@@ -66,13 +69,14 @@ A full media player on your Windows 11 taskbar, styled to fit in with the rest o
 
 - 25 places to put it: either side of the clock, next to the tray icons, by the Start button, over the taskbar edges and more.
 - Mirror it, change the order of the parts, set min/max width and height, and give each element its own margins.
+- Works on vertical taskbars, with the text turned along it or kept upright.
 
 ### Appearance
 
 - **Backgrounds:** Acrylic, Mica, Mica Alt, a blurred album cover, a solid color or a gradient, with adjustable corner radius.
 - **Colors:** `R G B` or hex, with a separate color for light and dark theme if you want. They can also follow the album art or your accent color.
-- **Text:** scrolling titles in Bounce or Loop mode, full font control, and your own text for a missing title, a missing artist, or nothing playing.
-- **Album art:** size, corner radius, the source app's icon in a corner, a pause overlay, and a placeholder icon when there's no art.
+- **Text:** scrolling titles in Bounce or Loop mode, left, center or right aligned, full font control, and your own text for a missing title, a missing artist, or nothing playing.
+- **Album art:** size, corner radius, the source app's icon in a corner, a pause overlay, and a placeholder icon when there's no art. It can show the app's icon instead of the cover.
 - **Buttons:** Segoe Fluent Icons or MDL2 Assets, outline or filled, plus size, spacing, corner radius, color and opacity.
 
 ### Visualizer
@@ -84,8 +88,8 @@ A full media player on your Windows 11 taskbar, styled to fit in with the rest o
 ### Mini player
 
 - Album art, title and artist, a seek bar, playback buttons and the list of what's playing.
-- Opens right above the player or at a fixed spot on screen, with offsets and a slide-in animation. Bind "Open player menu" to a click to use it.
-- Acrylic, solid color, album gradient or blurred cover background.
+- Opens next to the player or at a fixed spot on screen, with offsets and a slide-in animation. Bind "Open player menu" to a click to use it.
+- Acrylic, Mica, Mica Alt, solid color, album gradient or blurred cover background.
 
 ### Mouse and right-click menu
 
@@ -198,6 +202,10 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       #! $showIf: {sidebarEnabled: true, settingsView: full}
       $name: Sidebar text reads top-to-bottom
       $description: By default the rotated text is turned a quarter turn to the left, so it reads bottom-to-top. Enable to turn it the other way instead, so it reads top-to-bottom.
+    - sidebarRotateText: true
+      #! $showIf: {sidebarEnabled: true}
+      $name: Turn the track text in sidebar mode
+      $description: Turns the title and artist to read along a vertical taskbar. Disable to keep them horizontal, for a wide vertical taskbar.
     - sidebarRotateAlbumArt: true
       #! $showIf: {sidebarEnabled: true}
       $name: Rotate album art in sidebar mode
@@ -258,6 +266,21 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
     - progressBarOpacity: 100
       #! $showIf: {showProgressBar: true}
       $name: Progress bar opacity (%)
+    - progressBarTrackColor: "128 128 128"
+      #! $showIf: {showProgressBar: true}
+      $name: Progress bar background color (R G B)
+      $description: The part of the bar that isn't filled yet.
+    - progressBarTrackOpacity: 25
+      #! $showIf: {showProgressBar: true}
+      $name: Progress bar background opacity (%)
+    - progressBarHideIdle: false
+      #! $showIf: {showProgressBar: true}
+      $name: Hide the progress bar when nothing is playing
+      $description: No bar while there's no song (or it has no length), so only the buttons and text show.
+    - progressBarOnHover: false
+      #! $showIf: {showProgressBar: true}
+      $name: Show the progress bar only on hover
+      $description: The bar fades in while the pointer is over the player (or the part it sits under), ready to drag.
     $name: Progress bar
 
   - AlbumArtSetting:
@@ -384,6 +407,14 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       - artist: Artist
       - album: Album name
       - album_if_no_art: Album name when there's no album art
+    - infoTextAlign: auto
+      $name: Text alignment
+      $description: Where the title and artist sit in the info area. Auto is left, or right with "Mirror layout".
+      $options:
+      - auto: Auto
+      - left: Left
+      - center: Center
+      - right: Right
     - titleFormat: ""
       #! $showIf: {settingsView: full}
       $name: Title format
@@ -2657,6 +2688,12 @@ struct ModSettings {
     bool         sidebarStackButtons  = true;
     int          sidebarThickness     = 0;
     bool         showProgressBar      = false;
+    std::wstring progressBarTrackColor = L"128 128 128";
+    int          progressBarTrackOpacity = 25;
+    bool         progressBarHideIdle  = false;
+    bool         progressBarOnHover   = false;
+    bool         sidebarRotateText    = true;
+    int          infoTextAlign        = -1;   // -1 auto (left, right when mirrored), 0 left, 1 center, 2 right
     ProgressBarPosition progressBarPosition = ProgressBarPosition::UnderBoth;
     ProgressBarDisplay progressBarDisplayMode = ProgressBarDisplay::Inline;
     int          progressBarOverlayOffsetY = 0;
@@ -3056,6 +3093,11 @@ static constexpr SettingSpec SETTINGS[] = {
     SBool(L"MainSettings.PlayerSetting.sidebarStackButtons", &ModSettings::sidebarStackButtons),
     SInt(L"MainSettings.PlayerSetting.sidebarThickness", 0, 400, &ModSettings::sidebarThickness),
     SBool(L"MainSettings.ProgressBarSettings.showProgressBar", &ModSettings::showProgressBar),
+    SStr(L"MainSettings.ProgressBarSettings.progressBarTrackColor", L"128 128 128", &ModSettings::progressBarTrackColor),
+    SInt(L"MainSettings.ProgressBarSettings.progressBarTrackOpacity", 0, 100, &ModSettings::progressBarTrackOpacity),
+    SBool(L"MainSettings.ProgressBarSettings.progressBarHideIdle", &ModSettings::progressBarHideIdle),
+    SBool(L"MainSettings.ProgressBarSettings.progressBarOnHover", &ModSettings::progressBarOnHover),
+    SBool(L"MainSettings.PlayerSetting.sidebarRotateText", &ModSettings::sidebarRotateText),
     SBool(L"MainSettings.ProgressBarSettings.progressBarSeekable", &ModSettings::progressBarSeekable),
     SStr(L"MainSettings.ProgressBarSettings.progressBarPosition", L"under_both"),
     SStr(L"MainSettings.ProgressBarSettings.progressBarDisplayMode", L"inline"),
@@ -3099,6 +3141,7 @@ static constexpr SettingSpec SETTINGS[] = {
     SBool(L"MainSettings.TextAreaSetting.showTrackArtist", &ModSettings::showTrackArtist),
     SBool(L"MainSettings.TextAreaSetting.showArtistAsTime", &ModSettings::showArtistAsTime),
     SStr(L"MainSettings.TextAreaSetting.artistLineContent", L"artist", &ModSettings::artistLineContent),
+    SStr(L"MainSettings.TextAreaSetting.infoTextAlign", L"auto"),
     SStrRaw(L"MainSettings.TextAreaSetting.titleFormat", &ModSettings::titleFormat),
     SStrRaw(L"MainSettings.TextAreaSetting.artistFormat", &ModSettings::artistFormat),
     SInt(L"MainSettings.TextAreaSetting.infoOrder", 1, 4, &ModSettings::infoOrder),
@@ -3679,6 +3722,10 @@ COLD_UNOPTIMIZED static void LoadSettings() {
     g_settings.weatherPosition = ParseSettingChoice(Str(L"MainSettings.WeatherSetting.weatherPosition", L"tray_left"),
                                                         PLAYER_POSITIONS, PlayerPosition::TrayLeft);
     g_settings.weatherMonitor  = NormalizeMonitor(Int(L"MainSettings.WeatherSetting.weatherMonitor", MONITOR_OFF, 64, 1));
+    {
+        const std::wstring align = Str(L"MainSettings.TextAreaSetting.infoTextAlign", L"auto");
+        g_settings.infoTextAlign = align == L"left" ? 0 : align == L"center" ? 1 : align == L"right" ? 2 : -1;
+    }
     if (g_settings.weatherReplacesPlayer) {   // in the player's spot, so the two swap in place
         g_settings.weatherPosition = g_settings.position;
         g_settings.weatherMonitor  = GetEffectiveMonitorSetting();
@@ -8711,6 +8758,14 @@ static double GetAvailableScrollTextAreaWidth() {
         // ~48 px strip width and found no columns, clipping titles to 4 characters.
         double sidebarLen = SidebarTextRunLength();
         if (sidebarLen > 0.0) return sidebarLen;
+        // Upright text on a vertical taskbar: the strip's width is the room.
+        if (IsSidebarMode() && !g_settings.sidebarRotateText) {
+            if (auto box = FindMediaChild(TEXT_CONTAINER_NAME))
+                if (auto parent = VisualTreeHelper::GetParent(box).try_as<FrameworkElement>())
+                    if (parent.ActualWidth() > 0)
+                        return std::max(0.0, parent.ActualWidth() - g_settings.textAreaLeftMargin - g_settings.textAreaRightMargin);
+            return 0.0;
+        }
 
         if (g_settings.playerMaxWidth <= 0) return 0.0;
         // playerMaxWidth caps the shared player widget as a whole; once info is
@@ -10509,6 +10564,23 @@ COLD_UNOPTIMIZED static Grid BuildAlbumArtContainer() {
     return artContainer;
 }
 
+// "Text alignment": auto follows Mirror layout, as it always has.
+static HorizontalAlignment InfoHAlign() {
+    switch (g_settings.infoTextAlign) {
+        case 0: return HorizontalAlignment::Left;
+        case 1: return HorizontalAlignment::Center;
+        case 2: return HorizontalAlignment::Right;
+    }
+    return g_settings.mirrorLayout ? HorizontalAlignment::Right : HorizontalAlignment::Left;
+}
+static TextAlignment InfoTextAlign() {
+    switch (InfoHAlign()) {
+        case HorizontalAlignment::Center: return TextAlignment::Center;
+        case HorizontalAlignment::Right:  return TextAlignment::Right;
+        default:                          return TextAlignment::Left;
+    }
+}
+
 COLD_UNOPTIMIZED static Border BuildTextContainer() {
     if (!(g_settings.showTrackTitle || g_settings.showTrackArtist)) return nullptr;
     auto textClr = TextColor();
@@ -10519,11 +10591,7 @@ COLD_UNOPTIMIZED static Border BuildTextContainer() {
     textContainer.VerticalAlignment(VerticalAlignment::Center);
     g_infoContainerShown = true;   // new container: shown until its first refresh decides
 
-    if (!g_settings.mirrorLayout) {
-        textContainer.HorizontalAlignment(HorizontalAlignment::Left);
-    } else {
-        textContainer.HorizontalAlignment(HorizontalAlignment::Right);
-    }
+    textContainer.HorizontalAlignment(InfoHAlign());
 
     if (g_settings.textAreaMinWidth > 0) {
         textContainer.MinWidth((double)g_settings.textAreaMinWidth);
@@ -10556,7 +10624,7 @@ COLD_UNOPTIMIZED static Border BuildTextContainer() {
     if (g_settings.enableTitleScrolling || g_settings.enableArtistScrolling) {
         textStack.HorizontalAlignment(HorizontalAlignment::Stretch);
     } else {
-        textStack.HorizontalAlignment(g_settings.mirrorLayout ? HorizontalAlignment::Right : HorizontalAlignment::Left);
+        textStack.HorizontalAlignment(InfoHAlign());
     }
     textStack.Spacing((double)g_settings.textSpacing);
 
@@ -10609,7 +10677,7 @@ COLD_UNOPTIMIZED static Border BuildTextContainer() {
             titleBlock.Foreground(MakeBrush(textClr));
             titleBlock.TextWrapping(TextWrapping::NoWrap);
             titleBlock.TextTrimming(TextTrimming::CharacterEllipsis);
-            titleBlock.TextAlignment(g_settings.mirrorLayout ? TextAlignment::Right : TextAlignment::Left);
+            titleBlock.TextAlignment(InfoTextAlign());
         }
 
         if (g_settings.showTrackArtist) {
@@ -10657,14 +10725,14 @@ COLD_UNOPTIMIZED static Border BuildTextContainer() {
             artistBlock.Foreground(MakeBrush(artistClr));
             artistBlock.TextWrapping(TextWrapping::NoWrap);
             artistBlock.TextTrimming(TextTrimming::CharacterEllipsis);
-            artistBlock.TextAlignment(g_settings.mirrorLayout ? TextAlignment::Right : TextAlignment::Left);
+            artistBlock.TextAlignment(InfoTextAlign());
         }
 
         auto MakeScrollView = [&](Canvas& scrollView, TextBlock& block, const wchar_t* viewName, const wchar_t* blockName, const wchar_t* cloneName) {
             scrollView = Canvas();
             scrollView.Name(viewName);
             scrollView.VerticalAlignment(VerticalAlignment::Center);
-            scrollView.HorizontalAlignment(g_settings.mirrorLayout ? HorizontalAlignment::Right : HorizontalAlignment::Left);
+            scrollView.HorizontalAlignment(InfoHAlign());
 
             scrollView.Width(100.0);
             block.Name(blockName);
@@ -10786,7 +10854,7 @@ COLD_UNOPTIMIZED static Border BuildTextContainer() {
 // Turns the text along a vertical taskbar. Here so detached info gets it too.
 // RenderTransform doesn't affect layout: explicit size, a swapped-size holder.
 static FrameworkElement WrapSidebarText(Border const& textEl) {
-    if (!textEl || !IsSidebarMode()) return textEl;
+    if (!textEl || !IsSidebarMode() || !g_settings.sidebarRotateText) return textEl;
 
     double textLen = (double)g_settings.sidebarTextLength;
     double textThick = (g_settings.sidebarThickness > 0)
@@ -13796,6 +13864,51 @@ static void CloseMiniPlayerBeforeRebuild() {
 // ---- [UI] Progress bar and player grid ----
 static bool g_mainProgressDragging = false;
 
+// "Only on hover": the bar fades in while the pointer is over the player, or
+// over the part it sits under, and out again (not mid-drag).
+static void FadeElement(UIElement const& el, double to) {
+    try {
+        Storyboard sb;
+        DoubleAnimation a;
+        a.To(to);
+        a.Duration(DurationHelper::FromTimeSpan(std::chrono::milliseconds(160)));
+        Storyboard::SetTarget(a, el);
+        Storyboard::SetTargetProperty(a, L"Opacity");
+        sb.Children().Append(a);
+        sb.Begin();
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+}
+static void WireProgressBarHover(Border const& track) {
+    track.Opacity(0.0);
+    auto wired = std::make_shared<bool>(false);
+    track.Loaded([wired](winrt::Windows::Foundation::IInspectable const& sender, RoutedEventArgs const&) {
+        if (*wired) return;
+        auto bar = sender.try_as<Border>();
+        if (!bar) return;
+        // The player, or the detached part, the bar sits in: hovering any of it shows the bar.
+        FrameworkElement host{nullptr};
+        try {
+            for (DependencyObject cur = bar; cur; cur = VisualTreeHelper::GetParent(cur)) {
+                auto fe = cur.try_as<FrameworkElement>();
+                if (!fe) continue;
+                const std::wstring name = fe.Name().c_str();
+                if (name == GRID_NAME || name.rfind(L"FluentMediaDetached", 0) == 0) { host = fe; break; }
+            }
+        } catch (...) { LOG_IGNORED_EXCEPTION(); }
+        if (!host) host = bar;
+        *wired = true;
+        winrt::weak_ref<Border> weakBar = bar;
+        host.AddHandler(UIElement::PointerEnteredEvent(), winrt::box_value(PointerEventHandler(
+            [weakBar](winrt::Windows::Foundation::IInspectable const&, PointerRoutedEventArgs const&) {
+                if (auto b = weakBar.get()) FadeElement(b, 1.0);
+            })), true);
+        host.AddHandler(UIElement::PointerExitedEvent(), winrt::box_value(PointerEventHandler(
+            [weakBar](winrt::Windows::Foundation::IInspectable const&, PointerRoutedEventArgs const&) {
+                if (auto b = weakBar.get(); b && !g_mainProgressDragging) FadeElement(b, 0.0);
+            })), true);
+    });
+}
+
 // The bar's color, again whenever the album's colors change.
 static void PaintMainProgressFill() {
     if (!g_mainProgressFillRef) return;
@@ -13888,7 +14001,9 @@ static Border BuildMainProgressBar() {
     }
     // Caller sets VerticalAlignment (Top for "above", Bottom for "under").
     track.IsHitTestVisible(g_settings.progressBarSeekable);
-    track.Background(MakeBrush({0x40, 0x80, 0x80, 0x80}));
+    track.Background(MakeBrush(ParseColorWithSpecialValues(g_settings.progressBarTrackColor,
+                                                           OpacityToAlpha(g_settings.progressBarTrackOpacity))));
+    if (g_settings.progressBarOnHover) WireProgressBarHover(track);
 
     Border fill;
     fill.Name(L"FluentMedia_ProgressBarFill");
@@ -13949,6 +14064,18 @@ static void RefreshMainProgressBar() {
     double ratio = (durTicks > 0)
         ? std::clamp((double)posTicks / (double)durTicks, 0.0, 1.0)
         : 0.0;
+
+    // "Hide when nothing is playing": no bar without a song with a length.
+    try {
+        if (auto inner = VisualTreeHelper::GetParent(g_mainProgressFillRef))
+            if (auto track = VisualTreeHelper::GetParent(inner).try_as<FrameworkElement>()) {
+                bool hasMedia = false;
+                { std::lock_guard<std::mutex> lk(g_mediaMtx); hasMedia = g_media.hasMedia; }
+                const bool show = !g_settings.progressBarHideIdle || (hasMedia && durTicks > 0);
+                const auto vis = show ? Visibility::Visible : Visibility::Collapsed;
+                if (track.Visibility() != vis) track.Visibility(vis);
+            }
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
 
     try {
         if (auto st = g_mainProgressFillRef.RenderTransform()
@@ -15227,6 +15354,44 @@ static bool RefreshAlbumArt(const PlayerSnapshot& m) {
         g_cachedAlbumPalette = ExtractAlbumPalette(thumbBytes);
         g_cachedPaletteHash = (size_t)thumbHash;
         paletteChanged = true;
+    }
+
+    // "Blurred album cover" with no album art shown: the background still
+    // gets the cover (it used to need the art on the player to show at all).
+    if (g_settings.backgroundType == BackgroundType::AlbumArtBlur && !FindMediaChild(ART_IMAGE_NAME)) {
+        static uint64_t s_blurredFor = 0;
+        static void* s_blurredOn = nullptr;
+        if (auto bgBorder = FindMediaChild(L"FluentMedia_Background").try_as<Border>()) {
+            try {
+                void* on = winrt::get_abi(bgBorder);
+                if (thumbBytes.empty()) {
+                    if (s_blurredFor) { bgBorder.Background(nullptr); bgBorder.Visibility(Visibility::Collapsed); }
+                    s_blurredFor = 0;
+                } else if (thumbHash != s_blurredFor || on != s_blurredOn) {
+                    s_blurredFor = thumbHash;
+                    s_blurredOn = on;
+                    auto apply = [bgBorder, bytes = thumbBytes]() {
+                        try {
+                            const int w = (int)bgBorder.ActualWidth(), h = (int)bgBorder.ActualHeight();
+                            if (w <= 0 || h <= 0) return false;
+                            g_blurBgCache.Invalidate();
+                            bgBorder.Background(MakeAlbumBlurBrush(bytes, w, h));
+                            bgBorder.Opacity(g_settings.blurOpacity / 100.0);
+                            bgBorder.Visibility(Visibility::Visible);
+                            return true;
+                        } catch (...) { LOG_IGNORED_EXCEPTION(); }
+                        return false;
+                    };
+                    bgBorder.Visibility(Visibility::Visible);
+                    if (!apply()) {
+                        auto token = std::make_shared<winrt::event_token>();
+                        *token = bgBorder.SizeChanged([apply, bgBorder, token](auto const&, auto const&) {
+                            if (apply()) try { bgBorder.SizeChanged(*token); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+                        });
+                    }
+                }
+            } catch (...) { LOG_IGNORED_EXCEPTION(); }
+        }
     }
 
     if (auto fe = FindMediaChild(ART_IMAGE_NAME))
@@ -20559,6 +20724,13 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
             RowSlider(L"Height", L"MainSettings.ProgressBarSettings.progressBarHeight", L"2", 1, 20),
             RowColorAlpha(L"Color", L"MainSettings.ProgressBarSettings.progressBarColor", L"-1 -1 -1",
                           L"Progress bar opacity", L"MainSettings.ProgressBarSettings.progressBarOpacity"),
+            WithDesc(RowColorAlpha(L"Background color", L"MainSettings.ProgressBarSettings.progressBarTrackColor", L"128 128 128",
+                                   L"Background opacity", L"MainSettings.ProgressBarSettings.progressBarTrackOpacity"),
+                     L"The part of the bar that isn't filled yet."),
+            WithDesc(RowBool(L"Hide when nothing is playing", L"MainSettings.ProgressBarSettings.progressBarHideIdle"),
+                     L"No empty bar without a song."),
+            WithDesc(RowBool(L"Only on hover", L"MainSettings.ProgressBarSettings.progressBarOnHover"),
+                     L"Fades in while the pointer is over the player, ready to drag."),
         };
         SettingCard animation;
         animation.title = L"Animation";
@@ -20681,6 +20853,9 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
                      L"Shows 2:02/4:24 while playing."),
             RowCombo(L"Second line shows", L"MainSettings.TextAreaSetting.artistLineContent", L"artist",
                      { {L"artist", L"Artist"}, {L"album", L"Album name"}, {L"album_if_no_art", L"Album name when there's no album art"} }),
+            WithDesc(RowCombo(L"Text alignment", L"MainSettings.TextAreaSetting.infoTextAlign", L"auto",
+                              { {L"auto", L"Auto"}, {L"left", L"Left"}, {L"center", L"Center"}, {L"right", L"Right"} }),
+                     L"Auto is left, or right with Mirror layout."),
             WithDesc(RowTextAllowEmpty(L"Title format", L"MainSettings.TextAreaSetting.titleFormat"),
                      L"Empty = track title. %title%, %artist%, %album%, %artist_or_album%"),
             WithDesc(RowTextAllowEmpty(L"Second line format", L"MainSettings.TextAreaSetting.artistFormat"),
@@ -20746,6 +20921,8 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
         SettingCard sidebarInfoCard;
         sidebarInfoCard.title = L"Vertical taskbar";
         sidebarInfoCard.rows = {
+            WithDesc(RowBool(L"Turn the text", L"MainSettings.PlayerSetting.sidebarRotateText"),
+                     L"Off keeps it horizontal, for a wide vertical taskbar."),
             WithDesc(RowText(L"Text length (px)", L"MainSettings.PlayerSetting.sidebarTextLength", L"120", true),
                      L"How long the turned text runs along the strip."),
             WithDesc(RowBool(L"Text reads top-to-bottom", L"MainSettings.PlayerSetting.sidebarFlipTextDirection"),
@@ -22392,6 +22569,15 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"15/11/2026 shows as 15/11.", L"15/11/2026 показується як 15/11.", L"15/11/2026 показывается как 15/11.", L"15/11/2026 wird als 15/11 angezeigt.", L"15/11/2026, 15/11 के रूप में दिखेगा।", L"15/11/2026 显示为 15/11。", L"15/11/2026 顯示為 15/11。", L"15/11/2026 se muestra como 15/11.", L"15/11/2026 s'affiche 15/11.", L"15/11/2026 aparece como 15/11.", L"15/11/2026 appare come 15/11.", L"15/11/2026 wyświetla się jako 15/11.", L"15/11/2026, 15/11 olarak görünür.", L"15/11/2026 は 15/11 と表示されます。", L"15/11/2026이 15/11로 표시됩니다." },
     { L"Morph album art between shapes", L"Плавно змінювати форму обкладинки", L"Плавно менять форму обложки", L"Albumcover zwischen Formen überblenden", L"एल्बम आर्ट का आकार धीरे से बदलें", L"专辑封面在形状间平滑变换", L"專輯封面在形狀間平滑變換", L"Transformar la carátula entre formas", L"Transformer la pochette d'une forme à l'autre", L"Transformar a capa entre formatos", L"Trasforma la copertina tra le forme", L"Płynna zmiana kształtu okładki", L"Albüm kapağını şekiller arasında dönüştür", L"アルバムアートの形をなめらかに変える", L"앨범 아트 모양을 부드럽게 바꾸기" },
     { L"A square cover stretches into a wide thumbnail and back.", L"Квадратна обкладинка розтягується в широку мініатюру й назад.", L"Квадратная обложка растягивается в широкую миниатюру и обратно.", L"Ein quadratisches Cover dehnt sich zu einem breiten Vorschaubild und zurück.", L"चौकोर कवर चौड़े थंबनेल में फैलता है और वापस आता है।", L"方形封面会伸展成宽缩略图，再变回来。", L"方形封面會伸展成寬縮圖，再變回來。", L"Una carátula cuadrada se estira hasta una miniatura ancha y vuelve.", L"Une pochette carrée s'étire en vignette large, et inversement.", L"Uma capa quadrada se estica até uma miniatura larga e volta.", L"Una copertina quadrata si allarga in una miniatura larga e torna indietro.", L"Kwadratowa okładka rozciąga się w szeroką miniaturę i z powrotem.", L"Kare kapak geniş küçük resme uzar ve geri döner.", L"四角いカバーが横長のサムネイルへ伸び、また戻ります。", L"정사각형 커버가 넓은 썸네일로 늘어났다가 돌아옵니다." },
+    { L"The part of the bar that isn't filled yet.", L"Частина смуги, яка ще не заповнена.", L"Часть полосы, которая ещё не заполнена.", L"Der noch nicht gefüllte Teil des Balkens.", L"बार का वह हिस्सा जो अभी भरा नहीं है।", L"进度条中尚未填充的部分。", L"進度列中尚未填滿的部分。", L"La parte de la barra que aún no se ha llenado.", L"La partie de la barre pas encore remplie.", L"A parte da barra que ainda não foi preenchida.", L"La parte della barra non ancora riempita.", L"Niewypełniona jeszcze część paska.", L"Çubuğun henüz dolmamış kısmı.", L"まだ埋まっていないバーの部分。", L"아직 채워지지 않은 막대 부분." },
+    { L"No empty bar without a song.", L"Без пісні немає порожньої смуги.", L"Без песни нет пустой полосы.", L"Ohne Lied kein leerer Balken.", L"गाना न हो तो खाली बार नहीं दिखेगा।", L"没有歌曲时不显示空进度条。", L"沒有歌曲時不顯示空進度列。", L"Sin canción, no hay barra vacía.", L"Pas de barre vide sans morceau.", L"Sem música, nada de barra vazia.", L"Nessuna barra vuota senza brano.", L"Bez utworu nie ma pustego paska.", L"Şarkı yokken boş çubuk görünmez.", L"曲がないときは空のバーを出しません。", L"곡이 없으면 빈 막대를 표시하지 않습니다." },
+    { L"Only on hover", L"Лише при наведенні", L"Только при наведении", L"Nur beim Darüberfahren", L"सिर्फ़ होवर पर", L"仅在悬停时", L"僅在暫留時", L"Solo al pasar el ratón", L"Seulement au survol", L"Só ao passar o mouse", L"Solo al passaggio del mouse", L"Tylko po najechaniu", L"Yalnızca üzerine gelince", L"ホバー時のみ", L"마우스를 올렸을 때만" },
+    { L"Fades in while the pointer is over the player, ready to drag.", L"З'являється, коли вказівник над програвачем, і її можна тягнути.", L"Появляется, когда указатель над плеером, и её можно тянуть.", L"Blendet ein, solange der Mauszeiger über dem Player ist, bereit zum Ziehen.", L"पॉइंटर प्लेयर पर होने पर दिखता है, खींचने के लिए तैयार।", L"指针在播放器上时淡入，可直接拖动。", L"指標在播放器上時淡入，可直接拖曳。", L"Aparece mientras el puntero está sobre el reproductor, lista para arrastrar.", L"Apparaît quand le pointeur survole le lecteur, prête à être glissée.", L"Aparece enquanto o ponteiro está sobre o player, pronta para arrastar.", L"Appare quando il puntatore è sul player, pronta da trascinare.", L"Pojawia się, gdy wskaźnik jest nad odtwarzaczem, gotowy do przeciągnięcia.", L"İşaretçi oynatıcının üzerindeyken belirir, sürüklemeye hazır.", L"ポインターがプレーヤー上にあると表示され、そのままドラッグできます。", L"포인터가 플레이어 위에 있으면 나타나고 바로 끌 수 있습니다." },
+    { L"Text alignment", L"Вирівнювання тексту", L"Выравнивание текста", L"Textausrichtung", L"टेक्स्ट संरेखण", L"文本对齐", L"文字對齊", L"Alineación del texto", L"Alignement du texte", L"Alinhamento do texto", L"Allineamento del testo", L"Wyrównanie tekstu", L"Metin hizalama", L"テキストの配置", L"텍스트 정렬" },
+    { L"Auto is left, or right with Mirror layout.", L"«Авто» — ліворуч або праворуч із дзеркальним розташуванням.", L"«Авто» — слева или справа при зеркальном расположении.", L"Auto ist links, mit gespiegeltem Layout rechts.", L"ऑटो बाएँ है, या मिरर लेआउट में दाएँ।", L"自动为左对齐，镜像布局时为右对齐。", L"自動為靠左，鏡像版面時為靠右。", L"Auto es a la izquierda, o a la derecha con el diseño reflejado.", L"Auto est à gauche, ou à droite avec la disposition en miroir.", L"Auto é à esquerda, ou à direita com o layout espelhado.", L"Auto è a sinistra, o a destra con il layout specchiato.", L"Auto to lewo albo prawo przy lustrzanym układzie.", L"Otomatik sola, ayna düzeninde sağa.", L"自動は左、ミラー レイアウトでは右です。", L"자동은 왼쪽, 미러 레이아웃에서는 오른쪽입니다." },
+    { L"Auto", L"Авто", L"Авто", L"Auto", L"ऑटो", L"自动", L"自動", L"Auto", L"Auto", L"Auto", L"Auto", L"Auto", L"Otomatik", L"自動", L"자동" },
+    { L"Turn the text", L"Повертати текст", L"Поворачивать текст", L"Text drehen", L"टेक्स्ट घुमाएँ", L"旋转文字", L"旋轉文字", L"Girar el texto", L"Faire pivoter le texte", L"Girar o texto", L"Ruota il testo", L"Obracaj tekst", L"Metni döndür", L"テキストを回転", L"텍스트 회전" },
+    { L"Off keeps it horizontal, for a wide vertical taskbar.", L"Вимкнено — текст горизонтальний, для широкої вертикальної панелі.", L"Выключено — текст горизонтальный, для широкой вертикальной панели.", L"Aus lässt ihn waagerecht, für eine breite senkrechte Taskleiste.", L"बंद करने पर टेक्स्ट सीधा रहता है, चौड़ी वर्टिकल टास्कबार के लिए।", L"关闭时保持水平，适合较宽的竖向任务栏。", L"關閉時保持水平，適合較寬的直向工作列。", L"Desactivado lo deja horizontal, para una barra de tareas vertical ancha.", L"Désactivé, il reste horizontal, pour une barre des tâches verticale large.", L"Desligado o mantém horizontal, para uma barra de tarefas vertical larga.", L"Disattivato lo lascia orizzontale, per una barra verticale larga.", L"Wyłączone zostawia go poziomo, dla szerokiego pionowego paska.", L"Kapalıyken yatay kalır, geniş dikey görev çubuğu için.", L"オフにすると横書きのまま。幅の広い縦のタスク バー向け。", L"끄면 가로로 유지됩니다. 넓은 세로 작업 표시줄용." },
     { L"Window color", L"Колір вікна", L"Цвет окна", L"Fensterfarbe", L"विंडो का रंग", L"窗口颜色", L"視窗色彩", L"Color de la ventana", L"Couleur de la fenêtre", L"Cor da janela", L"Colore della finestra", L"Kolor okna", L"Pencere rengi", L"ウィンドウの色", L"창 색상" },
     { L"Custom color", L"Власний колір", L"Свой цвет", L"Eigene Farbe", L"कस्टम रंग", L"自定义颜色", L"自訂色彩", L"Color personalizado", L"Couleur personnalisée", L"Cor personalizada", L"Colore personalizzato", L"Własny kolor", L"Özel renk", L"カスタム色", L"사용자 지정 색" },
     { L"Title bar color", L"Колір рядка заголовка", L"Цвет строки заголовка", L"Farbe der Titelleiste", L"शीर्षक पट्टी का रंग", L"标题栏颜色", L"標題列色彩", L"Color de la barra de título", L"Couleur de la barre de titre", L"Cor da barra de título", L"Colore della barra del titolo", L"Kolor paska tytułu", L"Başlık çubuğu rengi", L"タイトル バーの色", L"제목 표시줄 색" },
@@ -22879,6 +23065,7 @@ static const RowRule ROW_RULES[] = {
     { L"MainSettings.PlayerSetting.sidebarTextLength", 0, false, L"MainSettings.PlayerSetting.sidebarEnabled", L"true" },
     { L"MainSettings.PlayerSetting.sidebarFlipTextDirection", 1, false, L"MainSettings.PlayerSetting.sidebarEnabled", L"true" },
     { L"MainSettings.PlayerSetting.sidebarRotateAlbumArt", 2, false, L"MainSettings.PlayerSetting.sidebarEnabled", L"true" },
+    { L"MainSettings.PlayerSetting.sidebarRotateText", 6405, false, L"MainSettings.PlayerSetting.sidebarEnabled", L"true" },
     { L"MainSettings.PlayerSetting.sidebarStackButtons", 3, false, L"MainSettings.PlayerSetting.sidebarEnabled", L"true" },
     { L"MainSettings.PlayerSetting.sidebarThickness", 4, false, L"MainSettings.PlayerSetting.sidebarEnabled", L"true" },
     { L"MainSettings.ProgressBarSettings.progressBarSeekable", 140, false, L"MainSettings.ProgressBarSettings.showProgressBar", L"true" },
@@ -22890,6 +23077,10 @@ static const RowRule ROW_RULES[] = {
     { L"MainSettings.ProgressBarSettings.progressBarHeight", 9, false, L"MainSettings.ProgressBarSettings.showProgressBar", L"true" },
     { L"MainSettings.ProgressBarSettings.progressBarColor", 10, false, L"MainSettings.ProgressBarSettings.showProgressBar", L"true" },
     { L"MainSettings.ProgressBarSettings.progressBarOpacity", 139, false, L"MainSettings.ProgressBarSettings.showProgressBar", L"true" },
+    { L"MainSettings.ProgressBarSettings.progressBarTrackColor", 6401, false, L"MainSettings.ProgressBarSettings.showProgressBar", L"true" },
+    { L"MainSettings.ProgressBarSettings.progressBarTrackOpacity", 6402, false, L"MainSettings.ProgressBarSettings.showProgressBar", L"true" },
+    { L"MainSettings.ProgressBarSettings.progressBarHideIdle", 6403, false, L"MainSettings.ProgressBarSettings.showProgressBar", L"true" },
+    { L"MainSettings.ProgressBarSettings.progressBarOnHover", 6404, false, L"MainSettings.ProgressBarSettings.showProgressBar", L"true" },
     { L"MainSettings.AlbumArtSetting.albumArtOrder", 11, false, L"MainSettings.AlbumArtSetting.showAlbumArt", L"true" },
     { L"MainSettings.AlbumArtSetting.albumArtDetached", 12, false, L"MainSettings.AlbumArtSetting.showAlbumArt", L"true" },
     { L"MainSettings.AlbumArtSetting.albumArtDetachedPosition", 13, false, L"MainSettings.AlbumArtSetting.showAlbumArt", L"true" },
