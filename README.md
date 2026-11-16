@@ -67,6 +67,7 @@ A media player built into the Windows 11 taskbar, styled to fit in with the rest
 
 - Album art, title and artist, a seek bar, playback buttons and the list of what's playing.
 - Opens right next to the player or at a fixed spot on screen.
+- Full or compact layout, with its own visualizer if you want one.
 - Acrylic, Mica, Mica Alt, solid, album gradient or blurred cover background.
 - A button switches the visualizer between the app in the player and everything on the PC.
 

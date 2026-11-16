@@ -31,7 +31,8 @@
 
 - **Scroll to skip.** New mouse wheel action "Skip 5 seconds back or forward" for the player and the album art, and the wheel over the mini player's seek bar does the same (#121, #123).
 - **Album art shows** the cover, the icon of the app that plays, or always the stand-in icon (#113, #120).
-- **Progress bar options.** Its own background color, "Hide when nothing is playing", and "Only on hover": the bar fades in while you hover the player, ready to drag.
+- **Grow on hover.** The player grows a little under the pointer (Appearance, Animation; 100% = off).
+- **Progress bar options.** A taller bar on hover so it's easier to grab, its own background color, "Hide when nothing is playing", and "Only on hover": the bar fades in while you hover the player, ready to drag.
 - **Text alignment** for the title and artist: left, center or right (Info page).
 - **Upright text on a vertical taskbar.** "Turn the text" (Info, Vertical taskbar) can be turned off for a wide vertical taskbar.
 - **Blurred album cover background with the album art off.** It no longer needs the art on the player.
@@ -39,6 +40,9 @@
 
 ### Mini player
 
+- **Compact layout.** A short card: a small cover next to the title and artist, then the seek bar and buttons (Mini Player Menu, "Mini player layout").
+- **Visualizer in the mini player.** Bars under the buttons that move with the music. It works even with the player's own visualizer off.
+- **Bouncy opening.** The mini player overshoots a little and settles as it opens.
 - Mica and Mica Alt menu backgrounds (#112).
 - Option to fold the cover area away when a song has no cover (#122).
 - **Visualizer source button** in the icon row: switch the visualizer between the app in the player and everything on the PC. It's remembered.

@@ -43,7 +43,8 @@ A full media player on your Windows 11 taskbar, styled to fit in with the rest o
 - **Hide Windows' own buttons:** Start, Search, Task View, Widgets, and in the tray the hidden icons arrow, network and volume, language, the clock and Show desktop. You can also hide the year on the clock.
 - **Smooth song changes:** the text fades in and the player glides to its new width.
 - **Lighter on power:** a frame rate setting for the visualizer, pausing on battery saver, and nothing animates with the screen off or a game fullscreen.
-- **Progress bar:** its own background color, hide it when nothing plays, or show it only on hover.
+- **Progress bar:** its own background color, hide it when nothing plays, show it only on hover, or let it grow on hover.
+- **Mini player:** a compact layout, its own visualizer, and a bouncy opening. The player itself can grow a little on hover.
 
 ## New in 1.7
 
