@@ -44,7 +44,7 @@ A full media player on your Windows 11 taskbar, styled to fit in with the rest o
 - **Smooth song changes:** the text fades in and the player glides to its new width.
 - **Lighter on power:** a frame rate setting for the visualizer, pausing on battery saver, and nothing animates with the screen off or a game fullscreen.
 - **Progress bar:** its own background color, hide it when nothing plays, show it only on hover, or let it grow on hover.
-- **Mini player:** a compact layout, its own visualizer, and a bouncy opening. The player itself can grow a little on hover.
+- **Mini player:** a compact layout, its own visualizer, and a bouncy opening. The player itself can grow a little on hover, or show only its cover until you hover it.
 
 ## New in 1.7
 
@@ -223,6 +223,9 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       #! $showIf: {settingsView: full}
       $name: Full-height invisible hit area
       $description: Extends the clickable/hoverable area of the player to the full height of the taskbar, even if the player itself is shorter. Disable this if you don't want the player to react to clicks/hovers above or below its visible bounds.
+    - playerPeek: false
+      $name: Show only the cover until hovered
+      $description: The player sits as just its album cover and widens to show the text and buttons while the pointer is over it. Needs the album art first in the player.
     - playerHoverScale: 100
       $name: Grow on hover (%)
       $description: The player grows a little while the pointer is over it. 100 = off, up to 115.
@@ -2732,6 +2735,7 @@ struct ModSettings {
     bool         miniPlayerVisualizer = false;
     bool         miniPlayerBounce     = false;
     int          playerHoverScale     = 100;
+    bool         playerPeek           = false;
     int          progressBarHoverHeight = 0;
     bool         miniPlayerSeekBarGradient = false;
     bool         miniPlayerSeekBarHoverEffect = false;
@@ -3371,6 +3375,7 @@ static constexpr SettingSpec SETTINGS[] = {
     SBool(L"PlayerMenuSettings.miniPlayerVisualizer", &ModSettings::miniPlayerVisualizer),
     SBool(L"PlayerMenuSettings.miniPlayerBounce", &ModSettings::miniPlayerBounce),
     SInt(L"MainSettings.PlayerSetting.playerHoverScale", 100, 115, &ModSettings::playerHoverScale),
+    SBool(L"MainSettings.PlayerSetting.playerPeek", &ModSettings::playerPeek),
     SInt(L"MainSettings.ProgressBarSettings.progressBarHoverHeight", 0, 20, &ModSettings::progressBarHoverHeight),
     SBool(L"PlayerMenuSettings.miniPlayerSeekBarGradient", &ModSettings::miniPlayerSeekBarGradient),
     SBool(L"PlayerMenuSettings.miniPlayerSeekBarHoverEffect", &ModSettings::miniPlayerSeekBarHoverEffect),
@@ -14066,6 +14071,118 @@ static void WireProgressBarHover(Border const& track) {
     });
 }
 
+// ---- "Show only the cover until hovered": the player is held to the width of
+// its album art and widens to its full width under the pointer. It goes by the
+// player's MaxWidth, so what's past the cover is cut off rather than moved.
+static bool g_playerPeekExpanded = false;
+[[clang::no_destroy]] static Storyboard g_playerPeekSb{nullptr};
+[[clang::no_destroy]] static DispatcherTimer g_playerPeekCollapseTimer{nullptr};
+
+static double PlayerBaseMaxWidth() {
+    return g_settings.playerMaxWidth > 0 ? (double)g_settings.playerMaxWidth : std::numeric_limits<double>::infinity();
+}
+
+// Up to the right edge of the album art, plus the player's padding. 0 when the
+// art isn't the first thing in the player (then there's nothing to show alone).
+static double PlayerPeekWidth() {
+    if (!g_playerGrid) return 0;
+    try {
+        FrameworkElement art{nullptr};
+        for (auto const& c : { PANEL_GRID_NAME }) {
+            if (auto panel = FindChildByName(g_playerGrid, c).try_as<Panel>())
+                for (auto const& ch : panel.Children())
+                    if (auto fe = ch.try_as<FrameworkElement>())
+                        for (DependencyObject cur = fe; cur; ) {
+                            auto el = cur.try_as<FrameworkElement>();
+                            if (el && winrt::unbox_value_or<winrt::hstring>(el.Tag(), L"") == L"FluentMediaArtContainer") { art = el; break; }
+                            cur = VisualTreeHelper::GetChildrenCount(cur) > 0 ? VisualTreeHelper::GetChild(cur, 0) : nullptr;
+                        }
+        }
+        if (!art || art.Visibility() != Visibility::Visible || art.ActualWidth() <= 0) return 0;
+        const auto origin = art.TransformToVisual(g_playerGrid).TransformPoint({ 0, 0 });
+        if (origin.X > 24) return 0;   // something comes before the art
+        return origin.X + art.ActualWidth() + art.Margin().Right + 6.0;
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    return 0;
+}
+
+static void ApplyPlayerPeek(bool expand, bool animate) {
+    if (!g_playerGrid || !g_settings.playerPeek || IsSidebarMode()) return;
+    try {
+        const double peekW = PlayerPeekWidth();
+        const double base = PlayerBaseMaxWidth();
+        if (g_playerPeekSb) { g_playerPeekSb.Stop(); g_playerPeekSb = nullptr; }
+        const double fromW = g_playerGrid.ActualWidth();
+        auto settle = [base](bool open, double peek) {
+            if (!g_playerGrid) return;
+            if (!open && peek > 0) g_playerGrid.MaxWidth(peek);
+            else if (std::isinf(base)) g_playerGrid.ClearValue(FrameworkElement::MaxWidthProperty());
+            else g_playerGrid.MaxWidth(base);
+        };
+        if (peekW <= 0) { settle(true, 0); return; }
+        // Its full width, laid out now (nothing is drawn in between).
+        settle(true, peekW);
+        g_playerGrid.UpdateLayout();
+        const double fullW = g_playerGrid.ActualWidth();
+        const double toW = expand ? fullW : peekW;
+        if (!animate || fromW <= 1 || std::abs(toW - fromW) < 1) { settle(expand, peekW); return; }
+        HoldPlayerTransitions();
+        g_playerGrid.MaxWidth(fromW);
+        Storyboard sb;
+        DoubleAnimation a;
+        a.From(fromW);
+        a.To(toW);
+        a.Duration(DurationHelper::FromTimeSpan(std::chrono::milliseconds(expand ? 280 : 240)));
+        CubicEase ease;
+        ease.EasingMode(EasingMode::EaseOut);
+        a.EasingFunction(ease);
+        a.EnableDependentAnimation(true);
+        Storyboard::SetTarget(a, g_playerGrid);
+        Storyboard::SetTargetProperty(a, L"MaxWidth");
+        sb.Children().Append(a);
+        sb.Completed([settle, expand, peekW](auto const& sender, auto const&) {
+            try {
+                if (auto done = sender.template try_as<Storyboard>()) done.Stop();
+                settle(expand, peekW);
+            } catch (...) { LOG_IGNORED_EXCEPTION(); }
+            g_playerPeekSb = nullptr;
+            RestorePlayerTransitionsSoon();
+        });
+        g_playerPeekSb = sb;
+        sb.Begin();
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+}
+
+static void WirePlayerPeek(Grid const& wrapper) {
+    if (!g_settings.playerPeek) return;
+    g_playerPeekExpanded = false;
+    wrapper.AddHandler(UIElement::PointerEnteredEvent(), winrt::box_value(PointerEventHandler(
+        [](winrt::Windows::Foundation::IInspectable const&, PointerRoutedEventArgs const&) {
+            try { if (g_playerPeekCollapseTimer) g_playerPeekCollapseTimer.Stop(); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+            if (g_playerPeekExpanded) return;
+            g_playerPeekExpanded = true;
+            ApplyPlayerPeek(true, true);
+        })), true);
+    wrapper.AddHandler(UIElement::PointerExitedEvent(), winrt::box_value(PointerEventHandler(
+        [](winrt::Windows::Foundation::IInspectable const&, PointerRoutedEventArgs const&) {
+            try {
+                // A moment's grace, so a pointer passing over the edge doesn't snap it shut.
+                if (!g_playerPeekCollapseTimer) {
+                    g_playerPeekCollapseTimer = DispatcherTimer();
+                    g_playerPeekCollapseTimer.Interval(winrt::Windows::Foundation::TimeSpan{ std::chrono::milliseconds(600) });
+                    g_playerPeekCollapseTimer.Tick([](winrt::Windows::Foundation::IInspectable const& t, winrt::Windows::Foundation::IInspectable const&) {
+                        try { if (auto timer = t.try_as<DispatcherTimer>()) timer.Stop(); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+                        if (!g_playerPeekExpanded || g_miniPlayerFlyoutOpen) return;   // the mini player keeps it open
+                        g_playerPeekExpanded = false;
+                        ApplyPlayerPeek(false, true);
+                    });
+                }
+                g_playerPeekCollapseTimer.Stop();
+                g_playerPeekCollapseTimer.Start();
+            } catch (...) { LOG_IGNORED_EXCEPTION(); }
+        })), true);
+}
+
 // The bar's color, again whenever the album's colors change.
 static void PaintMainProgressFill() {
     if (!g_mainProgressFillRef) return;
@@ -14823,6 +14940,7 @@ COLD_UNOPTIMIZED static Grid BuildPlayerGrid() {
         });
 
         wrapper.Tag(winrt::box_value(winrt::hstring(L"FluentMediaBarWrapper")));
+        if (!sidebar) WirePlayerPeek(wrapper);
 
         // "Grow on hover": scales around its middle. A CompositeTransform, so the
         // "Player offset" can share it (see InjectPlayerGrid).
@@ -16193,6 +16311,7 @@ static void UpdateVisibility() {
             }
 
             g_playerGrid.UpdateLayout();
+            if (g_settings.playerPeek && !hidePlayer && !g_playerPeekExpanded && !g_playerPeekSb) ApplyPlayerPeek(false, false);
         }
 
         for (DetachedWidgetState* dw : { &g_detachedAlbumArt, &g_detachedInfo, &g_detachedButtons, &g_detachedViz, &g_detachedWeather }) {
@@ -20954,6 +21073,8 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
             RowBool(L"Smooth position animation", L"AnimationSettings.enableSmoothPositionAnimation"),
             WithDesc(RowSlider(L"Grow on hover (%)", L"MainSettings.PlayerSetting.playerHoverScale", L"100", 100, 115),
                      L"The player grows a little under the pointer. 100 = off."),
+            WithDesc(RowBool(L"Show only the cover until hovered", L"MainSettings.PlayerSetting.playerPeek"),
+                     L"Widens to show the text and buttons under the pointer. Album art has to come first."),
             RowBool(L"Fade album art on track change", L"AnimationSettings.enableAlbumArtFade"),
             WithDesc(RowBool(L"Smooth track changes", L"AnimationSettings.smoothTrackChange"),
                      L"The text fades in and the player glides to its new width."),
@@ -22806,6 +22927,8 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"Grows to this while you hover the player. 0 = same.", L"Збільшується до цього, поки вказівник над програвачем. 0 = як є.", L"Растёт до этого, пока указатель над плеером. 0 = как есть.", L"Wächst darauf, solange du über dem Player bist. 0 = gleich.", L"प्लेयर पर होवर करते समय इतना बढ़ता है। 0 = वही।", L"悬停播放器时增大到此值。0 = 不变。", L"暫留播放器時增大到此值。0 = 不變。", L"Crece hasta esto al pasar sobre el reproductor. 0 = igual.", L"Grandit jusque-là au survol du lecteur. 0 = identique.", L"Cresce até isso ao passar sobre o player. 0 = igual.", L"Cresce fino a questo al passaggio sul player. 0 = uguale.", L"Rośnie do tej wartości po najechaniu na odtwarzacz. 0 = bez zmian.", L"Oynatıcının üzerine gelince buna büyür. 0 = aynı.", L"プレーヤーにホバー中はこの高さになります。0 = 変更なし。", L"플레이어 위에 있을 때 이만큼 커집니다. 0 = 그대로." },
     { L"Grow on hover (%)", L"Збільшення при наведенні (%)", L"Увеличение при наведении (%)", L"Vergrößern beim Darüberfahren (%)", L"होवर पर बड़ा करें (%)", L"悬停时放大 (%)", L"暫留時放大 (%)", L"Agrandar al pasar el ratón (%)", L"Agrandir au survol (%)", L"Aumentar ao passar o mouse (%)", L"Ingrandisci al passaggio (%)", L"Powiększ po najechaniu (%)", L"Üzerine gelince büyüt (%)", L"ホバー時に拡大 (%)", L"마우스를 올리면 확대 (%)" },
     { L"The player grows a little under the pointer. 100 = off.", L"Програвач трохи збільшується під вказівником. 100 = вимкнено.", L"Плеер немного увеличивается под указателем. 100 = выключено.", L"Der Player wird unter dem Mauszeiger etwas größer. 100 = aus.", L"पॉइंटर के नीचे प्लेयर थोड़ा बड़ा होता है। 100 = बंद।", L"指针下的播放器略微放大。100 = 关闭。", L"指標下的播放器略微放大。100 = 關閉。", L"El reproductor crece un poco bajo el puntero. 100 = desactivado.", L"Le lecteur grandit un peu sous le pointeur. 100 = désactivé.", L"O player cresce um pouco sob o ponteiro. 100 = desligado.", L"Il player cresce un po' sotto il puntatore. 100 = disattivato.", L"Odtwarzacz lekko rośnie pod wskaźnikiem. 100 = wyłączone.", L"Oynatıcı işaretçinin altında biraz büyür. 100 = kapalı.", L"ポインターの下でプレーヤーが少し大きくなります。100 = オフ。", L"포인터 아래에서 플레이어가 조금 커집니다. 100 = 끔." },
+    { L"Show only the cover until hovered", L"Лише обкладинка, доки не навести", L"Только обложка, пока не навести", L"Nur das Cover, bis man darüberfährt", L"होवर होने तक सिर्फ़ कवर दिखाएँ", L"悬停前只显示封面", L"暫留前只顯示封面", L"Solo la carátula hasta pasar el ratón", L"Seulement la pochette jusqu'au survol", L"Só a capa até passar o mouse", L"Solo la copertina finché non ci passi sopra", L"Tylko okładka, dopóki nie najedziesz", L"Üzerine gelene kadar yalnızca kapak", L"ホバーするまでカバーだけ表示", L"마우스를 올리기 전까지 커버만 표시" },
+    { L"Widens to show the text and buttons under the pointer. Album art has to come first.", L"Під вказівником розширюється й показує текст і кнопки. Обкладинка має бути першою.", L"Под указателем расширяется и показывает текст и кнопки. Обложка должна быть первой.", L"Wird unter dem Mauszeiger breiter und zeigt Text und Tasten. Das Albumcover muss zuerst kommen.", L"पॉइंटर के नीचे चौड़ा होकर टेक्स्ट और बटन दिखाता है। एल्बम आर्ट पहले होना चाहिए।", L"在指针下展开以显示文字和按钮。专辑封面需排在最前。", L"在指標下展開以顯示文字和按鈕。專輯封面需排在最前。", L"Se ensancha bajo el puntero para mostrar el texto y los botones. La carátula debe ir primero.", L"S'élargit sous le pointeur pour montrer le texte et les boutons. La pochette doit être en premier.", L"Alarga sob o ponteiro para mostrar o texto e os botões. A capa tem de vir primeiro.", L"Si allarga sotto il puntatore per mostrare testo e pulsanti. La copertina deve essere per prima.", L"Pod wskaźnikiem rozszerza się, pokazując tekst i przyciski. Okładka musi być pierwsza.", L"İşaretçinin altında genişleyerek metni ve düğmeleri gösterir. Albüm kapağı önce gelmelidir.", L"ポインターの下で広がり、テキストとボタンを表示します。アルバムアートが先頭にある必要があります。", L"포인터 아래에서 넓어져 텍스트와 버튼을 보여 줍니다. 앨범 아트가 맨 앞에 있어야 합니다." },
     { L"Window color", L"Колір вікна", L"Цвет окна", L"Fensterfarbe", L"विंडो का रंग", L"窗口颜色", L"視窗色彩", L"Color de la ventana", L"Couleur de la fenêtre", L"Cor da janela", L"Colore della finestra", L"Kolor okna", L"Pencere rengi", L"ウィンドウの色", L"창 색상" },
     { L"Custom color", L"Власний колір", L"Свой цвет", L"Eigene Farbe", L"कस्टम रंग", L"自定义颜色", L"自訂色彩", L"Color personalizado", L"Couleur personnalisée", L"Cor personalizada", L"Colore personalizzato", L"Własny kolor", L"Özel renk", L"カスタム色", L"사용자 지정 색" },
     { L"Title bar color", L"Колір рядка заголовка", L"Цвет строки заголовка", L"Farbe der Titelleiste", L"शीर्षक पट्टी का रंग", L"标题栏颜色", L"標題列色彩", L"Color de la barra de título", L"Couleur de la barre de titre", L"Cor da barra de título", L"Colore della barra del titolo", L"Kolor paska tytułu", L"Başlık çubuğu rengi", L"タイトル バーの色", L"제목 표시줄 색" },

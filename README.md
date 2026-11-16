@@ -52,6 +52,7 @@ A media player built into the Windows 11 taskbar, styled to fit in with the rest
 - Colors can be `R G B` or hex, can differ between light and dark theme, and can follow the album art or your accent color.
 - Mirror the layout, change the order of the parts, and set sizes, margins and corner radius.
 - Scrolling titles that fade at the edges, left, center or right aligned, full font control, and your own text for when there's no title, artist or session.
+- Show only the album cover until you hover the player, then it widens to show everything.
 - Smooth song changes: the text fades in, the player glides to its new width, and (if you turn it on) the album art morphs between a square cover and a wide thumbnail.
 - Album art can show the cover, the app's icon, or an icon of your choice.
 

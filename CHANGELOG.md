@@ -31,6 +31,7 @@
 
 - **Scroll to skip.** New mouse wheel action "Skip 5 seconds back or forward" for the player and the album art, and the wheel over the mini player's seek bar does the same (#121, #123).
 - **Album art shows** the cover, the icon of the app that plays, or always the stand-in icon (#113, #120).
+- **Show only the cover until hovered.** The player sits as just its album cover and widens to show the text and buttons under the pointer, then shrinks back a moment after you move away (Appearance, Animation). The album art has to come first in the player.
 - **Grow on hover.** The player grows a little under the pointer (Appearance, Animation; 100% = off).
 - **Progress bar options.** A taller bar on hover so it's easier to grab, its own background color, "Hide when nothing is playing", and "Only on hover": the bar fades in while you hover the player, ready to drag.
 - **Text alignment** for the title and artist: left, center or right (Info page).
