@@ -71,7 +71,7 @@
 
 ### Fixes
 
-- Mica and Mica Alt on the player look like Mica now: Windows' base colors over a blur of what's behind, picking up the wallpaper's colors. They were a flat color. The slider is now "Mica strength".
+- Acrylic, Mica, Mica Alt and Glass on the player work: they blur what's behind them on the taskbar with a light tint. They used to fall back to a near-solid color, because the taskbar can't blur what's behind its window. New "Background opacity" slider for all of them, and "Mica strength" sets how much of Mica's color covers the blur.
 - The blurred album cover background is a smooth wash instead of a grainy blur of the cover, with a light or dark tint so text on it stays readable.
 - The progress bar is easier to grab: the area you can click or drag is 22 px tall (more with "Height on hover"), and at the player's edge it reaches inward instead of off the taskbar.
 - The player no longer shoots out and back when the song changes: apps that clear the title for a moment between songs (Spotify) keep the last song's text through the gap, the smooth position animation pauses for the change, and the width glide lands exactly on the new width.

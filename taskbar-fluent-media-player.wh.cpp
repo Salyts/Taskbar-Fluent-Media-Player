@@ -1140,7 +1140,11 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
     - micaOpacity: 50
       #! $showIf: {backgroundType: [mica, mica_alt]}
       $name: Mica/Mica Alt strength (0-100)
-      $description: How much of Mica's base color covers what's behind. Lower shows more of the wallpaper's colors.
+      $description: How much of Mica's base color covers what's behind. 0 is just the blur.
+    - materialOpacity: 100
+      #! $showIf: {backgroundType: [acrylic, mica, mica_alt, glass]}
+      $name: Background opacity (0-100)
+      $description: How see-through the Acrylic, Mica and Glass backgrounds are. Detached parts with their own background use it too.
     - playerGlow: false
       $name: Glow while playing
       $description: An outline in the album's color that softly breathes while music plays.
@@ -2804,6 +2808,7 @@ struct ModSettings {
     int          albumArtMaxHeight    = 32;
     bool         albumArtDisc         = false;
     bool         playerGlow           = false;
+    int          materialOpacity      = 100;
     int          albumArtOpacity      = 100;
     int          albumArtLeftMargin   = 0;
     int          albumArtRightMargin  = 0;
@@ -3313,6 +3318,7 @@ static constexpr SettingSpec SETTINGS[] = {
     SInt(L"AppearanceSettings.BackgroundStyleSettings.blurOpacity", 0, 100, &ModSettings::blurOpacity),
     SInt(L"AppearanceSettings.BackgroundStyleSettings.blurRadius", 0, 50, &ModSettings::blurRadius),
     SBool(L"AppearanceSettings.BackgroundStyleSettings.playerGlow", &ModSettings::playerGlow),
+    SInt(L"AppearanceSettings.BackgroundStyleSettings.materialOpacity", 0, 100, &ModSettings::materialOpacity),
     SBool(L"AppearanceSettings.AlbumArtDisplaySettings.albumArtDisc", &ModSettings::albumArtDisc),
     SStr(L"AppearanceSettings.BackgroundStyleSettings.cornerRadius", L"4"),
     SStr(L"AppearanceSettings.BackgroundStyleSettings.enablePlayerHoverEffect", L"auto"),
@@ -7035,14 +7041,21 @@ static Brush MakeBackgroundBrushFromParams(const BackgroundStyleParams& p) {
         } catch (...) { LOG_IGNORED_EXCEPTION(); }
     }
 
+    // Acrylic, Mica and Glass blur what's behind them inside the taskbar (its
+    // own background and the wallpaper colors it lets through). The window's
+    // backdrop (HostBackdrop) isn't available to the taskbar: with it they all
+    // fell back to a near-solid color. "Background opacity" fades the result.
+    const double materialAlpha = std::clamp(g_settings.materialOpacity, 0, 100) / 100.0;
     if (t == BackgroundType::Acrylic) {
         try {
             winrt::Windows::UI::Xaml::Media::AcrylicBrush brush;
-            brush.BackgroundSource(winrt::Windows::UI::Xaml::Media::AcrylicBackgroundSource::HostBackdrop);
+            brush.BackgroundSource(winrt::Windows::UI::Xaml::Media::AcrylicBackgroundSource::Backdrop);
             auto col = winrt::Windows::UI::Color{0xFF, color1.R, color1.G, color1.B};
             brush.TintColor(col);
             brush.TintOpacity(p.acrylicTintOpacity / 100.0);
-            brush.FallbackColor(winrt::Windows::UI::Color{0xCC, color1.R, color1.G, color1.B});
+            brush.TintLuminosityOpacity(std::clamp(p.acrylicTintOpacity / 100.0 * 0.8, 0.0, 1.0));
+            brush.FallbackColor(winrt::Windows::UI::Color{0x99, color1.R, color1.G, color1.B});
+            brush.Opacity(materialAlpha);
             return brush;
         } catch (...) { LOG_IGNORED_EXCEPTION(); }
     }
@@ -7060,14 +7073,15 @@ static Brush MakeBackgroundBrushFromParams(const BackgroundStyleParams& p) {
         const double strength = std::clamp(p.micaOpacity, 0, 100) / 100.0;
         try {
             winrt::Windows::UI::Xaml::Media::AcrylicBrush brush;
-            brush.BackgroundSource(winrt::Windows::UI::Xaml::Media::AcrylicBackgroundSource::HostBackdrop);
+            brush.BackgroundSource(winrt::Windows::UI::Xaml::Media::AcrylicBackgroundSource::Backdrop);
             brush.TintColor(base);
-            brush.TintOpacity(std::clamp(0.25 + strength * 0.65, 0.0, 1.0));
-            brush.TintLuminosityOpacity(std::clamp((alt ? 0.75 : 0.6) + strength * 0.35, 0.0, 1.0));
-            brush.FallbackColor(base);
+            brush.TintOpacity(strength * (alt ? 0.9 : 0.75));
+            brush.TintLuminosityOpacity(strength * (alt ? 0.95 : 0.8));
+            brush.FallbackColor(winrt::Windows::UI::Color{0x99, base.R, base.G, base.B});
+            brush.Opacity(materialAlpha);
             return brush;
         } catch (...) { LOG_IGNORED_EXCEPTION(); }
-        return MakeBrush(base);
+        return MakeBrush({(BYTE)(0x99 * materialAlpha), base.R, base.G, base.B});
     }
 
     // Glass: clear and lightly frosted, the edge drawn by a separate highlight
@@ -7078,11 +7092,12 @@ static Brush MakeBackgroundBrushFromParams(const BackgroundStyleParams& p) {
                                                      : winrt::Windows::UI::Color{0xFF, 0x18, 0x18, 0x18};
         try {
             winrt::Windows::UI::Xaml::Media::AcrylicBrush brush;
-            brush.BackgroundSource(winrt::Windows::UI::Xaml::Media::AcrylicBackgroundSource::HostBackdrop);
+            brush.BackgroundSource(winrt::Windows::UI::Xaml::Media::AcrylicBackgroundSource::Backdrop);
             brush.TintColor(tint);
             brush.TintOpacity(light ? 0.10 : 0.06);
             brush.TintLuminosityOpacity(light ? 0.30 : 0.18);
-            brush.FallbackColor(winrt::Windows::UI::Color{0x99, tint.R, tint.G, tint.B});
+            brush.FallbackColor(winrt::Windows::UI::Color{0x55, tint.R, tint.G, tint.B});
+            brush.Opacity(materialAlpha);
             return brush;
         } catch (...) { LOG_IGNORED_EXCEPTION(); }
         return MakeBrush({0x66, tint.R, tint.G, tint.B});
@@ -21208,8 +21223,10 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
             RowSlider(L"Gradient angle", L"AppearanceSettings.BackgroundStyleSettings.gradientAngle", L"50", 0, 360),
             RowSlider(L"Gradient balance", L"AppearanceSettings.BackgroundStyleSettings.gradientBalance", L"50", 0, 100),
             RowSlider(L"Acrylic tint opacity", L"AppearanceSettings.BackgroundStyleSettings.acrylicTintOpacity", L"50", 0, 100),
+            WithDesc(RowSlider(L"Background opacity", L"AppearanceSettings.BackgroundStyleSettings.materialOpacity", L"100", 0, 100),
+                     L"How see-through Acrylic, Mica and Glass are."),
             WithDesc(RowSlider(L"Mica strength", L"AppearanceSettings.BackgroundStyleSettings.micaOpacity", L"50", 0, 100),
-                     L"Lower shows more of the wallpaper's colors."),
+                     L"How much of Mica's color covers the blur. 0 = just the blur."),
             RowSlider(L"Blur opacity", L"AppearanceSettings.BackgroundStyleSettings.blurOpacity", L"65", 0, 100),
             RowSlider(L"Blur radius", L"AppearanceSettings.BackgroundStyleSettings.blurRadius", L"11", 0, 50),
             WithDesc(RowBool(L"Glow while playing", L"AppearanceSettings.BackgroundStyleSettings.playerGlow"),
@@ -23130,6 +23147,8 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"An outline in the album's color that breathes while music plays.", L"Контур кольору обкладинки, що «дихає», поки грає музика.", L"Контур цвета обложки, который «дышит», пока играет музыка.", L"Ein Rand in der Albumfarbe, der beim Abspielen sanft pulsiert.", L"एल्बम के रंग की रूपरेखा जो संगीत चलते समय धीरे-धीरे धड़कती है।", L"专辑颜色的轮廓，播放音乐时轻轻呼吸。", L"專輯色彩的輪廓，播放音樂時輕輕呼吸。", L"Un contorno del color del álbum que respira mientras suena la música.", L"Un contour à la couleur de l'album qui respire pendant la lecture.", L"Um contorno na cor do álbum que respira enquanto a música toca.", L"Un contorno del colore dell'album che respira mentre suona la musica.", L"Obrys w kolorze albumu, który oddycha podczas muzyki.", L"Müzik çalarken nefes alan albüm renginde bir kenar.", L"再生中に呼吸するように明滅する、アルバム色の輪郭。", L"음악이 재생되는 동안 숨 쉬듯 빛나는 앨범 색 윤곽." },
     { L"Spin like a record while playing", L"Обертати, як платівку, під час відтворення", L"Вращать, как пластинку, во время воспроизведения", L"Wie eine Schallplatte drehen beim Abspielen", L"चलते समय रिकॉर्ड की तरह घुमाएँ", L"播放时像唱片一样旋转", L"播放時像唱片一樣旋轉", L"Girar como un disco al reproducir", L"Tourner comme un vinyle pendant la lecture", L"Girar como um disco ao tocar", L"Ruota come un vinile durante la riproduzione", L"Obracaj jak płytę podczas odtwarzania", L"Çalarken plak gibi dönsün", L"再生中はレコードのように回転", L"재생 중 레코드처럼 회전" },
     { L"Round, with a hole in the middle, turning slowly while music plays.", L"Кругла, з отвором посередині, повільно обертається, поки грає музика.", L"Круглая, с отверстием посередине, медленно вращается, пока играет музыка.", L"Rund, mit Loch in der Mitte, dreht sich langsam beim Abspielen.", L"गोल, बीच में छेद के साथ, संगीत चलते समय धीरे घूमता है।", L"圆形、中间有孔，播放时缓慢旋转。", L"圓形、中間有孔，播放時緩慢旋轉。", L"Redonda, con un agujero en el centro, gira despacio mientras suena.", L"Ronde, percée au centre, elle tourne lentement pendant la lecture.", L"Redonda, com um furo no meio, gira devagar enquanto toca.", L"Rotonda, con un foro al centro, ruota lentamente durante la musica.", L"Okrągła, z otworem pośrodku, obraca się powoli podczas muzyki.", L"Yuvarlak, ortası delik, müzik çalarken yavaşça döner.", L"丸く中央に穴があり、再生中ゆっくり回ります。", L"가운데 구멍이 있는 원형으로, 음악이 나오는 동안 천천히 돕니다." },
+    { L"How see-through Acrylic, Mica and Glass are.", L"Наскільки прозорі Acrylic, Mica і скло.", L"Насколько прозрачны Acrylic, Mica и стекло.", L"Wie durchsichtig Acrylic, Mica und Glas sind.", L"Acrylic, Mica और ग्लास कितने पारदर्शी हों।", L"Acrylic、Mica 和玻璃的透明程度。", L"Acrylic、Mica 和玻璃的透明程度。", L"Cuánto se transparentan Acrylic, Mica y Cristal.", L"La transparence d'Acrylic, Mica et Verre.", L"O quanto Acrylic, Mica e Vidro são transparentes.", L"Quanto sono trasparenti Acrylic, Mica e Vetro.", L"Jak przezroczyste są Acrylic, Mica i Szkło.", L"Acrylic, Mica ve Cam'ın ne kadar saydam olduğu.", L"Acrylic、Mica、ガラスの透け具合。", L"Acrylic, Mica, 유리의 투명도." },
+    { L"How much of Mica's color covers the blur. 0 = just the blur.", L"Наскільки колір Mica вкриває розмиття. 0 = лише розмиття.", L"Насколько цвет Mica покрывает размытие. 0 = только размытие.", L"Wie viel Mica-Farbe über der Unschärfe liegt. 0 = nur die Unschärfe.", L"Mica का रंग धुंधलेपन को कितना ढके। 0 = सिर्फ़ धुंधलापन।", L"Mica 颜色覆盖模糊的程度。0 = 只有模糊。", L"Mica 色彩覆蓋模糊的程度。0 = 只有模糊。", L"Cuánto color de Mica cubre el desenfoque. 0 = solo el desenfoque.", L"La part de couleur Mica sur le flou. 0 = le flou seul.", L"Quanto da cor Mica cobre o desfoque. 0 = só o desfoque.", L"Quanto colore Mica copre la sfocatura. 0 = solo la sfocatura.", L"Ile koloru Mica pokrywa rozmycie. 0 = samo rozmycie.", L"Mica renginin bulanıklığı ne kadar örttüğü. 0 = yalnızca bulanıklık.", L"Mica の色がぼかしをどれだけ覆うか。0 = ぼかしのみ。", L"Mica 색이 흐림을 얼마나 덮는지. 0 = 흐림만." },
     { L"Window color", L"Колір вікна", L"Цвет окна", L"Fensterfarbe", L"विंडो का रंग", L"窗口颜色", L"視窗色彩", L"Color de la ventana", L"Couleur de la fenêtre", L"Cor da janela", L"Colore della finestra", L"Kolor okna", L"Pencere rengi", L"ウィンドウの色", L"창 색상" },
     { L"Custom color", L"Власний колір", L"Свой цвет", L"Eigene Farbe", L"कस्टम रंग", L"自定义颜色", L"自訂色彩", L"Color personalizado", L"Couleur personnalisée", L"Cor personalizada", L"Colore personalizzato", L"Własny kolor", L"Özel renk", L"カスタム色", L"사용자 지정 색" },
     { L"Title bar color", L"Колір рядка заголовка", L"Цвет строки заголовка", L"Farbe der Titelleiste", L"शीर्षक पट्टी का रंग", L"标题栏颜色", L"標題列色彩", L"Color de la barra de título", L"Couleur de la barre de titre", L"Cor da barra de título", L"Colore della barra del titolo", L"Kolor paska tytułu", L"Başlık çubuğu rengi", L"タイトル バーの色", L"제목 표시줄 색" },
@@ -23864,6 +23883,7 @@ static const RowRule ROW_RULES[] = {
     { L"AppearanceSettings.BackgroundStyleSettings.gradientBalance", 116, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"gradient" },
     { L"AppearanceSettings.BackgroundStyleSettings.acrylicTintOpacity", 117, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"acrylic" },
     { L"AppearanceSettings.BackgroundStyleSettings.micaOpacity", 118, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"mica|mica_alt" },
+    { L"AppearanceSettings.BackgroundStyleSettings.materialOpacity", 6501, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"acrylic|mica|mica_alt|glass" },
     { L"AppearanceSettings.BackgroundStyleSettings.blurOpacity", 119, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"album_art_blur" },
     { L"AppearanceSettings.BackgroundStyleSettings.blurRadius", 120, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"album_art_blur" },
     { L"AppearanceSettings.TitleTextStyleSettings.titleFontFamily", 121, false, L"AppearanceSettings.TitleTextStyleSettings.titleFont", L"custom" },
