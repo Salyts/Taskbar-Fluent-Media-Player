@@ -258,6 +258,7 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       $options:
       - "inline": "Inline (own space, pushes content)"
       - "overlay": "Overlay (on top, no extra height)"
+      - "text_line": "In the text, as its own line"
     - progressBarOverlayOffsetY: 0
       #! $showIf: {showProgressBar: true, progressBarDisplayMode: overlay, settingsView: full}
       $name: Overlay mode vertical offset (px, positive = lower)
@@ -2221,6 +2222,7 @@ namespace UI {
     static void ResetScrollState(TextScrollState& s);
     static void HoldPlayerTransitions();
     static void RestorePlayerTransitionsSoon();
+    static Border BuildMainProgressBar();
 } // namespace UI
 namespace Taskbar {
     enum class TaskbarEdge { Bottom, Top, Left, Right };
@@ -2587,10 +2589,11 @@ static constexpr SettingChoice<VizBarOrientation> VIZ_BAR_ORIENTATIONS[] = {
 };
 
 // Inline gives the bar a row of its own; overlay draws it over the content.
-enum class ProgressBarDisplay { Inline, Overlay };
+enum class ProgressBarDisplay { Inline, Overlay, TextLine };
 static constexpr SettingChoice<ProgressBarDisplay> PROGRESS_BAR_DISPLAYS[] = {
     {L"inline",  ProgressBarDisplay::Inline},
     {L"overlay", ProgressBarDisplay::Overlay},
+    {L"text_line", ProgressBarDisplay::TextLine},
 };
 
 enum class ProgressBarPosition { AboveBoth, UnderBoth, UnderAlbumArt, UnderInfo, UnderButtons, UnderViz, UnderText };
@@ -11129,6 +11132,18 @@ COLD_UNOPTIMIZED static Border BuildTextContainer() {
         }
     }
 
+    // "In the text, as its own line": the bar is a line under the title (and
+    // artist), so the text and the bar are centered together and the bar takes
+    // the place a second line would. As wide as the text.
+    if (g_settings.showProgressBar && g_settings.progressBarDisplayMode == ProgressBarDisplay::TextLine) {
+        try {
+            Border bar = BuildMainProgressBar();
+            bar.VerticalAlignment(VerticalAlignment::Top);
+            bar.Margin({0, std::max(3.0, (double)g_settings.textSpacing + 3.0), 0, 1});
+            textStack.Children().Append(bar);
+        } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    }
+
     textContainer.Child(textStack);
     return textContainer;
 }
@@ -14996,7 +15011,8 @@ COLD_UNOPTIMIZED static Grid BuildPlayerGrid() {
         // The progress bar's column span; above_both/under_both span the whole pill
         // and are placed separately.
         int barSpanFrom = -1, barSpanTo = -1;
-        if (g_settings.showProgressBar) {
+        const bool barInText = g_settings.progressBarDisplayMode == ProgressBarDisplay::TextLine;
+        if (g_settings.showProgressBar && !barInText) {
             const ProgressBarPosition pbPos = g_settings.progressBarPosition;
             if      (pbPos == ProgressBarPosition::UnderAlbumArt) { barSpanFrom = barSpanTo = colArt; }
             else if (pbPos == ProgressBarPosition::UnderInfo)     { barSpanFrom = barSpanTo = colInfo; }
@@ -15209,7 +15225,7 @@ COLD_UNOPTIMIZED static Grid BuildPlayerGrid() {
         }
         wrapper.Children().Append(panel);
 
-        if (g_settings.showProgressBar) {
+        if (g_settings.showProgressBar && !barInText) {
             try {
                 ProgressBarPosition pos = g_settings.progressBarPosition;
                 // Under a part that's hidden: the bar spans the whole player instead of
@@ -18566,7 +18582,7 @@ static void RemoveDetachedWidget(DetachedWidgetState& state, PlayerPosition posi
 static FrameworkElement WrapDetachedContent(FrameworkElement content, const DetachedBackgroundSettings& bg, int containerTag) {
     if (!content) return nullptr;
 
-    if (g_settings.showProgressBar) {
+    if (g_settings.showProgressBar && g_settings.progressBarDisplayMode != ProgressBarDisplay::TextLine) {
         static constexpr ProgressBarPosition UNDER_CONTAINER[] = {
             ProgressBarPosition::UnderAlbumArt, ProgressBarPosition::UnderInfo,
             ProgressBarPosition::UnderButtons, ProgressBarPosition::UnderViz,
@@ -21517,7 +21533,8 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
         };
         const std::vector<ComboOption> progressBarDisplayModeOptions = {
             {L"inline", L"Inline (own space, pushes content)"},
-            {L"overlay", L"Overlay (on top, no extra height)"}
+            {L"overlay", L"Overlay (on top, no extra height)"},
+            {L"text_line", L"In the text, as its own line"}
         };
         SettingCard progressBar;
         progressBar.title = L"Progress Bar";
@@ -23422,6 +23439,7 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"Song progress", L"Прогрес пісні", L"Прогресс песни", L"Liedfortschritt", L"गाने की प्रगति", L"歌曲进度", L"歌曲進度", L"Progreso de la canción", L"Progression du morceau", L"Progresso da música", L"Avanzamento del brano", L"Postęp utworu", L"Şarkı ilerlemesi", L"曲の進行", L"곡 진행" },
     { L"Seek bar as visualizer", L"Смуга перемотки як візуалізатор", L"Полоса перемотки как визуализатор", L"Suchleiste als Visualizer", L"सीक बार को विज़ुअलाइज़र बनाएँ", L"进度条显示为可视化", L"進度列顯示為視覺化", L"Barra de progreso como visualizador", L"Barre de lecture en visualiseur", L"Barra de progresso como visualizador", L"Barra di avanzamento come visualizzatore", L"Pasek przewijania jako wizualizer", L"Arama çubuğu görselleştirici olsun", L"シーク バーをビジュアライザーに", L"탐색 막대를 비주얼라이저로" },
     { L"Bars that move with the music. The played part is in full color; drag it to seek.", L"Смужки рухаються в такт музиці. Відтворена частина яскрава; тягніть, щоб перемотати.", L"Полоски двигаются под музыку. Проигранная часть яркая; тяните, чтобы перемотать.", L"Balken, die sich mit der Musik bewegen. Der gespielte Teil ist voll farbig; zum Spulen ziehen.", L"संगीत के साथ हिलते बार। चला हुआ हिस्सा पूरे रंग में; आगे-पीछे करने के लिए खींचें।", L"随音乐跳动的频谱条。已播放部分为全彩，拖动即可调整进度。", L"隨音樂跳動的頻譜條。已播放部分為全彩，拖曳即可調整進度。", L"Barras que se mueven con la música. Lo reproducido va a todo color; arrastra para avanzar.", L"Des barres qui bougent avec la musique. La partie jouée est en couleur ; glissez pour avancer.", L"Barras que se movem com a música. A parte tocada fica em cor plena; arraste para avançar.", L"Barre che si muovono con la musica. La parte riprodotta è a colori pieni; trascina per spostarti.", L"Słupki poruszające się z muzyką. Odtworzona część jest w pełnym kolorze; przeciągnij, by przewinąć.", L"Müzikle hareket eden çubuklar. Çalınan kısım tam renkli; ilerletmek için sürükleyin.", L"音楽に合わせて動くバー。再生済みの部分は濃く表示。ドラッグでシーク。", L"음악에 맞춰 움직이는 막대. 재생한 부분은 진한 색이며, 끌어서 이동합니다." },
+    { L"In the text, as its own line", L"У тексті, окремим рядком", L"В тексте, отдельной строкой", L"Im Text, als eigene Zeile", L"टेक्स्ट में, अलग पंक्ति के रूप में", L"在文字中，作为单独一行", L"在文字中，作為單獨一行", L"En el texto, como su propia línea", L"Dans le texte, sur sa propre ligne", L"No texto, como linha própria", L"Nel testo, come riga a sé", L"W tekście, jako osobna linia", L"Metinde, ayrı bir satır olarak", L"テキスト内に独立した行として", L"텍스트 안에 별도 줄로" },
     { L"Window color", L"Колір вікна", L"Цвет окна", L"Fensterfarbe", L"विंडो का रंग", L"窗口颜色", L"視窗色彩", L"Color de la ventana", L"Couleur de la fenêtre", L"Cor da janela", L"Colore della finestra", L"Kolor okna", L"Pencere rengi", L"ウィンドウの色", L"창 색상" },
     { L"Custom color", L"Власний колір", L"Свой цвет", L"Eigene Farbe", L"कस्टम रंग", L"自定义颜色", L"自訂色彩", L"Color personalizado", L"Couleur personnalisée", L"Cor personalizada", L"Colore personalizzato", L"Własny kolor", L"Özel renk", L"カスタム色", L"사용자 지정 색" },
     { L"Title bar color", L"Колір рядка заголовка", L"Цвет строки заголовка", L"Farbe der Titelleiste", L"शीर्षक पट्टी का रंग", L"标题栏颜色", L"標題列色彩", L"Color de la barra de título", L"Couleur de la barre de titre", L"Cor da barra de título", L"Colore della barra del titolo", L"Kolor paska tytułu", L"Başlık çubuğu rengi", L"タイトル バーの色", L"제목 표시줄 색" },
