@@ -15262,6 +15262,18 @@ COLD_UNOPTIMIZED static Grid BuildPlayerGrid() {
                                 bar.Margin({(double)g_settings.textAreaLeftMargin, 0, 0, 0});
                             }
                         }
+                        // Below the info text: exactly as long as the info box and lined up
+                        // under it, not the whole column (the box sits left in a wider one).
+                        if (pos == ProgressBarPosition::UnderInfo && textEl && g_settings.progressBarWidth <= 0) {
+                            const auto tm = textEl.Margin();
+                            const auto bm = bar.Margin();
+                            bar.HorizontalAlignment(textEl.HorizontalAlignment());
+                            bar.Margin({tm.Left, bm.Top, tm.Right, bm.Bottom});
+                            winrt::weak_ref<Border> weakBar = bar;
+                            textEl.SizeChanged([weakBar](winrt::Windows::Foundation::IInspectable const&, SizeChangedEventArgs const& e) {
+                                try { if (auto b = weakBar.get()) b.Width(e.NewSize().Width); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+                            });
+                        }
                     }
                     panel.Children().Append(bar);
                 }
