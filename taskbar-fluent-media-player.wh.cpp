@@ -7708,34 +7708,86 @@ struct VizAudioMeter : ::IUnknown {
 };
 static constexpr GUID XIID_VizAudioMeter = {0xC02216F6, 0x8C67, 0x4B5B, {0x9D, 0x00, 0xD0, 0x08, 0xE7, 0x3E, 0x00, 0x64}};
 
-// Processes with a sound stream open on the default output. With `audibleOnly`,
-// only ones actually making sound right now.
+// Every active output device. Audio routers like Elgato Wave Link or Voicemeeter
+// give each app its own virtual device, so the default one can be silent while
+// the music plays on another.
+static std::vector<winrt::com_ptr<IMMDevice>> VizRenderDevices(IMMDeviceEnumerator* pEnum) {
+    std::vector<winrt::com_ptr<IMMDevice>> out;
+    winrt::com_ptr<IMMDeviceCollection> all;
+    UINT count = 0;
+    if (!pEnum || FAILED(pEnum->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, all.put())) || FAILED(all->GetCount(&count)))
+        return out;
+    for (UINT i = 0; i < count; i++) {
+        winrt::com_ptr<IMMDevice> dev;
+        if (SUCCEEDED(all->Item(i, dev.put()))) out.push_back(dev);
+    }
+    return out;
+}
+
+// Each active sound stream on every output device: f(device, control, control2).
+template <typename F>
+static void VizForEachActiveSession(IMMDeviceEnumerator* pEnum, F&& f) {
+    for (auto& dev : VizRenderDevices(pEnum)) {
+        winrt::com_ptr<IAudioSessionManager2> manager;
+        winrt::com_ptr<IAudioSessionEnumerator> sessions;
+        int count = 0;
+        if (FAILED(dev->Activate(XIID_IAudioSessionManager2, CLSCTX_ALL, nullptr, manager.put_void())) ||
+            FAILED(manager->GetSessionEnumerator(sessions.put())) || FAILED(sessions->GetCount(&count)))
+            continue;
+        for (int i = 0; i < count; i++) {
+            winrt::com_ptr<IAudioSessionControl> control;
+            if (FAILED(sessions->GetSession(i, control.put()))) continue;
+            AudioSessionState state = AudioSessionStateInactive;
+            if (FAILED(control->GetState(&state)) || state != AudioSessionStateActive) continue;
+            auto control2 = control.try_as<IAudioSessionControl2>();
+            if (control2 && f(dev, control, control2)) return;   // true = done
+        }
+    }
+}
+
+// Processes with a sound stream open on any output. With `audibleOnly`, only
+// ones actually making sound right now.
 static std::vector<DWORD> VizProcessesWithSound(IMMDeviceEnumerator* pEnum, bool audibleOnly) {
     std::vector<DWORD> out;
-    winrt::com_ptr<IMMDevice> dev;
-    winrt::com_ptr<IAudioSessionManager2> manager;
-    winrt::com_ptr<IAudioSessionEnumerator> sessions;
-    int count = 0;
-    if (!pEnum || FAILED(pEnum->GetDefaultAudioEndpoint(eRender, eConsole, dev.put())) ||
-        FAILED(dev->Activate(XIID_IAudioSessionManager2, CLSCTX_ALL, nullptr, manager.put_void())) ||
-        FAILED(manager->GetSessionEnumerator(sessions.put())) || FAILED(sessions->GetCount(&count)))
-        return out;
-    for (int i = 0; i < count; i++) {
-        winrt::com_ptr<IAudioSessionControl> control;
-        if (FAILED(sessions->GetSession(i, control.put()))) continue;
-        AudioSessionState state = AudioSessionStateInactive;
-        if (FAILED(control->GetState(&state)) || state != AudioSessionStateActive) continue;
+    VizForEachActiveSession(pEnum, [&](auto const&, auto const& control, auto const& control2) {
         if (audibleOnly) {
             float peak = 0.f;
             winrt::com_ptr<VizAudioMeter> meter;
             if (FAILED(control->QueryInterface(XIID_VizAudioMeter, meter.put_void())) ||
-                FAILED(meter->GetPeakValue(&peak)) || peak <= 0.0001f) continue;
+                FAILED(meter->GetPeakValue(&peak)) || peak <= 0.0001f) return false;
         }
         DWORD pid = 0;
-        if (auto control2 = control.try_as<IAudioSessionControl2>(); control2 && SUCCEEDED(control2->GetProcessId(&pid)) && pid)
-            out.push_back(pid);
-    }
+        if (SUCCEEDED(control2->GetProcessId(&pid)) && pid) out.push_back(pid);
+        return false;
+    });
     return out;
+}
+
+// The output the music is on: the one with the player's app on it, or else the
+// loudest one right now. Null means the default output.
+static winrt::com_ptr<IMMDevice> VizDeviceWithTheMusic(IMMDeviceEnumerator* pEnum) {
+    std::wstring app;
+    { std::lock_guard<std::mutex> lk(g_vizTargetAppMtx); app = g_vizTargetApp; }
+    winrt::com_ptr<IMMDevice> found;
+    if (!app.empty()) {
+        VizForEachActiveSession(pEnum, [&](auto const& dev, auto const&, auto const& control2) {
+            if (!AudioSessionMatchesApp(control2.get(), app)) return false;
+            found = dev;
+            return true;
+        });
+    }
+    if (found) return found;
+    float loudest = 0.0001f;
+    for (auto& dev : VizRenderDevices(pEnum)) {
+        winrt::com_ptr<VizAudioMeter> meter;
+        float peak = 0.f;
+        if (SUCCEEDED(dev->Activate(XIID_VizAudioMeter, CLSCTX_ALL, nullptr, meter.put_void())) &&
+            SUCCEEDED(meter->GetPeakValue(&peak)) && peak > loudest) {
+            loudest = peak;
+            found = dev;
+        }
+    }
+    return found;
 }
 
 // Which of `roots` this process is, or was started by. 0 if none.
@@ -7787,24 +7839,17 @@ static DWORD VizProcessForApp(const std::wstring& appUserModelId, IMMDeviceEnume
     if (matches.empty()) {
         // No process by that name: the app's own sound stream says which process
         // it is (its ID is in the stream's, or the process carries the app's ID).
-        winrt::com_ptr<IMMDevice> dev;
-        winrt::com_ptr<IAudioSessionManager2> manager;
-        winrt::com_ptr<IAudioSessionEnumerator> sessions;
-        int count = 0;
-        if (pEnum && SUCCEEDED(pEnum->GetDefaultAudioEndpoint(eRender, eConsole, dev.put())) &&
-            SUCCEEDED(dev->Activate(XIID_IAudioSessionManager2, CLSCTX_ALL, nullptr, manager.put_void())) &&
-            SUCCEEDED(manager->GetSessionEnumerator(sessions.put())) && SUCCEEDED(sessions->GetCount(&count))) {
-            for (int i = 0; i < count; i++) {
-                winrt::com_ptr<IAudioSessionControl> control;
-                if (FAILED(sessions->GetSession(i, control.put()))) continue;
-                auto control2 = control.try_as<IAudioSessionControl2>();
-                DWORD pid = 0;
-                if (control2 && AudioSessionMatchesApp(control2.get(), appUserModelId) &&
-                    SUCCEEDED(control2->GetProcessId(&pid)) && pid) {
-                    Wh_Log(L"Visualizer: found the app by its sound stream (process %lu)", pid);
-                    return pid;
-                }
-            }
+        DWORD streamPid = 0;
+        VizForEachActiveSession(pEnum, [&](auto const&, auto const&, auto const& control2) {
+            DWORD pid = 0;
+            if (!AudioSessionMatchesApp(control2.get(), appUserModelId) || FAILED(control2->GetProcessId(&pid)) || !pid)
+                return false;
+            streamPid = pid;
+            return true;
+        });
+        if (streamPid) {
+            Wh_Log(L"Visualizer: found the app by its sound stream (process %lu)", streamPid);
+            return streamPid;
         }
         Wh_Log(L"Visualizer: no process found for the app, listening to everything");
         return 0;
@@ -7931,6 +7976,15 @@ static bool VizInitAudioClient(IMMDeviceEnumerator* pEnum, const std::wstring& d
         if (!pDev)
             Wh_Log(L"Visualizer: no active audio device matches \"%s\", using the default output",
                    device.c_str());
+    }
+    if (!pDev && device.empty()) {
+        // Everything: the output the music is actually on (Wave Link and the
+        // like), else the default one.
+        pDev = VizDeviceWithTheMusic(pEnum);
+        if (pDev) {
+            LPWSTR id = nullptr;
+            if (SUCCEEDED(pDev->GetId(&id)) && id) { Wh_Log(L"Visualizer: listening to the output the music is on (%s)", id); CoTaskMemFree(id); }
+        }
     }
     if (!pDev && FAILED(pEnum->GetDefaultAudioEndpoint(eRender, eConsole, pDev.put())))
         return false;
@@ -8098,6 +8152,17 @@ static void VizCaptureThreadProc(VizCaptureRun* run) {
                     lastHeard = nowMs;
                     pendingReinit = true;
                 }
+            }
+        }
+
+        if (run->device.empty() && (!run->onlyApp || listenToAll)) {
+            static thread_local ULONGLONG s_lastRepick = 0;
+            const ULONGLONG nowMs = GetTickCount64();
+            if (nowMs - lastHeard >= 6000 && nowMs - s_lastRepick >= 6000) {
+                s_lastRepick = nowMs;
+                bool playing = false;
+                { std::lock_guard<std::mutex> lk(g_mediaMtx); playing = g_media.isPlaying; }
+                if (playing) pendingReinit = true;   // music, but nothing heard: it's on another output
             }
         }
 
