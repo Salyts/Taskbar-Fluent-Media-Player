@@ -45,6 +45,7 @@
 ### Mini player
 
 - **Compact layout.** A short card: a small cover next to the title and artist, then the seek bar and buttons (Mini Player Menu, "Mini player layout").
+- **Seek bar as visualizer.** The mini player's seek bar can be drawn as bars that move with the music, the played part in full color and the rest dimmed. Click or drag on it to seek.
 - **Visualizer in the mini player.** Bars under the buttons that move with the music. It works even with the player's own visualizer off.
 - **Bouncy opening.** The mini player overshoots a little and settles as it opens.
 - Mica and Mica Alt menu backgrounds (#112).
@@ -57,6 +58,10 @@
 - Window material: Blurred album cover, or a color of your own (with transparency; the window turns light or dark to suit it).
 - Scrolling text fades in and out at the edges, with its own switch and width.
 - The visualizer's "Listen to" is a choice now (the app in the player, or everything on the PC), and its power options sit in a Performance card.
+
+### Visualizer
+
+- **Song progress color mode.** The bars fill with color 1 from the left as the song plays; the part still to come is in color 2.
 
 ### Lighter on CPU, GPU and battery
 

@@ -60,7 +60,7 @@ A media player built into the Windows 11 taskbar, styled to fit in with the rest
 ### Visualizer
 
 - Listens to what your PC is playing, or only to the app in the player (Windows 11).
-- Bars or a thin line, in 5 shapes, with 6 color modes and 6 EQ presets.
+- Bars or a thin line, in 5 shapes, with 7 color modes (one fills the bars as the song plays) and 6 EQ presets.
 - Sits in the player, next to the artist name, or behind the whole player.
 - Tune each of its 7 frequency bands, or pick which audio device it listens to.
 - Runs at 60, 30 or 15 fps, pauses on battery saver, and stops while the screen is off or a game is fullscreen.
@@ -69,7 +69,7 @@ A media player built into the Windows 11 taskbar, styled to fit in with the rest
 
 - Album art, title and artist, a seek bar, playback buttons and the list of what's playing.
 - Opens right next to the player or at a fixed spot on screen.
-- Full or compact layout, with its own visualizer if you want one.
+- Full or compact layout, with its own visualizer if you want one, and a seek bar that can be a visualizer too.
 - Acrylic, Mica, Mica Alt, solid, album gradient or blurred cover background.
 - A button switches the visualizer between the app in the player and everything on the PC.
 

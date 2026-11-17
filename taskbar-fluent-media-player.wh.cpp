@@ -45,7 +45,8 @@ A full media player on your Windows 11 taskbar, styled to fit in with the rest o
 - **Lighter on power:** a frame rate setting for the visualizer, pausing on battery saver, and nothing animates with the screen off or a game fullscreen.
 - **Progress bar:** its own background color, hide it when nothing plays, show it only on hover, or let it grow on hover.
 - **New looks:** a Glass background, album art that spins like a record, and a glow while playing. Mica and Mica Alt look like Mica now.
-- **Mini player:** a compact layout, its own visualizer, and a bouncy opening. The player itself can grow a little on hover, or show only its cover until you hover it.
+- **Mini player:** a compact layout, its own visualizer, a seek bar that can be a visualizer, and a bouncy opening.
+- **Visualizer:** a Song progress color mode that fills the bars as the song plays. The player itself can grow a little on hover, or show only its cover until you hover it.
 
 ## New in 1.7
 
@@ -1426,15 +1427,18 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       - "custom_gradient": Custom gradient
       - "acrylic": Acrylic
       - "outline": Outline (no fill)
+      - "progress": Song progress
     - vizColor: "0 0 0$255 255 255"
       $name: Bar color (RGB)
       $description: "Used by Solid and Acrylic modes. Use '-1 -1 -1' for the system accent color, '-2 -2 -2' for the album color. You can also specify two colors separated by a $ symbol (e.g., '0 0 0$255 255 255') where the first color is for light theme and the second for dark theme."
     - vizColor1: "30 215 96"
-      #! $showIf: {vizColorMode: custom_gradient}
+      #! $showIf: {vizColorMode: [custom_gradient, progress]}
       $name: Gradient color 1 (RGB)
+      $description: With Song progress, the color of the part already played.
     - vizColor2: "0 180 255"
-      #! $showIf: {vizColorMode: custom_gradient}
+      #! $showIf: {vizColorMode: [custom_gradient, progress]}
       $name: Gradient color 2 (RGB)
+      $description: With Song progress, the color of the part still to come.
     - vizColorOpacity: 100
       $name: Bar opacity (%)
       $description: Applies to every color mode.
@@ -1746,6 +1750,9 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
     $options:
     - full: Full
     - compact: Compact
+  - miniPlayerSeekViz: false
+    $name: Seek bar as visualizer
+    $description: The mini player's seek bar is drawn as bars that move with the music. The played part is in full color; click or drag on it to seek.
   - miniPlayerVisualizer: false
     $name: Visualizer in the mini player
     $description: Bars under the playback buttons that move with the music. They listen the same way as the player's visualizer.
@@ -2373,7 +2380,7 @@ static std::vector<std::wstring> GetChecklistOrder(const std::wstring& orderKey,
 // ---- [Core] Settings model: enums, ModSettings, media-button config, LoadSettings ----
 enum class VizShape { Stereo, Mountain, Mirror, Wave, Breathe };
 enum class VizStyle { Bars, Line };
-enum class VizColorMode { Solid, DynamicAlbum, DynamicGradient, CustomGradient, Acrylic, Outline };
+enum class VizColorMode { Solid, DynamicAlbum, DynamicGradient, CustomGradient, Acrylic, Outline, Progress };
 enum class VizEQ { Default, Bass, Rock, Pop, Jazz, Electronic };
 enum class VizAnchor { Top, Middle, Bottom };
 
@@ -2546,6 +2553,7 @@ static constexpr SettingChoice<VizColorMode> VIZ_COLOR_MODES[] = {
     {L"custom_gradient",  VizColorMode::CustomGradient},
     {L"acrylic",          VizColorMode::Acrylic},
     {L"outline",          VizColorMode::Outline},
+    {L"progress",         VizColorMode::Progress},
 };
 static constexpr SettingChoice<VizEQ> VIZ_EQS[] = {
     {L"default",    VizEQ::Default},
@@ -2752,6 +2760,7 @@ struct ModSettings {
     bool         miniPlayerHideEmptyArt = false;
     bool         miniPlayerCompact    = false;
     bool         miniPlayerVisualizer = false;
+    bool         miniPlayerSeekViz    = false;
     bool         miniPlayerBounce     = false;
     int          playerHoverScale     = 100;
     bool         playerPeek           = false;
@@ -3398,6 +3407,7 @@ static constexpr SettingSpec SETTINGS[] = {
     SBool(L"PlayerMenuSettings.miniPlayerHideEmptyArt", &ModSettings::miniPlayerHideEmptyArt),
     SStr(L"PlayerMenuSettings.miniPlayerLayout", L"full"),
     SBool(L"PlayerMenuSettings.miniPlayerVisualizer", &ModSettings::miniPlayerVisualizer),
+    SBool(L"PlayerMenuSettings.miniPlayerSeekViz", &ModSettings::miniPlayerSeekViz),
     SBool(L"PlayerMenuSettings.miniPlayerBounce", &ModSettings::miniPlayerBounce),
     SInt(L"MainSettings.PlayerSetting.playerHoverScale", 100, 115, &ModSettings::playerHoverScale),
     SBool(L"MainSettings.PlayerSetting.playerPeek", &ModSettings::playerPeek),
@@ -9142,6 +9152,22 @@ static double VizZoneExtent(bool vertical) {
 
 // `rest` puts the bars straight down, for when the visualizer stops while it's
 // still on screen.
+// How far through the song playback is, 0 to 1 (0 without a known length).
+static double CurrentPlaybackRatio() {
+    int64_t pos = 0, dur = 0;
+    bool playing = false;
+    std::chrono::steady_clock::time_point stamp{};
+    {
+        std::lock_guard<std::mutex> lk(g_mediaMtx);
+        pos = g_media.positionTicks; dur = g_media.durationTicks;
+        playing = g_media.isPlaying; stamp = g_mediaPositionTimestamp;
+    }
+    if (dur <= 0) return 0.0;
+    if (playing && stamp.time_since_epoch().count() != 0)
+        pos += (int64_t)(std::chrono::duration<double>(std::chrono::steady_clock::now() - stamp).count() * 10000000.0);
+    return std::clamp((double)pos / (double)dur, 0.0, 1.0);
+}
+
 static void VizApplyFrame(bool rest = false) {
     if (!g_settings.vizEnabled || g_vizBars->empty())
         return;
@@ -9248,6 +9274,7 @@ static void VizApplyFrame(bool rest = false) {
     const float frameK = (float)g_settings.vizFrameMs / 16.f;
     auto perFrame = [frameK](float f) { return frameK > 1.01f ? 1.f - powf(1.f - std::min(f, 0.999f), frameK) : f; };
 
+    const double songProgress = g_settings.vizColorMode == VizColorMode::Progress ? CurrentPlaybackRatio() : 0.0;
     for (int i = 0; i < barCount; i++) {
         float tgt = g_vizTarget[i], cur = g_vizPeak[i];
         float a = attack, d = decay;
@@ -9274,6 +9301,11 @@ static void VizApplyFrame(bool rest = false) {
             float t = (float)i / std::max(1, barCount - 1);
             float freqT = std::min(1.f, t * 0.6f + fac * 0.4f);
             c = VizLerpColor(pal0, pal1, freqT);
+        } else if (g_settings.vizColorMode == VizColorMode::Progress) {
+            // Song progress: color 1 fills the bars from the left as the song plays,
+            // the bar at the edge part way, so it moves smoothly.
+            const float k = std::clamp((float)((songProgress * barCount) - i), 0.f, 1.f);
+            c = VizLerpColor(cg1, cg0, k);
         } else if (g_settings.vizColorMode == VizColorMode::CustomGradient) {
             float t = (barCount > 1) ? (float)i / (barCount - 1) : 0.f;
             c = VizLerpColor(cg0, cg1, t);
@@ -12764,6 +12796,29 @@ static Grid BuildMiniPlayerIconTray(bool isLight, bool hasMedia) {
 // same audio bands as the player's visualizer. If that one isn't running (off,
 // or hidden), the mini player starts the listening while it's open.
 static bool g_miniVizStartedCapture = false;
+static int g_miniVizUsers = 0;   // strips in the open mini player that need the audio
+// The mini player's bars listen even with the player's visualizer off: the
+// capture starts with the first strip and stops with the last (unless the
+// player's own visualizer is using it). On the taskbar's thread, which owns it.
+static void MiniVizCaptureAcquire() {
+    if (HWND h = g_taskbarWnd; h && IsWindow(h))
+        RunFromWindowThread(h, [](void*) {
+            g_miniVizUsers++;
+            if (g_unloading || g_vizCurrentlyVisible || g_miniVizStartedCapture) return;
+            StartVizCaptureThread();
+            g_miniVizStartedCapture = true;
+        }, nullptr);
+}
+static void MiniVizCaptureRelease() {
+    if (HWND h = g_taskbarWnd; h && IsWindow(h))
+        RunFromWindowThread(h, [](void*) {
+            g_miniVizUsers = std::max(0, g_miniVizUsers - 1);
+            if (g_miniVizUsers > 0 || !g_miniVizStartedCapture) return;
+            g_miniVizStartedCapture = false;
+            if (!g_vizCurrentlyVisible) StopVizCaptureThreadAsync();   // the player's own visualizer keeps it
+        }, nullptr);
+}
+
 static Grid BuildMiniPlayerVisualizer() {
     static constexpr int BARS = 28;
     static constexpr double STRIP_H = 30.0;
@@ -12807,21 +12862,122 @@ static Grid BuildMiniPlayerVisualizer() {
     winrt::weak_ref<DispatcherTimer> weakTimer = timer;
     strip.Loaded([timer](winrt::Windows::Foundation::IInspectable const&, RoutedEventArgs const&) {
         try { timer.Start(); } catch (...) { LOG_IGNORED_EXCEPTION(); }
-        if (HWND h = g_taskbarWnd; h && IsWindow(h))
-            RunFromWindowThread(h, [](void*) {
-                if (g_unloading || g_vizCurrentlyVisible || g_miniVizStartedCapture) return;
-                StartVizCaptureThread();
-                g_miniVizStartedCapture = true;
-            }, nullptr);
+        MiniVizCaptureAcquire();
     });
     strip.Unloaded([weakTimer](winrt::Windows::Foundation::IInspectable const&, RoutedEventArgs const&) {
         try { if (auto t = weakTimer.get()) t.Stop(); } catch (...) { LOG_IGNORED_EXCEPTION(); }
-        if (HWND h = g_taskbarWnd; h && IsWindow(h))
-            RunFromWindowThread(h, [](void*) {
-                if (!g_miniVizStartedCapture) return;
-                g_miniVizStartedCapture = false;
-                if (!g_vizCurrentlyVisible) StopVizCaptureThreadAsync();   // the player's own visualizer keeps it
-            }, nullptr);
+        MiniVizCaptureRelease();
+    });
+    return strip;
+}
+
+// "Seek bar as visualizer": the mini player's seek bar drawn as bars that move
+// with the music. The played part is in full color, the rest dimmed, and a
+// click or a drag anywhere on it seeks, like the normal bar.
+static Grid BuildMiniSeekVisualizer() {
+    static constexpr int BARS = 40;
+    static constexpr double STRIP_H = 26.0;
+    Grid strip;
+    strip.Name(L"FluentMediaMiniPlayerSeekVisualizer");
+    strip.Height(STRIP_H);
+    strip.Margin({8, 0, 8, 0});
+    strip.ColumnSpacing(2);
+    strip.Background(MakeBrush({0x00, 0, 0, 0}));   // the whole strip takes the pointer
+    const winrt::Windows::UI::Color played = g_cachedPaletteHash != 0 ? VizEnsureContrast(g_cachedAlbumPalette.primary) : MiniTitleColor();
+    auto playedBrush = std::make_shared<SolidColorBrush>(MakeBrush({0xF0, played.R, played.G, played.B}));
+    auto restBrush = std::make_shared<SolidColorBrush>(MakeBrush({0x48, played.R, played.G, played.B}));
+    auto bars = std::make_shared<std::vector<winrt::Windows::UI::Xaml::Shapes::Rectangle>>();
+    auto lit = std::make_shared<std::vector<char>>(BARS, (char)-1);
+    for (int i = 0; i < BARS; i++) {
+        ColumnDefinition col; col.Width({1.0, GridUnitType::Star});
+        strip.ColumnDefinitions().Append(col);
+        winrt::Windows::UI::Xaml::Shapes::Rectangle r;
+        r.RadiusX(1.25); r.RadiusY(1.25);
+        r.Height(3);
+        r.VerticalAlignment(VerticalAlignment::Center);
+        r.IsHitTestVisible(false);
+        Grid::SetColumn(r, i);
+        strip.Children().Append(r);
+        bars->push_back(r);
+    }
+    auto peaks = std::make_shared<std::vector<float>>(BARS, 0.f);
+    auto dragRatio = std::make_shared<double>(-1.0);
+    DispatcherTimer timer;
+    timer.Interval(winrt::Windows::Foundation::TimeSpan{ std::chrono::milliseconds(33) });
+    timer.Tick([bars, peaks, lit, dragRatio, playedBrush, restBrush](winrt::Windows::Foundation::IInspectable const&,
+                                                                     winrt::Windows::Foundation::IInspectable const&) {
+        float bands[VIZ_NUM_BANDS];
+        for (int b = 0; b < VIZ_NUM_BANDS; b++) bands[b] = g_vizBands[b].load(std::memory_order_relaxed);
+        const double progress = *dragRatio >= 0 ? *dragRatio : CurrentPlaybackRatio();
+        for (int i = 0; i < BARS; i++) {
+            const float t = (float)i / (BARS - 1);
+            const float pos = t * (VIZ_NUM_BANDS - 1);
+            const int lo = (int)pos, hi = std::min(lo + 1, VIZ_NUM_BANDS - 1);
+            const float v = bands[lo] * (1.f - (pos - lo)) + bands[hi] * (pos - lo);
+            float& p = (*peaks)[i];
+            p += (std::clamp(v * 1.4f, 0.f, 1.f) - p) * (v > p ? 0.6f : 0.2f);
+            const double h = std::round((3.0 + p * (STRIP_H - 3.0)) * 2.0) / 2.0;
+            const char on = ((i + 0.5) / BARS) <= progress ? 1 : 0;
+            try {
+                auto& r = (*bars)[i];
+                if (std::abs(r.Height() - h) > 0.4) r.Height(h);
+                if ((*lit)[i] != on) { (*lit)[i] = on; r.Fill(on ? *playedBrush : *restBrush); }
+            } catch (...) { LOG_IGNORED_EXCEPTION(); }
+        }
+    });
+    // Seeking: the same as the normal bar, the time shown while dragging.
+    auto ratioAt = [](winrt::Windows::Foundation::IInspectable const& sender, PointerRoutedEventArgs const& e) {
+        auto fe = sender.try_as<FrameworkElement>();
+        if (!fe || fe.ActualWidth() <= 0) return 0.0;
+        return std::clamp((double)e.GetCurrentPoint(fe).Position().X / fe.ActualWidth(), 0.0, 1.0);
+    };
+    auto showTime = [](double ratio) {
+        int64_t dur = 0;
+        { std::lock_guard<std::mutex> lk(g_mediaMtx); dur = g_media.durationTicks; }
+        try { if (g_miniPlayerElapsedRef && dur > 0) g_miniPlayerElapsedRef.Text(winrt::hstring(FormatMediaTime((int64_t)(dur * ratio)))); }
+        catch (...) { LOG_IGNORED_EXCEPTION(); }
+    };
+    strip.PointerPressed([dragRatio, ratioAt, showTime](winrt::Windows::Foundation::IInspectable const& sender, PointerRoutedEventArgs const& e) {
+        try {
+            if (!e.GetCurrentPoint(nullptr).Properties().IsLeftButtonPressed()) return;
+            if (auto fe = sender.try_as<UIElement>()) fe.CapturePointer(e.Pointer());
+            *dragRatio = ratioAt(sender, e);
+            g_miniPlayerSeekDragging.store(true);
+            showTime(*dragRatio);
+            e.Handled(true);
+        } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    });
+    strip.PointerMoved([dragRatio, ratioAt, showTime](winrt::Windows::Foundation::IInspectable const& sender, PointerRoutedEventArgs const& e) {
+        if (*dragRatio < 0) return;
+        *dragRatio = ratioAt(sender, e);
+        showTime(*dragRatio);
+    });
+    strip.PointerReleased([dragRatio, ratioAt](winrt::Windows::Foundation::IInspectable const& sender, PointerRoutedEventArgs const& e) {
+        if (*dragRatio < 0) return;
+        const double ratio = ratioAt(sender, e);
+        *dragRatio = -1.0;
+        g_miniPlayerSeekDragging.store(false);
+        try { if (auto fe = sender.try_as<UIElement>()) fe.ReleasePointerCapture(e.Pointer()); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+        SeekMiniPlayer(ratio);
+        e.Handled(true);
+    });
+    strip.PointerCaptureLost([dragRatio](winrt::Windows::Foundation::IInspectable const&, PointerRoutedEventArgs const&) {
+        *dragRatio = -1.0;
+        g_miniPlayerSeekDragging.store(false);
+    });
+    strip.PointerWheelChanged([](winrt::Windows::Foundation::IInspectable const&, PointerRoutedEventArgs const& e) {
+        const int delta = e.GetCurrentPoint(nullptr).Properties().MouseWheelDelta();
+        if (delta != 0) SeekBySeconds(delta > 0 ? 5 : -5);
+        e.Handled(true);
+    });
+    winrt::weak_ref<DispatcherTimer> weakTimer = timer;
+    strip.Loaded([timer](winrt::Windows::Foundation::IInspectable const&, RoutedEventArgs const&) {
+        try { timer.Start(); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+        MiniVizCaptureAcquire();
+    });
+    strip.Unloaded([weakTimer](winrt::Windows::Foundation::IInspectable const&, RoutedEventArgs const&) {
+        try { if (auto t = weakTimer.get()) t.Stop(); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+        MiniVizCaptureRelease();
     });
     return strip;
 }
@@ -13226,6 +13382,15 @@ COLD_UNOPTIMIZED static Grid BuildMiniPlayerFlyoutContent() {
         seekRow.Children().Append(elapsedBlock);
         seekRow.Children().Append(seekSlider);
         seekRow.Children().Append(durationBlock);
+        // "Seek bar as visualizer": bars in the slider's place. The slider stays,
+        // hidden, so the time labels keep updating as before.
+        if (g_settings.miniPlayerSeekViz) {
+            if (auto bars = BuildMiniSeekVisualizer()) {
+                seekSlider.Visibility(Visibility::Collapsed);
+                Grid::SetColumn(bars, 1);
+                seekRow.Children().Append(bars);
+            }
+        }
 
         // The wheel over the seek bar skips 5 seconds (GitHub #121).
         seekSlider.AddHandler(UIElement::PointerWheelChangedEvent(), winrt::box_value(
@@ -21076,6 +21241,8 @@ COLD_UNOPTIMIZED static SettingCategory BuildPlayerMenuCategory() {
         WithDesc(RowCombo(L"Mini player layout", L"PlayerMenuSettings.miniPlayerLayout", L"full",
                           { {L"full", L"Full"}, {L"compact", L"Compact"} }),
                  L"Compact is a short card with a small cover next to the title."),
+        WithDesc(RowBool(L"Seek bar as visualizer", L"PlayerMenuSettings.miniPlayerSeekViz"),
+                 L"Bars that move with the music. The played part is in full color; drag it to seek."),
         WithDesc(RowBool(L"Visualizer in the mini player", L"PlayerMenuSettings.miniPlayerVisualizer"),
                  L"Bars under the buttons that move with the music."),
         WithDesc(RowBool(L"Bouncy opening", L"PlayerMenuSettings.miniPlayerBounce"),
@@ -21181,7 +21348,8 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
     };
     const std::vector<ComboOption> vizColorModeOptions = {
         {L"solid", L"Solid"}, {L"dynamic_album", L"Dynamic album color"}, {L"dynamic_gradient", L"Dynamic gradient"},
-        {L"custom_gradient", L"Custom gradient"}, {L"acrylic", L"Acrylic"}, {L"outline", L"Outline (no fill)"}
+        {L"custom_gradient", L"Custom gradient"}, {L"acrylic", L"Acrylic"}, {L"outline", L"Outline (no fill)"},
+        {L"progress", L"Song progress"}
     };
     const std::vector<ComboOption> hideWidgetsScopeOptions = {
         {L"both", L"Both / all screens"}, {L"monitor1", L"Screen 1 only"}, {L"monitor2", L"Screen 2 only"}
@@ -23149,6 +23317,9 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"Round, with a hole in the middle, turning slowly while music plays.", L"Кругла, з отвором посередині, повільно обертається, поки грає музика.", L"Круглая, с отверстием посередине, медленно вращается, пока играет музыка.", L"Rund, mit Loch in der Mitte, dreht sich langsam beim Abspielen.", L"गोल, बीच में छेद के साथ, संगीत चलते समय धीरे घूमता है।", L"圆形、中间有孔，播放时缓慢旋转。", L"圓形、中間有孔，播放時緩慢旋轉。", L"Redonda, con un agujero en el centro, gira despacio mientras suena.", L"Ronde, percée au centre, elle tourne lentement pendant la lecture.", L"Redonda, com um furo no meio, gira devagar enquanto toca.", L"Rotonda, con un foro al centro, ruota lentamente durante la musica.", L"Okrągła, z otworem pośrodku, obraca się powoli podczas muzyki.", L"Yuvarlak, ortası delik, müzik çalarken yavaşça döner.", L"丸く中央に穴があり、再生中ゆっくり回ります。", L"가운데 구멍이 있는 원형으로, 음악이 나오는 동안 천천히 돕니다." },
     { L"How see-through Acrylic, Mica and Glass are.", L"Наскільки прозорі Acrylic, Mica і скло.", L"Насколько прозрачны Acrylic, Mica и стекло.", L"Wie durchsichtig Acrylic, Mica und Glas sind.", L"Acrylic, Mica और ग्लास कितने पारदर्शी हों।", L"Acrylic、Mica 和玻璃的透明程度。", L"Acrylic、Mica 和玻璃的透明程度。", L"Cuánto se transparentan Acrylic, Mica y Cristal.", L"La transparence d'Acrylic, Mica et Verre.", L"O quanto Acrylic, Mica e Vidro são transparentes.", L"Quanto sono trasparenti Acrylic, Mica e Vetro.", L"Jak przezroczyste są Acrylic, Mica i Szkło.", L"Acrylic, Mica ve Cam'ın ne kadar saydam olduğu.", L"Acrylic、Mica、ガラスの透け具合。", L"Acrylic, Mica, 유리의 투명도." },
     { L"How much of Mica's color covers the blur. 0 = just the blur.", L"Наскільки колір Mica вкриває розмиття. 0 = лише розмиття.", L"Насколько цвет Mica покрывает размытие. 0 = только размытие.", L"Wie viel Mica-Farbe über der Unschärfe liegt. 0 = nur die Unschärfe.", L"Mica का रंग धुंधलेपन को कितना ढके। 0 = सिर्फ़ धुंधलापन।", L"Mica 颜色覆盖模糊的程度。0 = 只有模糊。", L"Mica 色彩覆蓋模糊的程度。0 = 只有模糊。", L"Cuánto color de Mica cubre el desenfoque. 0 = solo el desenfoque.", L"La part de couleur Mica sur le flou. 0 = le flou seul.", L"Quanto da cor Mica cobre o desfoque. 0 = só o desfoque.", L"Quanto colore Mica copre la sfocatura. 0 = solo la sfocatura.", L"Ile koloru Mica pokrywa rozmycie. 0 = samo rozmycie.", L"Mica renginin bulanıklığı ne kadar örttüğü. 0 = yalnızca bulanıklık.", L"Mica の色がぼかしをどれだけ覆うか。0 = ぼかしのみ。", L"Mica 색이 흐림을 얼마나 덮는지. 0 = 흐림만." },
+    { L"Song progress", L"Прогрес пісні", L"Прогресс песни", L"Liedfortschritt", L"गाने की प्रगति", L"歌曲进度", L"歌曲進度", L"Progreso de la canción", L"Progression du morceau", L"Progresso da música", L"Avanzamento del brano", L"Postęp utworu", L"Şarkı ilerlemesi", L"曲の進行", L"곡 진행" },
+    { L"Seek bar as visualizer", L"Смуга перемотки як візуалізатор", L"Полоса перемотки как визуализатор", L"Suchleiste als Visualizer", L"सीक बार को विज़ुअलाइज़र बनाएँ", L"进度条显示为可视化", L"進度列顯示為視覺化", L"Barra de progreso como visualizador", L"Barre de lecture en visualiseur", L"Barra de progresso como visualizador", L"Barra di avanzamento come visualizzatore", L"Pasek przewijania jako wizualizer", L"Arama çubuğu görselleştirici olsun", L"シーク バーをビジュアライザーに", L"탐색 막대를 비주얼라이저로" },
+    { L"Bars that move with the music. The played part is in full color; drag it to seek.", L"Смужки рухаються в такт музиці. Відтворена частина яскрава; тягніть, щоб перемотати.", L"Полоски двигаются под музыку. Проигранная часть яркая; тяните, чтобы перемотать.", L"Balken, die sich mit der Musik bewegen. Der gespielte Teil ist voll farbig; zum Spulen ziehen.", L"संगीत के साथ हिलते बार। चला हुआ हिस्सा पूरे रंग में; आगे-पीछे करने के लिए खींचें।", L"随音乐跳动的频谱条。已播放部分为全彩，拖动即可调整进度。", L"隨音樂跳動的頻譜條。已播放部分為全彩，拖曳即可調整進度。", L"Barras que se mueven con la música. Lo reproducido va a todo color; arrastra para avanzar.", L"Des barres qui bougent avec la musique. La partie jouée est en couleur ; glissez pour avancer.", L"Barras que se movem com a música. A parte tocada fica em cor plena; arraste para avançar.", L"Barre che si muovono con la musica. La parte riprodotta è a colori pieni; trascina per spostarti.", L"Słupki poruszające się z muzyką. Odtworzona część jest w pełnym kolorze; przeciągnij, by przewinąć.", L"Müzikle hareket eden çubuklar. Çalınan kısım tam renkli; ilerletmek için sürükleyin.", L"音楽に合わせて動くバー。再生済みの部分は濃く表示。ドラッグでシーク。", L"음악에 맞춰 움직이는 막대. 재생한 부분은 진한 색이며, 끌어서 이동합니다." },
     { L"Window color", L"Колір вікна", L"Цвет окна", L"Fensterfarbe", L"विंडो का रंग", L"窗口颜色", L"視窗色彩", L"Color de la ventana", L"Couleur de la fenêtre", L"Cor da janela", L"Colore della finestra", L"Kolor okna", L"Pencere rengi", L"ウィンドウの色", L"창 색상" },
     { L"Custom color", L"Власний колір", L"Свой цвет", L"Eigene Farbe", L"कस्टम रंग", L"自定义颜色", L"自訂色彩", L"Color personalizado", L"Couleur personnalisée", L"Cor personalizada", L"Colore personalizzato", L"Własny kolor", L"Özel renk", L"カスタム色", L"사용자 지정 색" },
     { L"Title bar color", L"Колір рядка заголовка", L"Цвет строки заголовка", L"Farbe der Titelleiste", L"शीर्षक पट्टी का रंग", L"标题栏颜色", L"標題列色彩", L"Color de la barra de título", L"Couleur de la barre de titre", L"Cor da barra de título", L"Colore della barra del titolo", L"Kolor paska tytułu", L"Başlık çubuğu rengi", L"タイトル バーの色", L"제목 표시줄 색" },
@@ -23899,8 +24070,8 @@ static const RowRule ROW_RULES[] = {
     { L"AppearanceSettings.AlbumArtDisplaySettings.pauseOverlayOpacity", 129, true, L"AppearanceSettings.AlbumArtDisplaySettings.showPlayPauseOnHover", L"false" },
     { L"AppearanceSettings.AlbumArtDisplaySettings.appIconCorner", 130, false, L"AppearanceSettings.AlbumArtDisplaySettings.showAppIcon", L"true" },
     { L"AppearanceSettings.AlbumArtDisplaySettings.appIconSize", 131, false, L"AppearanceSettings.AlbumArtDisplaySettings.showAppIcon", L"true" },
-    { L"AppearanceSettings.VisualizerStyleSettings.vizColor1", 132, false, L"AppearanceSettings.VisualizerStyleSettings.vizColorMode", L"custom_gradient" },
-    { L"AppearanceSettings.VisualizerStyleSettings.vizColor2", 133, false, L"AppearanceSettings.VisualizerStyleSettings.vizColorMode", L"custom_gradient" },
+    { L"AppearanceSettings.VisualizerStyleSettings.vizColor1", 132, false, L"AppearanceSettings.VisualizerStyleSettings.vizColorMode", L"custom_gradient|progress" },
+    { L"AppearanceSettings.VisualizerStyleSettings.vizColor2", 133, false, L"AppearanceSettings.VisualizerStyleSettings.vizColorMode", L"custom_gradient|progress" },
     { L"AppearanceSettings.VisualizerStyleSettings.", 134, false, L"MainSettings.VisualizerFunctionsSettings.vizEnabled", L"true" },
     { L"AppearanceSettings.VisualizerStyleSettings.vizBarCornerRadius", 147, true, L"MainSettings.VisualizerFunctionsSettings.vizStyle", L"line" },
     { L"PlayerMenuSettings.PlayerMenuSettingsNear.", 135, false, L"PlayerMenuSettings.placementMode", L"near" },
