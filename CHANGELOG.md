@@ -34,7 +34,7 @@
 - **Glass background.** A clear, lightly frosted background with light catching its top edge.
 - **Spin like a record.** The album art turns round, with a hole in the middle, and spins slowly while music plays (Album Art page).
 - **Glow while playing.** An outline in the album's color that softly breathes while music plays.
-- **Show only the cover until hovered.** The player sits as just its album cover and widens to show the text and buttons under the pointer, then shrinks back a moment after you move away (Appearance, Animation). The album art has to come first in the player.
+- **Show only the cover until hovered.** The player sits as just its album cover and widens to show the text and buttons under the pointer, then shrinks back a moment after you move away (Appearance, Animation). Everything but the cover fades out while it's closed, the progress bar included. The album art has to come first in the player.
 - **Grow on hover.** The player grows a little under the pointer (Appearance, Animation; 100% = off).
 - **Progress bar options.** A taller bar on hover so it's easier to grab, its own background color, "Hide when nothing is playing", and "Only on hover": the bar fades in while you hover the player, ready to drag.
 - **Text alignment** for the title and artist: left, center or right (Info page).

@@ -14381,12 +14381,12 @@ static bool g_mainProgressDragging = false;
 
 // "Only on hover": the bar fades in while the pointer is over the player, or
 // over the part it sits under, and out again (not mid-drag).
-static void FadeElement(UIElement const& el, double to) {
+static void FadeElement(UIElement const& el, double to, int ms = 160) {
     try {
         Storyboard sb;
         DoubleAnimation a;
         a.To(to);
-        a.Duration(DurationHelper::FromTimeSpan(std::chrono::milliseconds(160)));
+        a.Duration(DurationHelper::FromTimeSpan(std::chrono::milliseconds(std::max(1, ms))));
         Storyboard::SetTarget(a, el);
         Storyboard::SetTargetProperty(a, L"Opacity");
         sb.Children().Append(a);
@@ -14485,10 +14485,35 @@ static double PlayerPeekWidth() {
     return 0;
 }
 
+// Everything in the player but the cover fades out while it's only the cover:
+// cutting the width alone left the scrolling title (which draws past its box)
+// and a dot of the progress bar showing.
+static void FadePlayerExceptCover(bool show, int ms) {
+    if (!g_playerGrid) return;
+    try {
+        auto isArt = [](FrameworkElement const& fe) {
+            return winrt::unbox_value_or<winrt::hstring>(fe.Tag(), L"") == L"FluentMediaArtContainer";
+        };
+        if (auto panel = FindChildByName(g_playerGrid, PANEL_GRID_NAME).try_as<Panel>())
+            for (auto const& ch : panel.Children())
+                if (auto fe = ch.try_as<FrameworkElement>(); fe && !isArt(fe)) {
+                    FadeElement(fe, show ? 1.0 : 0.0, ms);
+                    fe.IsHitTestVisible(show);
+                }
+        for (auto const& ch : g_playerGrid.Children())   // the progress bar, when it spans the player
+            if (auto fe = ch.try_as<FrameworkElement>(); fe && fe.Name() == L"FluentMedia_ProgressBarTrack") {
+                FadeElement(fe, show ? 1.0 : 0.0, ms);
+                fe.IsHitTestVisible(show && g_settings.progressBarSeekable);
+            }
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+}
+
 static void ApplyPlayerPeek(bool expand, bool animate) {
     if (!g_playerGrid || !g_settings.playerPeek || IsSidebarMode()) return;
     try {
         const double peekW = PlayerPeekWidth();
+        // Out quickly when closing, in a little after the width starts opening.
+        if (peekW > 0) FadePlayerExceptCover(expand, !animate ? 1 : expand ? 260 : 120);
         const double base = PlayerBaseMaxWidth();
         if (g_playerPeekSb) { g_playerPeekSb.Stop(); g_playerPeekSb = nullptr; }
         const double fromW = g_playerGrid.ActualWidth();
