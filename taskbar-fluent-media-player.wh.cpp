@@ -1348,6 +1348,7 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       $name: Spin like a record while playing
       $description: The album art turns round, with a hole in the middle, and spins slowly while music plays.
     - morphArtShape: false
+      #! $hideIf: {albumArtDisc: true}
       $name: Morph album art between shapes
       $description: When the cover changes shape (a square cover, then a wide video thumbnail), the new cover shows first, then the art stretches into its shape instead of jumping.
     - albumArtEmptyBehavior: "show"
@@ -1401,6 +1402,7 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       #! $showIf: {settingsView: full}
       $name: Album art opacity (0-100)
     - albumArtCornerRadius: "4"
+      #! $hideIf: {albumArtDisc: true}
       $name: Album art corner radius
       $description: "Use single value (e.g., '4') for uniform corners, or four space-separated values (e.g., '4 2 4 2') for individual corners."
     - showAppIcon: false
@@ -10506,9 +10508,15 @@ struct PlayerClicks {
 // Kept weakly: they go with their elements. Paused where they are otherwise.
 [[clang::no_destroy]] static std::vector<winrt::weak_ref<Storyboard>> g_playingAnimations;
 static bool g_playingAnimationsOn = false;
-static void KeepPlayingAnimation(Storyboard const& sb) {
+static void KeepPlayingAnimation(Storyboard const& sb, FrameworkElement const& host) {
     g_playingAnimations.push_back(winrt::make_weak(sb));
-    try { sb.Begin(); if (!g_playingAnimationsOn) sb.Pause(); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    // Begun once it's on screen (again after a rebuild moves it): begun before,
+    // it could miss the pause or not turn at all.
+    host.Loaded([weak = winrt::make_weak(sb)](winrt::Windows::Foundation::IInspectable const&, RoutedEventArgs const&) {
+        auto s = weak.get();
+        if (!s) return;
+        try { s.Begin(); if (!g_playingAnimationsOn) s.Pause(); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    });
 }
 static winrt::Windows::UI::Color PlayerGlowColor() {
     if (g_cachedPaletteHash != 0) return VizEnsureContrast(g_cachedAlbumPalette.primary);
@@ -10600,6 +10608,8 @@ COLD_UNOPTIMIZED static Grid BuildAlbumArtContainer() {
     bool isSquare = (g_settings.albumArtMinWidth == g_settings.albumArtMinHeight) &&
                    (g_settings.albumArtMaxWidth == g_settings.albumArtMaxHeight);
     const bool disc = g_settings.albumArtDisc && !IsSidebarMode();
+    const double discSide = std::max(16.0, (double)(g_settings.albumArtMaxHeight > 0 ? g_settings.albumArtMaxHeight : 32));
+    const winrt::Windows::UI::Xaml::CornerRadius discRound{discSide / 2, discSide / 2, discSide / 2, discSide / 2};
     artImage.Stretch(isSquare || disc ? Stretch::UniformToFill : Stretch::Uniform);
 
     artImage.HorizontalAlignment(HorizontalAlignment::Center);
@@ -10655,6 +10665,7 @@ COLD_UNOPTIMIZED static Grid BuildAlbumArtContainer() {
         g_settings.albumArtCornerRadiusBR,
         g_settings.albumArtCornerRadiusBL
     });
+    if (disc) { artRing.CornerRadius(discRound); artBorder.CornerRadius(discRound); }
     artRing.BorderThickness({1,1,1,1});
     artRing.BorderBrush(MakeBrush({0x25,0x80,0x80,0x80}));
     artContainer.Children().Append(artRing);
@@ -10735,7 +10746,12 @@ COLD_UNOPTIMIZED static Grid BuildAlbumArtContainer() {
         pauseIcon.VerticalAlignment(VerticalAlignment::Center);
 
         pauseBorder.Child(pauseIcon);
-        artInnerGrid.Children().Append(pauseBorder);
+        if (disc) {
+            pauseBorder.CornerRadius(discRound);
+            artContainer.Children().Append(pauseBorder);
+        } else {
+            artInnerGrid.Children().Append(pauseBorder);
+        }
     }
 
     // Hover shows the play/pause icon even while playing (showPlayPauseOnHover).
@@ -10816,7 +10832,7 @@ COLD_UNOPTIMIZED static Grid BuildAlbumArtContainer() {
     // turning slowly while music plays (it stops where it is when paused).
     if (disc) {
         try {
-            const double side = std::max(16.0, (double)(g_settings.albumArtMaxHeight > 0 ? g_settings.albumArtMaxHeight : 32));
+            const double side = discSide;
             artContainer.Width(side);
             artContainer.MinWidth(0);
             artContainer.MaxWidth(side);
@@ -10832,8 +10848,8 @@ COLD_UNOPTIMIZED static Grid BuildAlbumArtContainer() {
             hole.IsHitTestVisible(false);
             artContainer.Children().Append(hole);
             RotateTransform turn;
-            artContainer.RenderTransformOrigin({0.5f, 0.5f});
-            artContainer.RenderTransform(turn);
+            artBorder.RenderTransformOrigin({0.5f, 0.5f});
+            artBorder.RenderTransform(turn);
             Storyboard spin;
             DoubleAnimation a;
             a.From(0.0);
@@ -10843,7 +10859,7 @@ COLD_UNOPTIMIZED static Grid BuildAlbumArtContainer() {
             Storyboard::SetTarget(a, turn);
             Storyboard::SetTargetProperty(a, L"Angle");
             spin.Children().Append(a);
-            KeepPlayingAnimation(spin);
+            KeepPlayingAnimation(spin, artBorder);
         } catch (...) { LOG_IGNORED_EXCEPTION(); }
     }
     return artContainer;
@@ -14529,6 +14545,7 @@ static void ApplyPlayerPeek(bool expand, bool animate) {
         const double peekW = PlayerPeekWidth();
         // Out quickly when closing, in a little after the width starts opening.
         if (peekW > 0) FadePlayerExceptCover(expand, !animate ? 1 : expand ? 260 : 120);
+        else FadePlayerExceptCover(true, 1);
         const double base = PlayerBaseMaxWidth();
         if (g_playerPeekSb) { g_playerPeekSb.Stop(); g_playerPeekSb = nullptr; }
         const double fromW = g_playerGrid.ActualWidth();
@@ -15209,7 +15226,7 @@ COLD_UNOPTIMIZED static Grid BuildPlayerGrid() {
             Storyboard::SetTarget(a, glow);
             Storyboard::SetTargetProperty(a, L"Opacity");
             pulse.Children().Append(a);
-            KeepPlayingAnimation(pulse);
+            KeepPlayingAnimation(pulse, glow);
         }
         wrapper.Children().Append(playerButton);
         if (vizBehind) {
@@ -24198,6 +24215,8 @@ static const RowRule ROW_RULES[] = {
     { L"PlayerMenuSettings.PlayerMenuSettingsScreen.", 136, false, L"PlayerMenuSettings.placementMode", L"screen" },
     { L"PlayerMenuSettings.miniPlayerBackgroundColor", 137, false, L"PlayerMenuSettings.miniPlayerBackground", L"solid" },
     { L"PlayerMenuSettings.miniPlayerBackgroundOpacity", 138, false, L"PlayerMenuSettings.miniPlayerBackground", L"solid|album_gradient" },
+    { L"AppearanceSettings.AlbumArtDisplaySettings.morphArtShape", 6407, true, L"AppearanceSettings.AlbumArtDisplaySettings.albumArtDisc", L"true" },
+    { L"AppearanceSettings.AlbumArtDisplaySettings.albumArtCornerRadius", 6408, true, L"AppearanceSettings.AlbumArtDisplaySettings.albumArtDisc", L"true" },
 };
 
 static std::wstring RuleCurrentValue(const wchar_t* key) {
