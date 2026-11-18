@@ -4356,6 +4356,11 @@ static std::wstring TrimCopy(std::wstring value) {
 // ===========================================================================
 namespace Playback {
 
+struct AlbumPalette {
+    winrt::Windows::UI::Color primary;
+    winrt::Windows::UI::Color secondary;
+};
+
 struct MediaState {
     std::wstring      title;
     std::wstring      artist;
@@ -4365,6 +4370,8 @@ struct MediaState {
     bool              hasMedia      = false;
     std::vector<BYTE> thumbnailBytes;
     uint64_t          thumbnailHash = 0;
+    AlbumPalette      palette{};
+    uint64_t          paletteHash = 0;   // the thumbnailHash `palette` belongs to
     std::vector<BYTE> appIconBytes;
     std::wstring      appIconKey;
     bool              canSkipPrevious  = true;
@@ -4441,11 +4448,6 @@ struct BlurBgCache {
         radius = -1;
     }
 } g_blurBgCache;
-
-struct AlbumPalette {
-    winrt::Windows::UI::Color primary;
-    winrt::Windows::UI::Color secondary;
-};
 
 // Covers above this aren't loaded. 4 MB dropped AIMP's high-res art (GitHub #81).
 static constexpr UINT64 MAX_THUMBNAIL_BYTES = 24ull * 1024 * 1024;
@@ -4656,7 +4658,6 @@ static void SwitchMediaSession() {
     {
         std::lock_guard<std::mutex> lk(g_sessionMtx);
         if (!g_sessionMgr) return;
-        g_userSwitchedSession = true;
         mgr = g_sessionMgr;
         current = g_currentSession;
     }
@@ -4692,6 +4693,9 @@ static void SwitchMediaSession() {
         }
     } catch (...) { return; }
     if (nextSession) {
+        // Only an actual switch keeps the player on the app picked: with one app
+        // it used to stop the player following the next app that started.
+        { std::lock_guard<std::mutex> lk(g_sessionMtx); g_userSwitchedSession = true; }
         AttachToSession(nextSession);
     }
 }
@@ -5251,9 +5255,24 @@ static std::vector<BYTE> FetchAppIconAsCover(const std::wstring& aumid) {
     return {};
 }
 
+} // namespace Playback
+namespace Graphics { static AlbumPalette ExtractAlbumPalette(const std::vector<BYTE>& thumbBytes); }
+namespace Playback {
+
+// Each fetch is numbered when it's asked for: a slow one (a big cover, or a
+// session that was just switched away from) used to finish last and put the
+// old song or app back.
+static std::atomic<uint64_t> g_mediaPropsFetchGen{0};
+static uint64_t g_mediaPropsWrittenGen = 0;   // guarded by g_mediaMtx
+static bool StillCurrentSession(GlobalSystemMediaTransportControlsSession const& s) {
+    std::lock_guard<std::mutex> lk(g_sessionMtx);
+    return g_currentSession == s;
+}
+
 static void FetchMediaPropertiesAsync() {
     Wh_Log(L"FetchMediaPropertiesAsync: Called");
-    SpawnTrackedWorker([]() {
+    const uint64_t myGen = ++g_mediaPropsFetchGen;
+    SpawnTrackedWorker([myGen]() {
         if (g_unloading) return;
         winrt::init_apartment(winrt::apartment_type::multi_threaded);
         try {
@@ -5305,6 +5324,19 @@ static void FetchMediaPropertiesAsync() {
                     if (!thumbBytes.empty()) thumbHash = thumbHash * 31 + thumbBytes.size();
                 }
 
+                // The cover's colors, here: decoding a big cover on the taskbar's
+                // thread held the taskbar up on every song change.
+                AlbumPalette palette{};
+                uint64_t paletteHash = 0;
+                {
+                    std::lock_guard<std::mutex> lk(g_mediaMtx);
+                    if (g_media.paletteHash != 0 && g_media.paletteHash == thumbHash) { palette = g_media.palette; paletteHash = thumbHash; }
+                }
+                if (!thumbBytes.empty() && thumbHash != 0 && paletteHash != thumbHash) {
+                    palette = ExtractAlbumPalette(thumbBytes);
+                    paletteHash = thumbHash;
+                }
+
                 std::vector<BYTE> appIconBytes;
                 std::wstring      appIconKey;
                 bool forceIconRefresh = false;
@@ -5330,15 +5362,21 @@ static void FetchMediaPropertiesAsync() {
                 }
 
                 const bool iconDone = iconTried || !appIconBytes.empty() || !g_settings.showAppIcon;
+                const bool stillCurrent = StillCurrentSession(session);
                 {
                     std::lock_guard<std::mutex> lk(g_mediaMtx);
-                    try {
+                    if (!stillCurrent || myGen < g_mediaPropsWrittenGen) {
+                        Wh_Log(L"FetchMediaPropertiesAsync: Dropped, a newer fetch or session took over");
+                    } else try {
+                        g_mediaPropsWrittenGen = myGen;
                         g_media.title          = std::wstring(props.Title());
                         g_media.artist         = std::wstring(props.Artist());
                         g_media.album          = std::wstring(props.AlbumTitle());
                         g_media.hasMedia       = !g_media.title.empty() || !g_media.artist.empty();
                         g_media.thumbnailBytes = std::move(thumbBytes);
                         g_media.thumbnailHash  = thumbHash;
+                        g_media.palette        = palette;
+                        g_media.paletteHash    = paletteHash;
                         g_media.appUserModelId = aumid;
                         if (g_settings.showAppIcon) {
                             g_media.appIconBytes   = std::move(appIconBytes);
@@ -5415,7 +5453,7 @@ static void FetchPlaybackInfoAsync() {
             if (session) {
                 try {
                     auto info = session.GetPlaybackInfo();
-                    if (!info) {
+                    if (!info || !StillCurrentSession(session)) {   // switched away meanwhile
                         winrt::uninit_apartment();
                         return;
                     }
@@ -8162,9 +8200,12 @@ static void VizCaptureThreadProc(VizCaptureRun* run) {
 
         if (run->device.empty() && (!run->onlyApp || listenToAll)) {
             static thread_local ULONGLONG s_lastRepick = 0;
+            static thread_local ULONGLONG s_repickEvery = 6000;   // up to a minute while it stays quiet
             const ULONGLONG nowMs = GetTickCount64();
-            if (nowMs - lastHeard >= 6000 && nowMs - s_lastRepick >= 6000) {
+            if (nowMs - lastHeard < 6000) s_repickEvery = 6000;
+            if (nowMs - lastHeard >= 6000 && nowMs - s_lastRepick >= s_repickEvery) {
                 s_lastRepick = nowMs;
+                s_repickEvery = std::min<ULONGLONG>(s_repickEvery * 2, 60000);
                 bool playing = false;
                 { std::lock_guard<std::mutex> lk(g_mediaMtx); playing = g_media.isPlaying; }
                 if (playing) pendingReinit = true;   // music, but nothing heard: it's on another output
@@ -15516,6 +15557,8 @@ struct PlayerSnapshot {
     std::vector<BYTE> thumbBytes;
     std::vector<BYTE> appIconBytes;
     uint64_t          thumbHash = 0;
+    AlbumPalette      palette{};
+    uint64_t          paletteHash = 0;
     bool              canSkipPrevious = true, canSkipNext = true;
     bool              canShuffle = true, canRepeat = true, canSeek = true;
     bool              hasSession = false;
@@ -15532,6 +15575,8 @@ static PlayerSnapshot TakePlayerSnapshot() {
         m.hasMedia        = g_media.hasMedia;
         m.thumbBytes      = g_media.thumbnailBytes;
         m.thumbHash       = g_media.thumbnailHash;
+        m.palette         = g_media.palette;
+        m.paletteHash     = g_media.paletteHash;
         m.appIconBytes    = g_media.appIconBytes;
         m.canSkipPrevious = g_media.canSkipPrevious;
         m.canSkipNext     = g_media.canSkipNext;
@@ -16171,7 +16216,7 @@ static bool RefreshAlbumArt(const PlayerSnapshot& m) {
     if (thumbBytes.empty() || thumbHash == 0) {
         if (g_cachedPaletteHash != 0) { g_cachedPaletteHash = 0; paletteChanged = true; }
     } else if ((size_t)thumbHash != g_cachedPaletteHash) {
-        g_cachedAlbumPalette = ExtractAlbumPalette(thumbBytes);
+        g_cachedAlbumPalette = m.paletteHash == thumbHash ? m.palette : ExtractAlbumPalette(thumbBytes);
         g_cachedPaletteHash = (size_t)thumbHash;
         paletteChanged = true;
     }
@@ -20104,6 +20149,11 @@ static DWORD WINAPI TimerThreadProc(void*) {
         DWORD wait = WaitForMultipleObjects(3, handles, FALSE, 500);
 
         if (wait == WAIT_OBJECT_0) break;
+        // Renewed first: the watch fires once, and skipping it here (settings
+        // being applied) left dark/light switches unnoticed until a reload.
+        const bool themeKeyChanged = wait == WAIT_OBJECT_0 + 1;
+        if (themeKeyChanged && hKey) RegNotifyChangeKeyValue(hKey, FALSE, REG_NOTIFY_CHANGE_LAST_SET, hEvent, TRUE);
+        if (themeKeyChanged && g_applyingSettings) g_themeChangePending = true;
         if (g_applyingSettings) continue;
 
         // Must run before the hWnd fallback below, which would otherwise replace
@@ -20120,10 +20170,7 @@ static DWORD WINAPI TimerThreadProc(void*) {
         RecoverMissingPlayer(hWnd);
         KeepTrayPlacement(hWnd);
 
-        if (wait == WAIT_OBJECT_0 + 1) {
-            if (hKey) {
-                RegNotifyChangeKeyValue(hKey, FALSE, REG_NOTIFY_CHANGE_LAST_SET, hEvent, TRUE);
-            }
+        if (themeKeyChanged) {
             // The theme is re-checked whatever the hover-effect mode: colors
             // with a "light $ dark" pair need the refresh too, not just the
             // "auto" hover modes.
@@ -22487,27 +22534,34 @@ static SettingsMap ParseSettings(const std::wstring& text, bool* ok = nullptr) {
     return m;
 }
 
-// Text kept as "<prefix>0", "<prefix>1"... with the count in "<prefix>Chunks".
+// Text kept as "<copy>0", "<copy>1"... with the count in "<copy>Chunks". There
+// are two copies, "<prefix>" and "<prefix>B", and "<prefix>Slot" says which is
+// current: a save writes the other one, then switches over in one write, so a
+// save that fails halfway leaves the last good one whole.
+static std::wstring StoredTextCopy(const std::wstring& prefix, int slot) { return slot ? prefix + L"B" : prefix; }
 static std::wstring ReadStoredText(const std::wstring& prefix) {
+    const std::wstring copy = StoredTextCopy(prefix, Wh_GetIntValue((prefix + L"Slot").c_str(), 0));
     std::wstring text;
-    const int chunks = std::clamp(Wh_GetIntValue((prefix + L"Chunks").c_str(), 0), 0, 1000);
+    const int chunks = std::clamp(Wh_GetIntValue((copy + L"Chunks").c_str(), 0), 0, 1000);
     for (int i = 0; i < chunks; i++) {
         std::vector<wchar_t> buf(SAVED_CHUNK_CHARS + 2, L'\0');
-        Wh_GetStringValue((prefix + std::to_wstring(i)).c_str(), buf.data(), buf.size());
+        Wh_GetStringValue((copy + std::to_wstring(i)).c_str(), buf.data(), buf.size());
         text += buf.data();
     }
     return text;
 }
 static bool WriteStoredText(const std::wstring& prefix, const std::wstring& text) {
-    const std::wstring countName = prefix + L"Chunks";
+    const int slot = Wh_GetIntValue((prefix + L"Slot").c_str(), 0) ? 0 : 1;
+    const std::wstring copy = StoredTextCopy(prefix, slot);
+    const std::wstring countName = copy + L"Chunks";
     const int oldChunks = std::clamp(Wh_GetIntValue(countName.c_str(), 0), 0, 1000);
     int chunks = 0;
     for (size_t at = 0; at < text.size(); at += SAVED_CHUNK_CHARS, chunks++)
-        if (!Wh_SetStringValue((prefix + std::to_wstring(chunks)).c_str(), text.substr(at, SAVED_CHUNK_CHARS).c_str()))
+        if (!Wh_SetStringValue((copy + std::to_wstring(chunks)).c_str(), text.substr(at, SAVED_CHUNK_CHARS).c_str()))
             return false;
     if (!Wh_SetIntValue(countName.c_str(), chunks)) return false;
-    for (int i = chunks; i < oldChunks; i++) Wh_DeleteValue((prefix + std::to_wstring(i)).c_str());
-    return true;
+    for (int i = chunks; i < oldChunks; i++) Wh_DeleteValue((copy + std::to_wstring(i)).c_str());
+    return Wh_SetIntValue((prefix + L"Slot").c_str(), slot) != FALSE;
 }
 
 // What Windhawk's settings page holds, keyed and written the way the overrides

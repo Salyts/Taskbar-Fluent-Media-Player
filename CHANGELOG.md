@@ -77,6 +77,12 @@
 
 ### Fixes
 
+- Changing songs or apps quickly could put the old song, cover or app back in the player: a slow fetch for the old one finished last and overwrote the new one. Older fetches, and ones for an app the player has moved away from, are now dropped.
+- The cover's colors are worked out off the taskbar's thread, so a big cover (some players send multi-megabyte PNGs) no longer holds the taskbar up for a moment on every song change.
+- Settings are saved to a second copy and switched over only once it's fully written, so a save that fails halfway can't leave them half old, half new.
+- "Switch media app" with only one app playing no longer stops the player from following the next app that starts.
+- A light/dark theme switch that happened while settings were being applied could go unnoticed until the mod reloaded.
+- With music playing but no sound (a muted app), the visualizer looks for another audio output less and less often (up to once a minute) instead of every 6 seconds.
 - With "Spin like a record" and "Show only the cover until hovered" both on, the player could open empty or stay open after the pointer left, and the record could stop turning after changing a setting.
 - A progress bar set to "Below info text" is as long as the info area and lined up under it, instead of spanning the wider column the info sits in.
 - The visualizer works with audio routers like Elgato Wave Link and Voicemeeter, which give each app its own output: it looks at every output device, and "Everything on the PC" listens to the one the music is actually on (the player's app's, or the loudest), looking again if it goes quiet while music plays. Before, it only listened to Windows' default output.
