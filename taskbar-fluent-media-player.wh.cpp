@@ -7175,13 +7175,14 @@ static std::shared_ptr<const MicaWall> MicaWallFor(HMONITOR mon) {
     return wall;
 }
 
-// One wallpaper-Mica brush and the part it paints (found after it's set).
+// One wallpaper brush (Mica or Acrylic) and the part it paints (found after
+// it's set). `tint` covers `tintAmount` (0..1) of the blurred wallpaper.
 struct MicaBrushEntry {
     DWORD thread = 0;
     winrt::weak_ref<ImageBrush> brush;
     winrt::weak_ref<FrameworkElement> el;
-    bool alt = false;
-    double strength = 0.5;
+    winrt::Windows::UI::Color tint{255, 0, 0, 0};
+    double tintAmount = 0.5;
     HMONITOR mon = nullptr;
     std::wstring wallKey;   // the wallpaper its picture was made from
     double lastX = 0, lastY = 0;
@@ -7190,7 +7191,7 @@ struct MicaBrushEntry {
 static std::mutex g_micaBrushMtx;
 [[clang::no_destroy]] static std::vector<std::shared_ptr<MicaBrushEntry>> g_micaBrushes;
 
-static Brush MakeWallpaperMicaBrush(bool alt, double strength, double alpha) {
+static Brush MakeWallpaperBrush(winrt::Windows::UI::Color tint, double tintAmount, double alpha) {
     ImageBrush b;
     b.Stretch(Stretch::None);
     b.AlignmentX(AlignmentX::Left);
@@ -7200,8 +7201,8 @@ static Brush MakeWallpaperMicaBrush(bool alt, double strength, double alpha) {
     auto entry = std::make_shared<MicaBrushEntry>();
     entry->thread = GetCurrentThreadId();
     entry->brush = winrt::make_weak(b);
-    entry->alt = alt;
-    entry->strength = strength;
+    entry->tint = tint;
+    entry->tintAmount = std::clamp(tintAmount, 0.0, 1.0);
     {
         std::lock_guard<std::mutex> lk(g_micaBrushMtx);
         std::erase_if(g_micaBrushes, [](const std::shared_ptr<MicaBrushEntry>& x) { return !x->brush.get(); });
@@ -7264,6 +7265,13 @@ static Brush MakeBackgroundBrushFromParams(const BackgroundStyleParams& p) {
     // fell back to a near-solid color. "Background opacity" fades the result.
     const double materialAlpha = std::clamp(g_settings.materialOpacity, 0, 100) / 100.0;
     if (t == BackgroundType::Acrylic) {
+        // The wallpaper behind the part, blurred, under the tint color: a blur
+        // of "what's behind" inside the taskbar only finds the taskbar's own
+        // even color, so Acrylic came out as a flat tint.
+        try {
+            return MakeWallpaperBrush(winrt::Windows::UI::Color{0xFF, color1.R, color1.G, color1.B},
+                                      std::clamp(p.acrylicTintOpacity, 0, 100) / 100.0, materialAlpha);
+        } catch (...) { LOG_IGNORED_EXCEPTION(); }
         try {
             winrt::Windows::UI::Xaml::Media::AcrylicBrush brush;
             brush.BackgroundSource(winrt::Windows::UI::Xaml::Media::AcrylicBackgroundSource::Backdrop);
@@ -7287,7 +7295,7 @@ static Brush MakeBackgroundBrushFromParams(const BackgroundStyleParams& p) {
             ? (alt ? winrt::Windows::UI::Color{0xFF, 0xDA, 0xDA, 0xDA} : winrt::Windows::UI::Color{0xFF, 0xF3, 0xF3, 0xF3})
             : (alt ? winrt::Windows::UI::Color{0xFF, 0x0A, 0x0A, 0x0A} : winrt::Windows::UI::Color{0xFF, 0x20, 0x20, 0x20});
         const double strength = std::clamp(p.micaOpacity, 0, 100) / 100.0;
-        try { return MakeWallpaperMicaBrush(alt, strength, materialAlpha); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+        try { return MakeWallpaperBrush(base, strength * (alt ? 0.95 : 0.9), materialAlpha); } catch (...) { LOG_IGNORED_EXCEPTION(); }
         try {
             winrt::Windows::UI::Xaml::Media::AcrylicBrush brush;
             brush.BackgroundSource(winrt::Windows::UI::Xaml::Media::AcrylicBackgroundSource::Backdrop);
@@ -14086,13 +14094,8 @@ static HWND TaskbarWndForElement(FrameworkElement const& el) {
     return g_taskbarWnd;
 }
 
-// The wallpaper picture, tinted with the theme's Mica color.
-static WriteableBitmap BakeMicaBitmap(const MicaWall& w, bool alt, double strength) {
-    const bool light = IsSystemLightTheme();
-    const winrt::Windows::UI::Color base = light
-        ? (alt ? winrt::Windows::UI::Color{0xFF, 0xDA, 0xDA, 0xDA} : winrt::Windows::UI::Color{0xFF, 0xF3, 0xF3, 0xF3})
-        : (alt ? winrt::Windows::UI::Color{0xFF, 0x0A, 0x0A, 0x0A} : winrt::Windows::UI::Color{0xFF, 0x20, 0x20, 0x20});
-    const double t = std::clamp(strength, 0.0, 1.0) * (alt ? 0.95 : 0.9);
+// The wallpaper picture under its tint.
+static WriteableBitmap BakeMicaBitmap(const MicaWall& w, winrt::Windows::UI::Color base, double t) {
     WriteableBitmap wb(w.w, w.h);
     BYTE* dst = nullptr;
     auto buf = wb.PixelBuffer();
@@ -14124,7 +14127,7 @@ static void PlaceMicaBrush(MicaBrushEntry& e) {
         if (!wall) return;
         e.mon = mon;
         if (e.wallKey != wall->key) {
-            if (auto wb = BakeMicaBitmap(*wall, e.alt, e.strength)) brush.ImageSource(wb);
+            if (auto wb = BakeMicaBitmap(*wall, e.tint, e.tintAmount)) brush.ImageSource(wb);
             e.wallKey = wall->key;
         }
         POINT origin{0, 0};

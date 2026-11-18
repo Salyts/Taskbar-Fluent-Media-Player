@@ -77,7 +77,7 @@
 
 ### Fixes
 
-- Mica and Mica Alt work on the player and the detached parts: they show your wallpaper, heavily blurred and tinted, lined up with where each part sits, like Windows' own Mica. Inside the taskbar the old blur only found the taskbar's own even color, so they looked flat. "Mica opacity" sets how much of the base color covers the wallpaper.
+- Mica, Mica Alt and Acrylic work on the player and the detached parts: they show your wallpaper, heavily blurred and tinted, lined up with where each part sits, like Windows' own Mica. Inside the taskbar the old blur only found the taskbar's own even color, so they looked flat. "Mica opacity" sets how much of the base color covers the wallpaper. Acrylic works the same way, with its own tint color at "Acrylic tint opacity" over the blurred wallpaper (it came out as a flat tint before).
 - A detached part with a blurred-cover background no longer shows the blur taller than its frame.
 - A fully round album cover (or the spinning record) has no outline, and the gray stand-in behind the cover no longer peeks out around its edge.
 - Settings window: text on the accent color (Save, a colored title bar's buttons) picks black or white by real contrast; light accents like green used to get white text that was hard to read. An expanding card's rows line their controls up under its switch, and page and section names are in sentence case like Windows' Settings.
