@@ -1147,10 +1147,10 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       #! $showIf: {backgroundType: [acrylic, mica, mica_alt, glass]}
       $name: Background opacity (0-100)
       $description: How see-through the Acrylic, Mica and Glass backgrounds are. Detached parts with their own background use it too.
-    - materialBlur: 50
-      #! $showIf: {backgroundType: [acrylic, mica, mica_alt]}
+    - materialBlur: 0
+      #! $showIf: {backgroundType: [acrylic, mica, mica_alt, glass]}
       $name: Blur amount (0-100)
-      $description: How blurred the wallpaper behind Acrylic and Mica is. Low keeps its shapes, high leaves only its colors.
+      $description: Extra blur on top of Windows' own, for Acrylic, Mica and Glass. 0 is Windows' blur.
     - playerGlow: false
       $name: Glow while playing
       $description: An outline in the album's color that softly breathes while music plays.
@@ -1937,6 +1937,8 @@ static constexpr GUID kXsClsidD2D1Opacity =
     {0x811d79a4, 0xde28, 0x4454, {0x80, 0x94, 0xc6, 0x46, 0x85, 0xf8, 0xbd, 0x4c}};
 static constexpr GUID kXsClsidD2D1GaussianBlur =
     {0x1feb6d69, 0x2fe6, 0x4ac9, {0x8c, 0x58, 0x1d, 0x7f, 0x93, 0xe7, 0xa6, 0xa5}};
+static constexpr GUID kXsClsidD2D1Composite =
+    {0x48fc9f51, 0xf6ac, 0x48f1, {0x8b, 0x58, 0x3b, 0x28, 0xac, 0x46, 0xf7, 0x6d}};
 static constexpr GUID kXsClsidD2D1Blend =
     {0x81c5b77b, 0x13f8, 0x4cdd, {0xad, 0x20, 0xc8, 0x90, 0x54, 0x7a, 0xc6, 0x5d}};
 
@@ -2022,7 +2024,7 @@ static XsMicaRecipe GetXsMaterialRecipe(int material, bool light) {
 // too, which the wallpaper brush can't see). Null if that brush is unavailable.
 static winrt::Windows::UI::Composition::CompositionBrush MakeXsMicaBrush(
     winrt::Windows::UI::Composition::Compositor const& compositor, XsMicaRecipe const& recipe, bool behindWindow,
-    float extraBlur = 0.f) {
+    float extraBlur = 0.f, float alpha = 1.f, winrt::Windows::UI::Color overlay = {0, 0, 0, 0}) {
     using winrt::Windows::Foundation::PropertyValue;
     using winrt::Windows::Graphics::Effects::IGraphicsEffectSource;
     auto backdropBrush = behindWindow ? compositor.CreateHostBackdropBrush() : compositor.TryCreateBlurredWallpaperBackdropBrush();
@@ -2049,8 +2051,14 @@ static winrt::Windows::UI::Composition::CompositionBrush MakeXsMicaBrush(
                                 {backdropSource}).as<IGraphicsEffectSource>();
     }
     auto luminosity = blend(kBlendColor, backdrop, opacity(flood(), recipe.luminosityOpacity));
-    auto tinted = blend(kBlendLuminosity, luminosity, opacity(flood(), recipe.tintOpacity));
-    auto brush = compositor.CreateEffectFactory(tinted).CreateBrush();
+    winrt::Windows::Graphics::Effects::IGraphicsEffect result = blend(kBlendLuminosity, luminosity, opacity(flood(), recipe.tintOpacity));
+    if (overlay.A) {   // the hover/press shade, over everything
+        float shade[4] = {overlay.R / 255.f, overlay.G / 255.f, overlay.B / 255.f, 1.0f};
+        auto over = opacity(MakeXsEffect(kXsClsidD2D1Flood, {PropertyValue::CreateSingleArray(shade)}, {}), overlay.A / 255.f);
+        result = MakeXsEffect(kXsClsidD2D1Composite, {PropertyValue::CreateUInt32(0)}, {result, over});   // source over
+    }
+    if (alpha < 1.f) result = opacity(result, std::max(0.f, alpha));
+    auto brush = compositor.CreateEffectFactory(result).CreateBrush();
     brush.SetSourceParameter(L"BlurredWallpaperBackdrop", backdropBrush);
     return brush;
 }
@@ -2229,7 +2237,6 @@ namespace UI {
     static void HoldPlayerTransitions();
     static void RestorePlayerTransitionsSoon();
     static Border BuildMainProgressBar();
-    static void UpdateMicaBrushesOnThisThread();
 } // namespace UI
 namespace Taskbar {
     enum class TaskbarEdge { Bottom, Top, Left, Right };
@@ -2828,7 +2835,7 @@ struct ModSettings {
     bool         albumArtDisc         = false;
     bool         playerGlow           = false;
     int          materialOpacity      = 100;
-    int          materialBlur         = 50;
+    int          materialBlur         = 0;
     int          albumArtOpacity      = 100;
     int          albumArtLeftMargin   = 0;
     int          albumArtRightMargin  = 0;
@@ -6325,15 +6332,15 @@ static Brush MakeElevationBorderBrush(HoverEffect mode) {
 // A hover or pressed tint over a solid background: the tint mixed into that
 // color. Used in its place, the near-transparent tint made the background
 // vanish on hover (a black hole on a dark taskbar). Null: not a solid color.
-static Brush WallpaperBrushWithOverlay(Brush const& base, winrt::Windows::UI::Color overlay);
+static Brush MaterialBrushWithOverlay(Brush const& base, winrt::Windows::UI::Color overlay);
 
-// `base` with the hover/press shade over it. A wallpaper Mica or Acrylic gets a
-// copy of its picture with the shade in; any other non-solid background (a
+// `base` with the hover/press shade over it. Acrylic, Mica and Glass get a copy
+// of their material with the shade in; any other non-solid background (a
 // gradient, Glass) stays as it is, and the hover outline shows the hover. They
 // used to be swapped for a flat hover color.
 static Brush TintOverSolid(Brush const& base, winrt::Windows::UI::Color tint) {
     if (base && !base.try_as<SolidColorBrush>()) {
-        if (auto shaded = WallpaperBrushWithOverlay(base, tint)) return shaded;
+        if (auto shaded = MaterialBrushWithOverlay(base, tint)) return shaded;
         return base;
     }
     auto sb = base ? base.try_as<SolidColorBrush>() : nullptr;
@@ -7068,191 +7075,74 @@ struct BackgroundStyleParams {
     int micaOpacity;
 };
 
-// ---- Mica from the wallpaper ----
-// Real Mica is the desktop wallpaper, heavily blurred, seen at the window's own
-// spot on screen and tinted with the theme's base color. Inside the taskbar a
-// blur of "what's behind" only finds the taskbar's own even color, so Mica came
-// out flat. It's made here instead: the wallpaper of the part's monitor, fitted
-// the way Windows fits it, blurred small, tinted, and lined up under each part
-// by where it sits (PlaceMicaBrush).
-struct MicaWall {
-    std::vector<BYTE> px;   // BGRA, the monitor's shape, blurred
-    int w = 0, h = 0;
-    RECT mon{};
-    std::wstring key;       // what it was made from, to tell when that changed
+// ---- Acrylic, Mica and Glass ----
+// The settings window's own effect graph (MakeXsMicaBrush) as a XAML brush, so
+// it goes wherever a background does, hover states included. Acrylic and
+// Glass blur what's really behind the taskbar (a live wallpaper too); Mica
+// uses Windows' own blurred wallpaper. A blur of "what's behind" inside the
+// taskbar (XAML's AcrylicBrush) only found the taskbar's own even color.
+struct MaterialSpec {
+    XsMicaRecipe recipe{};
+    bool behindWindow = true;   // Acrylic and Glass; Mica uses the wallpaper
+    float blur = 0.f;           // on top of Windows' own
+    float alpha = 1.f;
+    winrt::Windows::UI::Color overlay{0, 0, 0, 0};
 };
-static std::mutex g_micaWallMtx;
-[[clang::no_destroy]] static std::map<HMONITOR, std::shared_ptr<const MicaWall>> g_micaWalls;
 
-static std::shared_ptr<const MicaWall> CachedMicaWall(HMONITOR mon) {
-    std::lock_guard<std::mutex> lk(g_micaWallMtx);
-    auto it = g_micaWalls.find(mon);
-    return it != g_micaWalls.end() ? it->second : nullptr;
-}
-
-// The monitor's wallpaper, made again only when it changed.
-static std::shared_ptr<const MicaWall> MicaWallFor(HMONITOR mon) {
-    MONITORINFO mi{sizeof(mi)};
-    if (!mon || !GetMonitorInfoW(mon, &mi)) return nullptr;
-    const RECT r = mi.rcMonitor;
-    const int monW = r.right - r.left, monH = r.bottom - r.top;
-    if (monW <= 0 || monH <= 0) return nullptr;
-
-    std::wstring path;
-    DESKTOP_WALLPAPER_POSITION pos = DWPOS_FILL;
-    COLORREF bg = RGB(0, 0, 0);
-    try {
-        static const CLSID WALLPAPER_CLSID = {0xc2cf3110, 0x460e, 0x4fc1, {0xb9, 0xd0, 0x8a, 0x1c, 0x0c, 0x9c, 0xc4, 0xbd}};
-        winrt::com_ptr<IDesktopWallpaper> dw;
-        if (SUCCEEDED(CoCreateInstance(WALLPAPER_CLSID, nullptr, CLSCTX_ALL, __uuidof(IDesktopWallpaper), dw.put_void())) && dw) {
-            dw->GetPosition(&pos);
-            dw->GetBackgroundColor(&bg);
-            UINT n = 0;
-            dw->GetMonitorDevicePathCount(&n);
-            for (UINT i = 0; i < n && path.empty(); i++) {
-                LPWSTR id = nullptr;
-                if (FAILED(dw->GetMonitorDevicePathAt(i, &id)) || !id) continue;
-                RECT mr{};
-                LPWSTR p = nullptr;
-                if (SUCCEEDED(dw->GetMonitorRECT(id, &mr)) && EqualRect(&mr, &r) && SUCCEEDED(dw->GetWallpaper(id, &p)) && p) {
-                    path = p;
-                    CoTaskMemFree(p);
-                }
-                CoTaskMemFree(id);
-            }
-            LPWSTR all = nullptr;   // the same picture on every monitor
-            if (path.empty() && SUCCEEDED(dw->GetWallpaper(nullptr, &all)) && all) { path = all; CoTaskMemFree(all); }
-        }
-    } catch (...) { LOG_IGNORED_EXCEPTION(); }
-    if (path.empty()) {
-        wchar_t p[MAX_PATH]{};
-        if (SystemParametersInfoW(SPI_GETDESKWALLPAPER, MAX_PATH, p, 0)) path = p;
+struct MaterialBrush : winrt::Windows::UI::Xaml::Media::XamlCompositionBrushBaseT<MaterialBrush> {
+    MaterialSpec spec;
+    explicit MaterialBrush(MaterialSpec const& s) : spec(s) {}
+    void OnConnected() {
+        if (CompositionBrush()) return;
+        try {
+            // This thread's compositor, from any element on it.
+            winrt::Windows::UI::Xaml::Controls::Border probe;
+            auto compositor = winrt::Windows::UI::Xaml::Hosting::ElementCompositionPreview::GetElementVisual(probe).Compositor();
+            if (auto b = MakeXsMicaBrush(compositor, spec.recipe, spec.behindWindow, spec.blur, spec.alpha, spec.overlay))
+                CompositionBrush(b);
+        } catch (...) { LOG_IGNORED_EXCEPTION(); }
     }
-    WIN32_FILE_ATTRIBUTE_DATA fa{};
-    const bool haveFile = !path.empty() && GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &fa);
-    const RECT span{GetSystemMetrics(SM_XVIRTUALSCREEN), GetSystemMetrics(SM_YVIRTUALSCREEN),
-                    GetSystemMetrics(SM_XVIRTUALSCREEN) + GetSystemMetrics(SM_CXVIRTUALSCREEN),
-                    GetSystemMetrics(SM_YVIRTUALSCREEN) + GetSystemMetrics(SM_CYVIRTUALSCREEN)};
-    const int blurPct = std::clamp(g_settings.materialBlur, 0, 100);
-    wchar_t keyTail[176];
-    swprintf_s(keyTail, L"|b%d|%d|%06X|%ld,%ld,%ld,%ld|%ld,%ld,%ld,%ld|%08lX%08lX", blurPct, (int)pos, (unsigned)bg,
-               r.left, r.top, r.right, r.bottom, span.left, span.top, span.right, span.bottom,
-               haveFile ? fa.ftLastWriteTime.dwHighDateTime : 0ul, haveFile ? fa.ftLastWriteTime.dwLowDateTime : 0ul);
-    const std::wstring key = path + keyTail;
-    if (auto cached = CachedMicaWall(mon); cached && cached->key == key) return cached;
-
-    auto wall = std::make_shared<MicaWall>();
-    wall->key = key;
-    wall->mon = r;
-    wall->w = std::max(8, monW / 8);
-    wall->h = std::max(8, monH / 8);
-    wall->px.resize((size_t)wall->w * wall->h * 4);
-    for (size_t i = 0; i < wall->px.size(); i += 4) {   // the desktop color, under and around the picture
-        wall->px[i] = GetBValue(bg); wall->px[i + 1] = GetGValue(bg); wall->px[i + 2] = GetRValue(bg); wall->px[i + 3] = 255;
+    void OnDisconnected() {
+        try {
+            if (auto b = CompositionBrush()) { CompositionBrush(nullptr); b.Close(); }
+        } catch (...) { LOG_IGNORED_EXCEPTION(); }
     }
-    std::vector<BYTE> img;
-    int iw = 0, ih = 0;
-    if (haveFile && fa.nFileSizeHigh == 0 && fa.nFileSizeLow > 0 && fa.nFileSizeLow < 64u * 1024 * 1024) {
-        HANDLE f = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                               nullptr, OPEN_EXISTING, 0, nullptr);
-        if (f != INVALID_HANDLE_VALUE) {
-            std::vector<BYTE> bytes(fa.nFileSizeLow);
-            DWORD got = 0;
-            if (!ReadFile(f, bytes.data(), (DWORD)bytes.size(), &got, nullptr) || got != bytes.size() ||
-                !DecodeImageToBGRA(bytes, img, iw, ih, 512))
-                iw = ih = 0;
-            CloseHandle(f);
-        }
-    }
-    if (iw > 0 && ih > 0 && img.size() >= (size_t)iw * ih * 4) {
-        // Where Windows puts the picture: over this monitor, or across all of
-        // them for Span; filled (cropped), fitted (with bars) or stretched.
-        // Center and Tile are taken as Fill.
-        const RECT t = pos == DWPOS_SPAN ? span : r;
-        const double tw = t.right - t.left, th = t.bottom - t.top;
-        double kx, ky;   // screen pixels per picture pixel
-        if (pos == DWPOS_STRETCH) { kx = tw / iw; ky = th / ih; }
-        else kx = ky = pos == DWPOS_FIT ? std::min(tw / iw, th / ih) : std::max(tw / iw, th / ih);
-        const double left = t.left + (tw - iw * kx) / 2, top = t.top + (th - ih * ky) / 2;
-        for (int y = 0; y < wall->h; y++)
-            for (int x = 0; x < wall->w; x++) {
-                const double sx = (r.left + (x + 0.5) * monW / wall->w - left) / kx;
-                const double sy = (r.top + (y + 0.5) * monH / wall->h - top) / ky;
-                if (sx < 0 || sy < 0 || sx >= iw || sy >= ih) continue;
-                const BYTE* s = &img[((size_t)(int)sy * iw + (int)sx) * 4];
-                BYTE* d = &wall->px[((size_t)y * wall->w + x) * 4];
-                d[0] = s[0]; d[1] = s[1]; d[2] = s[2];
-            }
-    }
-    // "Blur amount": 50 is Mica's own heavy blur, 0 none (the picture is
-    // still soft from being small), 100 twice as much.
-    const int radius = (int)std::lround(wall->w / 20.0 * blurPct / 50.0);
-    for (int i = 0; i < 3 && radius > 0; i++) ApplyBoxBlurBGRA(wall->px, wall->w, wall->h, radius);
-    Wh_Log(L"Mica: wallpaper for a %dx%d monitor made from \"%s\"", monW, monH, path.c_str());
-    std::lock_guard<std::mutex> lk(g_micaWallMtx);
-    g_micaWalls[mon] = wall;
-    return wall;
-}
-
-// One wallpaper brush (Mica or Acrylic) and the part it paints (found after
-// it's set). `tint` covers `tintAmount` (0..1) of the blurred wallpaper.
-struct MicaBrushEntry {
-    DWORD thread = 0;
-    winrt::weak_ref<ImageBrush> brush;
-    winrt::weak_ref<FrameworkElement> el;
-    winrt::Windows::UI::Color tint{255, 0, 0, 0};
-    double tintAmount = 0.5;
-    winrt::Windows::UI::Color overlay{0, 0, 0, 0};   // the hover/press shade, if any
-    std::weak_ptr<MicaBrushEntry> leader;            // for those: the normal brush, whose part they paint
-    HMONITOR mon = nullptr;
-    std::wstring wallKey;   // the wallpaper its picture was made from
-    double lastX = 0, lastY = 0;
-    bool placed = false;
 };
-static std::mutex g_micaBrushMtx;
-[[clang::no_destroy]] static std::vector<std::shared_ptr<MicaBrushEntry>> g_micaBrushes;
 
-static Brush MakeWallpaperBrush(winrt::Windows::UI::Color tint, double tintAmount, double alpha,
-                                winrt::Windows::UI::Color overlay = {0, 0, 0, 0},
-                                std::shared_ptr<MicaBrushEntry> leader = nullptr) {
-    ImageBrush b;
-    b.Stretch(Stretch::None);
-    b.AlignmentX(AlignmentX::Left);
-    b.AlignmentY(AlignmentY::Top);
-    b.Transform(CompositeTransform());
-    b.Opacity(alpha);
-    auto entry = std::make_shared<MicaBrushEntry>();
-    entry->thread = GetCurrentThreadId();
-    entry->brush = winrt::make_weak(b);
-    entry->tint = tint;
-    entry->tintAmount = std::clamp(tintAmount, 0.0, 1.0);
-    entry->overlay = overlay;
-    entry->leader = leader;
-    {
-        std::lock_guard<std::mutex> lk(g_micaBrushMtx);
-        std::erase_if(g_micaBrushes, [](const std::shared_ptr<MicaBrushEntry>& x) { return !x->brush.get(); });
-        g_micaBrushes.push_back(entry);
-    }
-    // Placed once it's on a part and laid out.
+// What each material brush was made from, for its hover/press copies.
+static std::mutex g_materialMtx;
+[[clang::no_destroy]] static std::vector<std::pair<winrt::weak_ref<Brush>, MaterialSpec>> g_materialBrushes;
+
+static Brush MakeMaterialBrush(MaterialSpec const& spec) {
     try {
-        QueueOnDispatcher(b.Dispatcher(), winrt::Windows::UI::Core::CoreDispatcherPriority::Low,
-                          []() { UpdateMicaBrushesOnThisThread(); });
+        Brush b = winrt::make<MaterialBrush>(spec);
+        b.as<winrt::Windows::UI::Xaml::Media::XamlCompositionBrushBase>().FallbackColor(
+            winrt::Windows::UI::Color{(BYTE)std::lround(0xCC * spec.alpha), spec.recipe.tintR, spec.recipe.tintG, spec.recipe.tintB});
+        std::lock_guard<std::mutex> lk(g_materialMtx);
+        std::erase_if(g_materialBrushes, [](auto const& x) { return !x.first.get(); });
+        g_materialBrushes.push_back({winrt::make_weak(b), spec});
+        return b;
     } catch (...) { LOG_IGNORED_EXCEPTION(); }
-    return b;
+    return nullptr;
 }
 
-static Brush WallpaperBrushWithOverlay(Brush const& base, winrt::Windows::UI::Color overlay) {
-    auto ib = base ? base.try_as<ImageBrush>() : nullptr;
-    if (!ib) return nullptr;
-    std::shared_ptr<MicaBrushEntry> leader;
+// The same material with the hover/press shade over it; null for any other brush.
+static Brush MaterialBrushWithOverlay(Brush const& base, winrt::Windows::UI::Color overlay) {
+    if (!base) return nullptr;
+    MaterialSpec spec;
+    bool found = false;
     {
-        std::lock_guard<std::mutex> lk(g_micaBrushMtx);
-        for (auto& x : g_micaBrushes)
-            if (x->brush.get() == ib) { leader = x; break; }
+        std::lock_guard<std::mutex> lk(g_materialMtx);
+        for (auto const& x : g_materialBrushes)
+            if (x.first.get() == base) { spec = x.second; found = true; break; }
     }
-    if (!leader) return nullptr;
-    return MakeWallpaperBrush(leader->tint, leader->tintAmount, ib.Opacity(), overlay, leader);
+    if (!found) return nullptr;
+    spec.overlay = overlay;
+    return MakeMaterialBrush(spec);
 }
+
+// "Blur amount": added to Windows' own blur (0 = just that).
+static float MaterialBlur() { return (float)std::clamp(g_settings.materialBlur, 0, 100); }
 
 static Brush MakeBackgroundBrushFromParams(const BackgroundStyleParams& p) {
     auto& t = p.type;
@@ -7306,10 +7196,9 @@ static Brush MakeBackgroundBrushFromParams(const BackgroundStyleParams& p) {
         // The wallpaper behind the part, blurred, under the tint color: a blur
         // of "what's behind" inside the taskbar only finds the taskbar's own
         // even color, so Acrylic came out as a flat tint.
-        try {
-            return MakeWallpaperBrush(winrt::Windows::UI::Color{0xFF, color1.R, color1.G, color1.B},
-                                      std::clamp(p.acrylicTintOpacity, 0, 100) / 100.0, materialAlpha);
-        } catch (...) { LOG_IGNORED_EXCEPTION(); }
+        const float tint = std::clamp(p.acrylicTintOpacity, 0, 100) / 100.f;
+        if (auto b = MakeMaterialBrush({XsMicaRecipe{color1.R, color1.G, color1.B, tint, tint}, true, MaterialBlur(), (float)materialAlpha}))
+            return b;
         try {
             winrt::Windows::UI::Xaml::Media::AcrylicBrush brush;
             brush.BackgroundSource(winrt::Windows::UI::Xaml::Media::AcrylicBackgroundSource::Backdrop);
@@ -7333,7 +7222,14 @@ static Brush MakeBackgroundBrushFromParams(const BackgroundStyleParams& p) {
             ? (alt ? winrt::Windows::UI::Color{0xFF, 0xDA, 0xDA, 0xDA} : winrt::Windows::UI::Color{0xFF, 0xF3, 0xF3, 0xF3})
             : (alt ? winrt::Windows::UI::Color{0xFF, 0x0A, 0x0A, 0x0A} : winrt::Windows::UI::Color{0xFF, 0x20, 0x20, 0x20});
         const double strength = std::clamp(p.micaOpacity, 0, 100) / 100.0;
-        try { return MakeWallpaperBrush(base, strength * (alt ? 0.95 : 0.9), materialAlpha); } catch (...) { LOG_IGNORED_EXCEPTION(); }
+        {
+            // Windows' Mica at 50; 0 is the bare blurred wallpaper, 100 all base color.
+            XsMicaRecipe r = GetXsMaterialRecipe(alt ? XS_MATERIAL_MICA_ALT : XS_MATERIAL_MICA, light);
+            const float k = (float)strength * 2.f;
+            r.tintOpacity = std::min(1.f, r.tintOpacity * k + (k > 1.f ? k - 1.f : 0.f));
+            r.luminosityOpacity = std::min(1.f, r.luminosityOpacity * std::min(1.f, k));
+            if (auto b = MakeMaterialBrush({r, false, MaterialBlur(), (float)materialAlpha})) return b;
+        }
         try {
             winrt::Windows::UI::Xaml::Media::AcrylicBrush brush;
             brush.BackgroundSource(winrt::Windows::UI::Xaml::Media::AcrylicBackgroundSource::Backdrop);
@@ -7353,6 +7249,9 @@ static Brush MakeBackgroundBrushFromParams(const BackgroundStyleParams& p) {
         const bool light = IsSystemLightTheme();
         const winrt::Windows::UI::Color tint = light ? winrt::Windows::UI::Color{0xFF, 0xFA, 0xFA, 0xFA}
                                                      : winrt::Windows::UI::Color{0xFF, 0x18, 0x18, 0x18};
+        if (auto b = MakeMaterialBrush({XsMicaRecipe{tint.R, tint.G, tint.B, light ? 0.10f : 0.06f, light ? 0.30f : 0.18f},
+                                        true, MaterialBlur(), (float)materialAlpha}))
+            return b;
         try {
             winrt::Windows::UI::Xaml::Media::AcrylicBrush brush;
             brush.BackgroundSource(winrt::Windows::UI::Xaml::Media::AcrylicBackgroundSource::Backdrop);
@@ -14132,118 +14031,6 @@ static HWND TaskbarWndForElement(FrameworkElement const& el) {
     return g_taskbarWnd;
 }
 
-// The wallpaper picture under its tint (and a hover/press shade).
-static WriteableBitmap BakeMicaBitmap(const MicaWall& w, winrt::Windows::UI::Color base, double t,
-                                      winrt::Windows::UI::Color overlay) {
-    WriteableBitmap wb(w.w, w.h);
-    BYTE* dst = nullptr;
-    auto buf = wb.PixelBuffer();
-    buf.as<Windows::Storage::Streams::IBufferByteAccess>()->Buffer(&dst);
-    if (!dst) return nullptr;
-    const BYTE baseC[3] = {base.B, base.G, base.R};
-    const BYTE overC[3] = {overlay.B, overlay.G, overlay.R};
-    const double o = overlay.A / 255.0;
-    for (size_t i = 0; i + 3 < w.px.size(); i += 4) {
-        for (int c = 0; c < 3; c++) {
-            const double v = w.px[i + c] * (1.0 - t) + baseC[c] * t;
-            dst[i + c] = (BYTE)std::lround(v * (1.0 - o) + overC[c] * o);
-        }
-        dst[i + 3] = 255;
-    }
-    buf.Length((uint32_t)w.px.size());
-    wb.Invalidate();
-    return wb;
-}
-
-// Lines a wallpaper-Mica brush's picture up with where its part is on screen,
-// so each part shows the bit of wallpaper behind it, as Mica does.
-static void PlaceMicaBrush(MicaBrushEntry& e) {
-    auto el = e.el.get();
-    auto brush = e.brush.get();
-    if (!el || !brush) return;
-    try {
-        const auto at = el.TransformToVisual(nullptr).TransformPoint({0, 0});
-        if (e.placed && at.X == e.lastX && at.Y == e.lastY) return;
-        HWND tb = TaskbarWndForElement(el);
-        HMONITOR mon = tb ? MonitorFromWindow(tb, MONITOR_DEFAULTTONEAREST) : nullptr;
-        auto wall = mon == e.mon ? CachedMicaWall(mon) : nullptr;
-        if (!wall) wall = MicaWallFor(mon);
-        if (!wall) return;
-        e.mon = mon;
-        if (e.wallKey != wall->key) {
-            if (auto wb = BakeMicaBitmap(*wall, e.tint, e.tintAmount, e.overlay)) brush.ImageSource(wb);
-            e.wallKey = wall->key;
-        }
-        POINT origin{0, 0};
-        ClientToScreen(tb, &origin);
-        double scale = 1.0;
-        if (auto xr = el.XamlRoot()) scale = xr.RasterizationScale();
-        if (scale <= 0) scale = 1.0;
-        auto tf = brush.Transform().try_as<CompositeTransform>();
-        if (!tf) { tf = CompositeTransform(); brush.Transform(tf); }
-        tf.ScaleX((wall->mon.right - wall->mon.left) / scale / wall->w);
-        tf.ScaleY((wall->mon.bottom - wall->mon.top) / scale / wall->h);
-        tf.TranslateX(-((origin.x - wall->mon.left) / scale + at.X));
-        tf.TranslateY(-((origin.y - wall->mon.top) / scale + at.Y));
-        e.lastX = at.X;
-        e.lastY = at.Y;
-        e.placed = true;
-    } catch (...) { LOG_IGNORED_EXCEPTION(); }
-}
-
-// Finds the part each new brush paints (a panel or border whose background it
-// is), then keeps it placed as the part moves and resizes.
-static void BindMicaBrushes(DependencyObject const& node, std::vector<std::shared_ptr<MicaBrushEntry>>& unbound, int depth) {
-    if (!node || depth > 24 || unbound.empty()) return;
-    Brush bg{nullptr};
-    if (auto p = node.try_as<Panel>()) bg = p.Background();
-    else if (auto b = node.try_as<Border>()) bg = b.Background();
-    if (auto ib = bg ? bg.try_as<ImageBrush>() : nullptr) {
-        for (auto it = unbound.begin(); it != unbound.end(); ++it) {
-            if ((*it)->brush.get() != ib) continue;
-            auto fe = node.as<FrameworkElement>();
-            (*it)->el = winrt::make_weak(fe);
-            fe.SizeChanged([weak = std::weak_ptr<MicaBrushEntry>(*it)](winrt::Windows::Foundation::IInspectable const&,
-                                                                        SizeChangedEventArgs const&) {
-                if (auto s = weak.lock()) { s->placed = false; UpdateMicaBrushesOnThisThread(); }   // with its hover copies
-            });
-            PlaceMicaBrush(**it);
-            unbound.erase(it);
-            break;
-        }
-    }
-    const int n = VisualTreeHelper::GetChildrenCount(node);
-    for (int i = 0; i < n && !unbound.empty(); i++) BindMicaBrushes(VisualTreeHelper::GetChild(node, i), unbound, depth + 1);
-}
-
-static void UpdateMicaBrushesOnThisThread() {
-    const DWORD me = GetCurrentThreadId();
-    std::vector<std::shared_ptr<MicaBrushEntry>> mine, unbound;
-    {
-        std::lock_guard<std::mutex> lk(g_micaBrushMtx);
-        for (auto& x : g_micaBrushes) if (x->thread == me) mine.push_back(x);
-    }
-    auto followLeader = [](MicaBrushEntry& x) {
-        if (auto l = x.leader.lock(); l && l->el.get()) { x.el = l->el; return true; }
-        return false;
-    };
-    for (auto& x : mine) {
-        if (!x->brush.get()) continue;
-        if (x->el.get() || followLeader(*x)) PlaceMicaBrush(*x);
-        else unbound.push_back(x);
-    }
-    if (unbound.empty()) return;
-    try {
-        std::vector<FrameworkElement> roots{ g_playerGrid };
-        for (DetachedWidgetState* dw : { &g_detachedAlbumArt, &g_detachedInfo, &g_detachedButtons, &g_detachedViz, &g_detachedWeather })
-            roots.push_back(dw->grid);
-        for (auto& root : roots)
-            if (root && root.Dispatcher().HasThreadAccess()) BindMicaBrushes(root, unbound, 0);
-    } catch (...) { LOG_IGNORED_EXCEPTION(); }
-    for (auto& x : unbound)   // hover/press copies of a brush just found
-        if (followLeader(*x)) PlaceMicaBrush(*x);
-}
-
 static bool GetTaskbarMonitorWorkAreaInfo(FrameworkElement const& rootContent,
                                           RECT& outWorkAreaPx,
                                           POINT& outOriginPx,
@@ -16974,7 +16761,6 @@ static void RefreshPlayerContents() {
     if (RefreshAlbumArt(m)) ApplyPaletteColors();
     RefreshDetachedBlurs();
     RefreshAppIcon(m.appIconBytes);
-    UpdateMicaBrushesOnThisThread();   // the player may have moved
 }
 
 // The window in front covers its monitor and has no title bar (borderless
@@ -21918,7 +21704,7 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
             RowSlider(L"Acrylic tint opacity", L"AppearanceSettings.BackgroundStyleSettings.acrylicTintOpacity", L"50", 0, 100),
             WithDesc(RowSlider(L"Background opacity", L"AppearanceSettings.BackgroundStyleSettings.materialOpacity", L"100", 0, 100),
                      L"How see-through Acrylic, Mica and Glass are."),
-            WithDesc(RowSlider(L"Blur amount", L"AppearanceSettings.BackgroundStyleSettings.materialBlur", L"50", 0, 100),
+            WithDesc(RowSlider(L"Blur amount", L"AppearanceSettings.BackgroundStyleSettings.materialBlur", L"0", 0, 100),
                      L"How blurred the wallpaper behind Acrylic and Mica is."),
             WithDesc(RowSlider(L"Mica strength", L"AppearanceSettings.BackgroundStyleSettings.micaOpacity", L"50", 0, 100),
                      L"How much of Mica's color covers the blur. 0 = just the blur."),
@@ -24602,7 +24388,7 @@ static const RowRule ROW_RULES[] = {
     { L"AppearanceSettings.BackgroundStyleSettings.acrylicTintOpacity", 117, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"acrylic" },
     { L"AppearanceSettings.BackgroundStyleSettings.micaOpacity", 118, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"mica|mica_alt" },
     { L"AppearanceSettings.BackgroundStyleSettings.materialOpacity", 6501, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"acrylic|mica|mica_alt|glass" },
-    { L"AppearanceSettings.BackgroundStyleSettings.materialBlur", 6502, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"acrylic|mica|mica_alt" },
+    { L"AppearanceSettings.BackgroundStyleSettings.materialBlur", 6502, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"acrylic|mica|mica_alt|glass" },
     { L"AppearanceSettings.BackgroundStyleSettings.blurOpacity", 119, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"album_art_blur" },
     { L"AppearanceSettings.BackgroundStyleSettings.blurRadius", 120, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"album_art_blur" },
     { L"AppearanceSettings.TitleTextStyleSettings.titleFontFamily", 121, false, L"AppearanceSettings.TitleTextStyleSettings.titleFont", L"custom" },
@@ -29957,8 +29743,7 @@ void Wh_ModUninit() {
     WaitForTrackedWorkers();
     if (g_trackingGroups->empty()) g_trackingGroups.reset();  // nothing XAML left in it
     if (g_timerUpdateEvent) { CloseHandle(g_timerUpdateEvent); g_timerUpdateEvent = nullptr; }
-    { std::lock_guard<std::mutex> lk(g_micaBrushMtx); g_micaBrushes.clear(); }
-    { std::lock_guard<std::mutex> lk(g_micaWallMtx); g_micaWalls.clear(); }
+    { std::lock_guard<std::mutex> lk(g_materialMtx); g_materialBrushes.clear(); }
     ShutdownGdiplusIfStarted();
 }
 

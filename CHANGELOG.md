@@ -77,9 +77,9 @@
 
 ### Fixes
 
-- Hovering a part with a Mica, Acrylic, gradient or Glass background no longer swaps it for a flat hover color: Mica and Acrylic get a lighter or darker shade of the same wallpaper, the others keep their look and show the hover outline.
-- New "Blur amount" (Appearance, Background) for Acrylic and Mica: low keeps the wallpaper's shapes, high leaves only its colors. 50 is Mica's own blur.
-- Mica, Mica Alt and Acrylic work on the player and the detached parts: they show your wallpaper, heavily blurred and tinted, lined up with where each part sits, like Windows' own Mica. Inside the taskbar the old blur only found the taskbar's own even color, so they looked flat. "Mica opacity" sets how much of the base color covers the wallpaper. Acrylic works the same way, with its own tint color at "Acrylic tint opacity" over the blurred wallpaper (it came out as a flat tint before).
+- Hovering a part with an Acrylic, Mica, gradient or Glass background no longer swaps it for a flat hover color: the materials get a lighter or darker shade of themselves, the others keep their look and show the hover outline.
+- New "Blur amount" (Appearance, Background) for Acrylic, Mica and Glass: extra blur on top of Windows' own (0 = just that).
+- Acrylic, Mica, Mica Alt and Glass work on the player and the detached parts, with the same effect as the settings window's background. Acrylic and Glass blur what's really behind the taskbar (a live wallpaper too) under your tint; Mica uses Windows' own blurred wallpaper. Inside the taskbar the old blur only found the taskbar's own even color, so they all looked flat. "Background opacity" fades them.
 - A detached part with a blurred-cover background no longer shows the blur taller than its frame.
 - A fully round album cover (or the spinning record) has no outline, and the gray stand-in behind the cover no longer peeks out around its edge.
 - Settings window: text on the accent color (Save, a colored title bar's buttons) picks black or white by real contrast; light accents like green used to get white text that was hard to read. An expanding card's rows line their controls up under its switch, and page and section names are in sentence case like Windows' Settings.
