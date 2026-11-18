@@ -80,7 +80,7 @@
 - Hovering a part with an Acrylic, Mica, gradient or Glass background no longer swaps it for a flat hover color: the materials get a lighter or darker shade of themselves, the others keep their look and show the hover outline.
 - New "Blur amount" (Appearance, Background) for Mica and Glass: extra blur on top of Windows' own (0 = just that).
 - Mica, Mica Alt and Glass on the player and the detached parts use the same effect as the settings window's background: Glass blurs what's really behind the taskbar, Mica uses Windows' own blurred wallpaper. Inside the taskbar the old blur only found the taskbar's own even color, so they looked flat.
-- Acrylic: "Background opacity" works. Windows ignores the fade on its Acrylic brush, so the setting now thins the tint instead, like the settings window's Transparency.
+- Acrylic has two settings that don't touch each other: "Acrylic tint opacity" (how much color) and the new "Acrylic strength" (how frosted; 0 lets the blur show through). "Background opacity" is for Mica and Glass now; on Acrylic, Windows ignores it.
 - A detached part with a blurred-cover background no longer shows the blur taller than its frame.
 - A fully round album cover (or the spinning record) has no outline, and the gray stand-in behind the cover no longer peeks out around its edge.
 - Settings window: text on the accent color (Save, a colored title bar's buttons) picks black or white by real contrast; light accents like green used to get white text that was hard to read. An expanding card's rows line their controls up under its switch, and page and section names are in sentence case like Windows' Settings.
