@@ -77,6 +77,8 @@
 
 ### Fixes
 
+- Hovering a part with a Mica, Acrylic, gradient or Glass background no longer swaps it for a flat hover color: Mica and Acrylic get a lighter or darker shade of the same wallpaper, the others keep their look and show the hover outline.
+- New "Blur amount" (Appearance, Background) for Acrylic and Mica: low keeps the wallpaper's shapes, high leaves only its colors. 50 is Mica's own blur.
 - Mica, Mica Alt and Acrylic work on the player and the detached parts: they show your wallpaper, heavily blurred and tinted, lined up with where each part sits, like Windows' own Mica. Inside the taskbar the old blur only found the taskbar's own even color, so they looked flat. "Mica opacity" sets how much of the base color covers the wallpaper. Acrylic works the same way, with its own tint color at "Acrylic tint opacity" over the blurred wallpaper (it came out as a flat tint before).
 - A detached part with a blurred-cover background no longer shows the blur taller than its frame.
 - A fully round album cover (or the spinning record) has no outline, and the gray stand-in behind the cover no longer peeks out around its edge.

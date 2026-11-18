@@ -1147,6 +1147,10 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       #! $showIf: {backgroundType: [acrylic, mica, mica_alt, glass]}
       $name: Background opacity (0-100)
       $description: How see-through the Acrylic, Mica and Glass backgrounds are. Detached parts with their own background use it too.
+    - materialBlur: 50
+      #! $showIf: {backgroundType: [acrylic, mica, mica_alt]}
+      $name: Blur amount (0-100)
+      $description: How blurred the wallpaper behind Acrylic and Mica is. Low keeps its shapes, high leaves only its colors.
     - playerGlow: false
       $name: Glow while playing
       $description: An outline in the album's color that softly breathes while music plays.
@@ -2824,6 +2828,7 @@ struct ModSettings {
     bool         albumArtDisc         = false;
     bool         playerGlow           = false;
     int          materialOpacity      = 100;
+    int          materialBlur         = 50;
     int          albumArtOpacity      = 100;
     int          albumArtLeftMargin   = 0;
     int          albumArtRightMargin  = 0;
@@ -3334,6 +3339,7 @@ static constexpr SettingSpec SETTINGS[] = {
     SInt(L"AppearanceSettings.BackgroundStyleSettings.blurRadius", 0, 50, &ModSettings::blurRadius),
     SBool(L"AppearanceSettings.BackgroundStyleSettings.playerGlow", &ModSettings::playerGlow),
     SInt(L"AppearanceSettings.BackgroundStyleSettings.materialOpacity", 0, 100, &ModSettings::materialOpacity),
+    SInt(L"AppearanceSettings.BackgroundStyleSettings.materialBlur", 0, 100, &ModSettings::materialBlur),
     SBool(L"AppearanceSettings.AlbumArtDisplaySettings.albumArtDisc", &ModSettings::albumArtDisc),
     SStr(L"AppearanceSettings.BackgroundStyleSettings.cornerRadius", L"4"),
     SStr(L"AppearanceSettings.BackgroundStyleSettings.enablePlayerHoverEffect", L"auto"),
@@ -6319,7 +6325,17 @@ static Brush MakeElevationBorderBrush(HoverEffect mode) {
 // A hover or pressed tint over a solid background: the tint mixed into that
 // color. Used in its place, the near-transparent tint made the background
 // vanish on hover (a black hole on a dark taskbar). Null: not a solid color.
+static Brush WallpaperBrushWithOverlay(Brush const& base, winrt::Windows::UI::Color overlay);
+
+// `base` with the hover/press shade over it. A wallpaper Mica or Acrylic gets a
+// copy of its picture with the shade in; any other non-solid background (a
+// gradient, Glass) stays as it is, and the hover outline shows the hover. They
+// used to be swapped for a flat hover color.
 static Brush TintOverSolid(Brush const& base, winrt::Windows::UI::Color tint) {
+    if (base && !base.try_as<SolidColorBrush>()) {
+        if (auto shaded = WallpaperBrushWithOverlay(base, tint)) return shaded;
+        return base;
+    }
     auto sb = base ? base.try_as<SolidColorBrush>() : nullptr;
     if (!sb) return nullptr;
     const auto b = sb.Color();
@@ -7117,8 +7133,9 @@ static std::shared_ptr<const MicaWall> MicaWallFor(HMONITOR mon) {
     const RECT span{GetSystemMetrics(SM_XVIRTUALSCREEN), GetSystemMetrics(SM_YVIRTUALSCREEN),
                     GetSystemMetrics(SM_XVIRTUALSCREEN) + GetSystemMetrics(SM_CXVIRTUALSCREEN),
                     GetSystemMetrics(SM_YVIRTUALSCREEN) + GetSystemMetrics(SM_CYVIRTUALSCREEN)};
-    wchar_t keyTail[160];
-    swprintf_s(keyTail, L"|%d|%06X|%ld,%ld,%ld,%ld|%ld,%ld,%ld,%ld|%08lX%08lX", (int)pos, (unsigned)bg,
+    const int blurPct = std::clamp(g_settings.materialBlur, 0, 100);
+    wchar_t keyTail[176];
+    swprintf_s(keyTail, L"|b%d|%d|%06X|%ld,%ld,%ld,%ld|%ld,%ld,%ld,%ld|%08lX%08lX", blurPct, (int)pos, (unsigned)bg,
                r.left, r.top, r.right, r.bottom, span.left, span.top, span.right, span.bottom,
                haveFile ? fa.ftLastWriteTime.dwHighDateTime : 0ul, haveFile ? fa.ftLastWriteTime.dwLowDateTime : 0ul);
     const std::wstring key = path + keyTail;
@@ -7127,8 +7144,8 @@ static std::shared_ptr<const MicaWall> MicaWallFor(HMONITOR mon) {
     auto wall = std::make_shared<MicaWall>();
     wall->key = key;
     wall->mon = r;
-    wall->w = std::max(8, monW / 16);
-    wall->h = std::max(8, monH / 16);
+    wall->w = std::max(8, monW / 8);
+    wall->h = std::max(8, monH / 8);
     wall->px.resize((size_t)wall->w * wall->h * 4);
     for (size_t i = 0; i < wall->px.size(); i += 4) {   // the desktop color, under and around the picture
         wall->px[i] = GetBValue(bg); wall->px[i + 1] = GetGValue(bg); wall->px[i + 2] = GetRValue(bg); wall->px[i + 3] = 255;
@@ -7167,8 +7184,10 @@ static std::shared_ptr<const MicaWall> MicaWallFor(HMONITOR mon) {
                 d[0] = s[0]; d[1] = s[1]; d[2] = s[2];
             }
     }
-    const int radius = std::max(2, wall->w / 20);
-    for (int i = 0; i < 3; i++) ApplyBoxBlurBGRA(wall->px, wall->w, wall->h, radius);
+    // "Blur amount": 50 is Mica's own heavy blur, 0 none (the picture is
+    // still soft from being small), 100 twice as much.
+    const int radius = (int)std::lround(wall->w / 20.0 * blurPct / 50.0);
+    for (int i = 0; i < 3 && radius > 0; i++) ApplyBoxBlurBGRA(wall->px, wall->w, wall->h, radius);
     Wh_Log(L"Mica: wallpaper for a %dx%d monitor made from \"%s\"", monW, monH, path.c_str());
     std::lock_guard<std::mutex> lk(g_micaWallMtx);
     g_micaWalls[mon] = wall;
@@ -7183,6 +7202,8 @@ struct MicaBrushEntry {
     winrt::weak_ref<FrameworkElement> el;
     winrt::Windows::UI::Color tint{255, 0, 0, 0};
     double tintAmount = 0.5;
+    winrt::Windows::UI::Color overlay{0, 0, 0, 0};   // the hover/press shade, if any
+    std::weak_ptr<MicaBrushEntry> leader;            // for those: the normal brush, whose part they paint
     HMONITOR mon = nullptr;
     std::wstring wallKey;   // the wallpaper its picture was made from
     double lastX = 0, lastY = 0;
@@ -7191,7 +7212,9 @@ struct MicaBrushEntry {
 static std::mutex g_micaBrushMtx;
 [[clang::no_destroy]] static std::vector<std::shared_ptr<MicaBrushEntry>> g_micaBrushes;
 
-static Brush MakeWallpaperBrush(winrt::Windows::UI::Color tint, double tintAmount, double alpha) {
+static Brush MakeWallpaperBrush(winrt::Windows::UI::Color tint, double tintAmount, double alpha,
+                                winrt::Windows::UI::Color overlay = {0, 0, 0, 0},
+                                std::shared_ptr<MicaBrushEntry> leader = nullptr) {
     ImageBrush b;
     b.Stretch(Stretch::None);
     b.AlignmentX(AlignmentX::Left);
@@ -7203,6 +7226,8 @@ static Brush MakeWallpaperBrush(winrt::Windows::UI::Color tint, double tintAmoun
     entry->brush = winrt::make_weak(b);
     entry->tint = tint;
     entry->tintAmount = std::clamp(tintAmount, 0.0, 1.0);
+    entry->overlay = overlay;
+    entry->leader = leader;
     {
         std::lock_guard<std::mutex> lk(g_micaBrushMtx);
         std::erase_if(g_micaBrushes, [](const std::shared_ptr<MicaBrushEntry>& x) { return !x->brush.get(); });
@@ -7214,6 +7239,19 @@ static Brush MakeWallpaperBrush(winrt::Windows::UI::Color tint, double tintAmoun
                           []() { UpdateMicaBrushesOnThisThread(); });
     } catch (...) { LOG_IGNORED_EXCEPTION(); }
     return b;
+}
+
+static Brush WallpaperBrushWithOverlay(Brush const& base, winrt::Windows::UI::Color overlay) {
+    auto ib = base ? base.try_as<ImageBrush>() : nullptr;
+    if (!ib) return nullptr;
+    std::shared_ptr<MicaBrushEntry> leader;
+    {
+        std::lock_guard<std::mutex> lk(g_micaBrushMtx);
+        for (auto& x : g_micaBrushes)
+            if (x->brush.get() == ib) { leader = x; break; }
+    }
+    if (!leader) return nullptr;
+    return MakeWallpaperBrush(leader->tint, leader->tintAmount, ib.Opacity(), overlay, leader);
 }
 
 static Brush MakeBackgroundBrushFromParams(const BackgroundStyleParams& p) {
@@ -14094,16 +14132,22 @@ static HWND TaskbarWndForElement(FrameworkElement const& el) {
     return g_taskbarWnd;
 }
 
-// The wallpaper picture under its tint.
-static WriteableBitmap BakeMicaBitmap(const MicaWall& w, winrt::Windows::UI::Color base, double t) {
+// The wallpaper picture under its tint (and a hover/press shade).
+static WriteableBitmap BakeMicaBitmap(const MicaWall& w, winrt::Windows::UI::Color base, double t,
+                                      winrt::Windows::UI::Color overlay) {
     WriteableBitmap wb(w.w, w.h);
     BYTE* dst = nullptr;
     auto buf = wb.PixelBuffer();
     buf.as<Windows::Storage::Streams::IBufferByteAccess>()->Buffer(&dst);
     if (!dst) return nullptr;
     const BYTE baseC[3] = {base.B, base.G, base.R};
+    const BYTE overC[3] = {overlay.B, overlay.G, overlay.R};
+    const double o = overlay.A / 255.0;
     for (size_t i = 0; i + 3 < w.px.size(); i += 4) {
-        for (int c = 0; c < 3; c++) dst[i + c] = (BYTE)std::lround(w.px[i + c] * (1.0 - t) + baseC[c] * t);
+        for (int c = 0; c < 3; c++) {
+            const double v = w.px[i + c] * (1.0 - t) + baseC[c] * t;
+            dst[i + c] = (BYTE)std::lround(v * (1.0 - o) + overC[c] * o);
+        }
         dst[i + 3] = 255;
     }
     buf.Length((uint32_t)w.px.size());
@@ -14127,7 +14171,7 @@ static void PlaceMicaBrush(MicaBrushEntry& e) {
         if (!wall) return;
         e.mon = mon;
         if (e.wallKey != wall->key) {
-            if (auto wb = BakeMicaBitmap(*wall, e.tint, e.tintAmount)) brush.ImageSource(wb);
+            if (auto wb = BakeMicaBitmap(*wall, e.tint, e.tintAmount, e.overlay)) brush.ImageSource(wb);
             e.wallKey = wall->key;
         }
         POINT origin{0, 0};
@@ -14161,7 +14205,7 @@ static void BindMicaBrushes(DependencyObject const& node, std::vector<std::share
             (*it)->el = winrt::make_weak(fe);
             fe.SizeChanged([weak = std::weak_ptr<MicaBrushEntry>(*it)](winrt::Windows::Foundation::IInspectable const&,
                                                                         SizeChangedEventArgs const&) {
-                if (auto s = weak.lock()) { s->placed = false; PlaceMicaBrush(*s); }
+                if (auto s = weak.lock()) { s->placed = false; UpdateMicaBrushesOnThisThread(); }   // with its hover copies
             });
             PlaceMicaBrush(**it);
             unbound.erase(it);
@@ -14179,9 +14223,13 @@ static void UpdateMicaBrushesOnThisThread() {
         std::lock_guard<std::mutex> lk(g_micaBrushMtx);
         for (auto& x : g_micaBrushes) if (x->thread == me) mine.push_back(x);
     }
+    auto followLeader = [](MicaBrushEntry& x) {
+        if (auto l = x.leader.lock(); l && l->el.get()) { x.el = l->el; return true; }
+        return false;
+    };
     for (auto& x : mine) {
         if (!x->brush.get()) continue;
-        if (x->el.get()) PlaceMicaBrush(*x);
+        if (x->el.get() || followLeader(*x)) PlaceMicaBrush(*x);
         else unbound.push_back(x);
     }
     if (unbound.empty()) return;
@@ -14192,6 +14240,8 @@ static void UpdateMicaBrushesOnThisThread() {
         for (auto& root : roots)
             if (root && root.Dispatcher().HasThreadAccess()) BindMicaBrushes(root, unbound, 0);
     } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    for (auto& x : unbound)   // hover/press copies of a brush just found
+        if (followLeader(*x)) PlaceMicaBrush(*x);
 }
 
 static bool GetTaskbarMonitorWorkAreaInfo(FrameworkElement const& rootContent,
@@ -21868,6 +21918,8 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
             RowSlider(L"Acrylic tint opacity", L"AppearanceSettings.BackgroundStyleSettings.acrylicTintOpacity", L"50", 0, 100),
             WithDesc(RowSlider(L"Background opacity", L"AppearanceSettings.BackgroundStyleSettings.materialOpacity", L"100", 0, 100),
                      L"How see-through Acrylic, Mica and Glass are."),
+            WithDesc(RowSlider(L"Blur amount", L"AppearanceSettings.BackgroundStyleSettings.materialBlur", L"50", 0, 100),
+                     L"How blurred the wallpaper behind Acrylic and Mica is."),
             WithDesc(RowSlider(L"Mica strength", L"AppearanceSettings.BackgroundStyleSettings.micaOpacity", L"50", 0, 100),
                      L"How much of Mica's color covers the blur. 0 = just the blur."),
             RowSlider(L"Blur opacity", L"AppearanceSettings.BackgroundStyleSettings.blurOpacity", L"65", 0, 100),
@@ -23803,6 +23855,8 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"Seek bar as visualizer", L"Смуга перемотки як візуалізатор", L"Полоса перемотки как визуализатор", L"Suchleiste als Visualizer", L"सीक बार को विज़ुअलाइज़र बनाएँ", L"进度条显示为可视化", L"進度列顯示為視覺化", L"Barra de progreso como visualizador", L"Barre de lecture en visualiseur", L"Barra de progresso como visualizador", L"Barra di avanzamento come visualizzatore", L"Pasek przewijania jako wizualizer", L"Arama çubuğu görselleştirici olsun", L"シーク バーをビジュアライザーに", L"탐색 막대를 비주얼라이저로" },
     { L"Bars that move with the music. The played part is in full color; drag it to seek.", L"Смужки рухаються в такт музиці. Відтворена частина яскрава; тягніть, щоб перемотати.", L"Полоски двигаются под музыку. Проигранная часть яркая; тяните, чтобы перемотать.", L"Balken, die sich mit der Musik bewegen. Der gespielte Teil ist voll farbig; zum Spulen ziehen.", L"संगीत के साथ हिलते बार। चला हुआ हिस्सा पूरे रंग में; आगे-पीछे करने के लिए खींचें।", L"随音乐跳动的频谱条。已播放部分为全彩，拖动即可调整进度。", L"隨音樂跳動的頻譜條。已播放部分為全彩，拖曳即可調整進度。", L"Barras que se mueven con la música. Lo reproducido va a todo color; arrastra para avanzar.", L"Des barres qui bougent avec la musique. La partie jouée est en couleur ; glissez pour avancer.", L"Barras que se movem com a música. A parte tocada fica em cor plena; arraste para avançar.", L"Barre che si muovono con la musica. La parte riprodotta è a colori pieni; trascina per spostarti.", L"Słupki poruszające się z muzyką. Odtworzona część jest w pełnym kolorze; przeciągnij, by przewinąć.", L"Müzikle hareket eden çubuklar. Çalınan kısım tam renkli; ilerletmek için sürükleyin.", L"音楽に合わせて動くバー。再生済みの部分は濃く表示。ドラッグでシーク。", L"음악에 맞춰 움직이는 막대. 재생한 부분은 진한 색이며, 끌어서 이동합니다." },
     { L"In the text, as its own line", L"У тексті, окремим рядком", L"В тексте, отдельной строкой", L"Im Text, als eigene Zeile", L"टेक्स्ट में, अलग पंक्ति के रूप में", L"在文字中，作为单独一行", L"在文字中，作為單獨一行", L"En el texto, como su propia línea", L"Dans le texte, sur sa propre ligne", L"No texto, como linha própria", L"Nel testo, come riga a sé", L"W tekście, jako osobna linia", L"Metinde, ayrı bir satır olarak", L"テキスト内に独立した行として", L"텍스트 안에 별도 줄로" },
+    { L"Blur amount", L"Сила розмиття", L"Сила размытия", L"Unschärfestärke", L"धुंधलापन", L"模糊程度", L"模糊程度", L"Cantidad de desenfoque", L"Intensité du flou", L"Intensidade do desfoque", L"Intensità sfocatura", L"Siła rozmycia", L"Bulanıklık miktarı", L"ぼかしの強さ", L"흐림 정도" },
+    { L"How blurred the wallpaper behind Acrylic and Mica is.", L"Наскільки розмиті шпалери за Acrylic і Mica.", L"Насколько размыты обои за Acrylic и Mica.", L"Wie stark das Hintergrundbild hinter Acrylic und Mica verschwimmt.", L"Acrylic और Mica के पीछे वॉलपेपर कितना धुंधला हो।", L"Acrylic 和 Mica 后面壁纸的模糊程度。", L"Acrylic 和 Mica 後面桌布的模糊程度。", L"Cuánto se desenfoca el fondo de pantalla tras Acrylic y Mica.", L"Le flou du fond d'écran derrière Acrylic et Mica.", L"O quanto o papel de parede atrás de Acrylic e Mica fica desfocado.", L"Quanto è sfocato lo sfondo dietro Acrylic e Mica.", L"Jak rozmyta jest tapeta za Acrylic i Mica.", L"Acrylic ve Mica arkasındaki duvar kâğıdının ne kadar bulanık olduğu.", L"Acrylic と Mica の背後の壁紙のぼかし具合。", L"Acrylic과 Mica 뒤 배경 화면의 흐림 정도." },
     { L"Window color", L"Колір вікна", L"Цвет окна", L"Fensterfarbe", L"विंडो का रंग", L"窗口颜色", L"視窗色彩", L"Color de la ventana", L"Couleur de la fenêtre", L"Cor da janela", L"Colore della finestra", L"Kolor okna", L"Pencere rengi", L"ウィンドウの色", L"창 색상" },
     { L"Custom color", L"Власний колір", L"Свой цвет", L"Eigene Farbe", L"कस्टम रंग", L"自定义颜色", L"自訂色彩", L"Color personalizado", L"Couleur personnalisée", L"Cor personalizada", L"Colore personalizzato", L"Własny kolor", L"Özel renk", L"カスタム色", L"사용자 지정 색" },
     { L"Title bar color", L"Колір рядка заголовка", L"Цвет строки заголовка", L"Farbe der Titelleiste", L"शीर्षक पट्टी का रंग", L"标题栏颜色", L"標題列色彩", L"Color de la barra de título", L"Couleur de la barre de titre", L"Cor da barra de título", L"Colore della barra del titolo", L"Kolor paska tytułu", L"Başlık çubuğu rengi", L"タイトル バーの色", L"제목 표시줄 색" },
@@ -24548,6 +24602,7 @@ static const RowRule ROW_RULES[] = {
     { L"AppearanceSettings.BackgroundStyleSettings.acrylicTintOpacity", 117, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"acrylic" },
     { L"AppearanceSettings.BackgroundStyleSettings.micaOpacity", 118, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"mica|mica_alt" },
     { L"AppearanceSettings.BackgroundStyleSettings.materialOpacity", 6501, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"acrylic|mica|mica_alt|glass" },
+    { L"AppearanceSettings.BackgroundStyleSettings.materialBlur", 6502, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"acrylic|mica|mica_alt" },
     { L"AppearanceSettings.BackgroundStyleSettings.blurOpacity", 119, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"album_art_blur" },
     { L"AppearanceSettings.BackgroundStyleSettings.blurRadius", 120, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"album_art_blur" },
     { L"AppearanceSettings.TitleTextStyleSettings.titleFontFamily", 121, false, L"AppearanceSettings.TitleTextStyleSettings.titleFont", L"custom" },
