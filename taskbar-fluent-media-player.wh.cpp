@@ -1148,9 +1148,9 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       $name: Background opacity (0-100)
       $description: How see-through the Acrylic, Mica and Glass backgrounds are. Detached parts with their own background use it too.
     - materialBlur: 0
-      #! $showIf: {backgroundType: [acrylic, mica, mica_alt, glass]}
+      #! $showIf: {backgroundType: [mica, mica_alt, glass]}
       $name: Blur amount (0-100)
-      $description: Extra blur on top of Windows' own, for Acrylic, Mica and Glass. 0 is Windows' blur.
+      $description: Extra blur on top of Windows' own, for Mica and Glass. 0 is Windows' blur.
     - playerGlow: false
       $name: Glow while playing
       $description: An outline in the album's color that softly breathes while music plays.
@@ -7193,28 +7193,25 @@ static Brush MakeBackgroundBrushFromParams(const BackgroundStyleParams& p) {
     // fell back to a near-solid color. "Background opacity" fades the result.
     const double materialAlpha = std::clamp(g_settings.materialOpacity, 0, 100) / 100.0;
     if (t == BackgroundType::Acrylic) {
-        // The wallpaper behind the part, blurred, under the tint color: a blur
-        // of "what's behind" inside the taskbar only finds the taskbar's own
-        // even color, so Acrylic came out as a flat tint.
-        const float tint = std::clamp(p.acrylicTintOpacity, 0, 100) / 100.f;
-        if (auto b = MakeMaterialBrush({XsMicaRecipe{color1.R, color1.G, color1.B, tint, tint}, true, MaterialBlur(), (float)materialAlpha}))
-            return b;
+        // Windows' own Acrylic. Its Opacity is ignored, so "Background opacity"
+        // thins the tint instead, as the settings window's Transparency does.
         try {
             winrt::Windows::UI::Xaml::Media::AcrylicBrush brush;
             brush.BackgroundSource(winrt::Windows::UI::Xaml::Media::AcrylicBackgroundSource::Backdrop);
             auto col = winrt::Windows::UI::Color{0xFF, color1.R, color1.G, color1.B};
+            const double tint = std::clamp(p.acrylicTintOpacity, 0, 100) / 100.0;
             brush.TintColor(col);
-            brush.TintOpacity(p.acrylicTintOpacity / 100.0);
-            brush.TintLuminosityOpacity(std::clamp(p.acrylicTintOpacity / 100.0 * 0.8, 0.0, 1.0));
-            brush.FallbackColor(winrt::Windows::UI::Color{0x99, color1.R, color1.G, color1.B});
+            brush.TintOpacity(tint * materialAlpha);
+            brush.TintLuminosityOpacity(std::clamp(tint * 0.8, 0.0, 1.0) * materialAlpha);
+            brush.FallbackColor(winrt::Windows::UI::Color{(BYTE)std::lround(0x99 * materialAlpha), color1.R, color1.G, color1.B});
             brush.Opacity(materialAlpha);
             return brush;
         } catch (...) { LOG_IGNORED_EXCEPTION(); }
     }
 
-    // Mica and Mica Alt: the wallpaper under the part, blurred and tinted with
-    // Windows' base colors (MakeWallpaperMicaBrush). The opacity setting is how
-    // much of the base color covers it.
+    // Mica and Mica Alt: Windows' blurred wallpaper under its base colors
+    // (MakeMaterialBrush). The strength setting is how much of the base color
+    // covers it.
     if (t == BackgroundType::Mica || t == BackgroundType::MicaAlt) {
         const bool light = IsSystemLightTheme();
         const bool alt = t == BackgroundType::MicaAlt;
@@ -24388,7 +24385,7 @@ static const RowRule ROW_RULES[] = {
     { L"AppearanceSettings.BackgroundStyleSettings.acrylicTintOpacity", 117, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"acrylic" },
     { L"AppearanceSettings.BackgroundStyleSettings.micaOpacity", 118, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"mica|mica_alt" },
     { L"AppearanceSettings.BackgroundStyleSettings.materialOpacity", 6501, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"acrylic|mica|mica_alt|glass" },
-    { L"AppearanceSettings.BackgroundStyleSettings.materialBlur", 6502, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"acrylic|mica|mica_alt|glass" },
+    { L"AppearanceSettings.BackgroundStyleSettings.materialBlur", 6502, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"mica|mica_alt|glass" },
     { L"AppearanceSettings.BackgroundStyleSettings.blurOpacity", 119, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"album_art_blur" },
     { L"AppearanceSettings.BackgroundStyleSettings.blurRadius", 120, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"album_art_blur" },
     { L"AppearanceSettings.TitleTextStyleSettings.titleFontFamily", 121, false, L"AppearanceSettings.TitleTextStyleSettings.titleFont", L"custom" },
