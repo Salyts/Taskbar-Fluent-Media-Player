@@ -77,6 +77,10 @@
 
 ### Fixes
 
+- Mica and Mica Alt work on the player and the detached parts: they show your wallpaper, heavily blurred and tinted, lined up with where each part sits, like Windows' own Mica. Inside the taskbar the old blur only found the taskbar's own even color, so they looked flat. "Mica opacity" sets how much of the base color covers the wallpaper.
+- A detached part with a blurred-cover background no longer shows the blur taller than its frame.
+- A fully round album cover (or the spinning record) has no outline, and the gray stand-in behind the cover no longer peeks out around its edge.
+- Settings window: text on the accent color (Save, a colored title bar's buttons) picks black or white by real contrast; light accents like green used to get white text that was hard to read. An expanding card's rows line their controls up under its switch, and page and section names are in sentence case like Windows' Settings.
 - Changing songs or apps quickly could put the old song, cover or app back in the player: a slow fetch for the old one finished last and overwrote the new one. Older fetches, and ones for an app the player has moved away from, are now dropped.
 - The cover's colors are worked out off the taskbar's thread, so a big cover (some players send multi-megabyte PNGs) no longer holds the taskbar up for a moment on every song change.
 - Settings are saved to a second copy and switched over only once it's fully written, so a save that fails halfway can't leave them half old, half new.

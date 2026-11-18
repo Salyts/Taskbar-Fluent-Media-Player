@@ -2225,6 +2225,7 @@ namespace UI {
     static void HoldPlayerTransitions();
     static void RestorePlayerTransitionsSoon();
     static Border BuildMainProgressBar();
+    static void UpdateMicaBrushesOnThisThread();
 } // namespace UI
 namespace Taskbar {
     enum class TaskbarEdge { Bottom, Top, Left, Right };
@@ -7051,6 +7052,169 @@ struct BackgroundStyleParams {
     int micaOpacity;
 };
 
+// ---- Mica from the wallpaper ----
+// Real Mica is the desktop wallpaper, heavily blurred, seen at the window's own
+// spot on screen and tinted with the theme's base color. Inside the taskbar a
+// blur of "what's behind" only finds the taskbar's own even color, so Mica came
+// out flat. It's made here instead: the wallpaper of the part's monitor, fitted
+// the way Windows fits it, blurred small, tinted, and lined up under each part
+// by where it sits (PlaceMicaBrush).
+struct MicaWall {
+    std::vector<BYTE> px;   // BGRA, the monitor's shape, blurred
+    int w = 0, h = 0;
+    RECT mon{};
+    std::wstring key;       // what it was made from, to tell when that changed
+};
+static std::mutex g_micaWallMtx;
+[[clang::no_destroy]] static std::map<HMONITOR, std::shared_ptr<const MicaWall>> g_micaWalls;
+
+static std::shared_ptr<const MicaWall> CachedMicaWall(HMONITOR mon) {
+    std::lock_guard<std::mutex> lk(g_micaWallMtx);
+    auto it = g_micaWalls.find(mon);
+    return it != g_micaWalls.end() ? it->second : nullptr;
+}
+
+// The monitor's wallpaper, made again only when it changed.
+static std::shared_ptr<const MicaWall> MicaWallFor(HMONITOR mon) {
+    MONITORINFO mi{sizeof(mi)};
+    if (!mon || !GetMonitorInfoW(mon, &mi)) return nullptr;
+    const RECT r = mi.rcMonitor;
+    const int monW = r.right - r.left, monH = r.bottom - r.top;
+    if (monW <= 0 || monH <= 0) return nullptr;
+
+    std::wstring path;
+    DESKTOP_WALLPAPER_POSITION pos = DWPOS_FILL;
+    COLORREF bg = RGB(0, 0, 0);
+    try {
+        static const CLSID WALLPAPER_CLSID = {0xc2cf3110, 0x460e, 0x4fc1, {0xb9, 0xd0, 0x8a, 0x1c, 0x0c, 0x9c, 0xc4, 0xbd}};
+        winrt::com_ptr<IDesktopWallpaper> dw;
+        if (SUCCEEDED(CoCreateInstance(WALLPAPER_CLSID, nullptr, CLSCTX_ALL, __uuidof(IDesktopWallpaper), dw.put_void())) && dw) {
+            dw->GetPosition(&pos);
+            dw->GetBackgroundColor(&bg);
+            UINT n = 0;
+            dw->GetMonitorDevicePathCount(&n);
+            for (UINT i = 0; i < n && path.empty(); i++) {
+                LPWSTR id = nullptr;
+                if (FAILED(dw->GetMonitorDevicePathAt(i, &id)) || !id) continue;
+                RECT mr{};
+                LPWSTR p = nullptr;
+                if (SUCCEEDED(dw->GetMonitorRECT(id, &mr)) && EqualRect(&mr, &r) && SUCCEEDED(dw->GetWallpaper(id, &p)) && p) {
+                    path = p;
+                    CoTaskMemFree(p);
+                }
+                CoTaskMemFree(id);
+            }
+            LPWSTR all = nullptr;   // the same picture on every monitor
+            if (path.empty() && SUCCEEDED(dw->GetWallpaper(nullptr, &all)) && all) { path = all; CoTaskMemFree(all); }
+        }
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    if (path.empty()) {
+        wchar_t p[MAX_PATH]{};
+        if (SystemParametersInfoW(SPI_GETDESKWALLPAPER, MAX_PATH, p, 0)) path = p;
+    }
+    WIN32_FILE_ATTRIBUTE_DATA fa{};
+    const bool haveFile = !path.empty() && GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &fa);
+    const RECT span{GetSystemMetrics(SM_XVIRTUALSCREEN), GetSystemMetrics(SM_YVIRTUALSCREEN),
+                    GetSystemMetrics(SM_XVIRTUALSCREEN) + GetSystemMetrics(SM_CXVIRTUALSCREEN),
+                    GetSystemMetrics(SM_YVIRTUALSCREEN) + GetSystemMetrics(SM_CYVIRTUALSCREEN)};
+    wchar_t keyTail[160];
+    swprintf_s(keyTail, L"|%d|%06X|%ld,%ld,%ld,%ld|%ld,%ld,%ld,%ld|%08lX%08lX", (int)pos, (unsigned)bg,
+               r.left, r.top, r.right, r.bottom, span.left, span.top, span.right, span.bottom,
+               haveFile ? fa.ftLastWriteTime.dwHighDateTime : 0ul, haveFile ? fa.ftLastWriteTime.dwLowDateTime : 0ul);
+    const std::wstring key = path + keyTail;
+    if (auto cached = CachedMicaWall(mon); cached && cached->key == key) return cached;
+
+    auto wall = std::make_shared<MicaWall>();
+    wall->key = key;
+    wall->mon = r;
+    wall->w = std::max(8, monW / 16);
+    wall->h = std::max(8, monH / 16);
+    wall->px.resize((size_t)wall->w * wall->h * 4);
+    for (size_t i = 0; i < wall->px.size(); i += 4) {   // the desktop color, under and around the picture
+        wall->px[i] = GetBValue(bg); wall->px[i + 1] = GetGValue(bg); wall->px[i + 2] = GetRValue(bg); wall->px[i + 3] = 255;
+    }
+    std::vector<BYTE> img;
+    int iw = 0, ih = 0;
+    if (haveFile && fa.nFileSizeHigh == 0 && fa.nFileSizeLow > 0 && fa.nFileSizeLow < 64u * 1024 * 1024) {
+        HANDLE f = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                               nullptr, OPEN_EXISTING, 0, nullptr);
+        if (f != INVALID_HANDLE_VALUE) {
+            std::vector<BYTE> bytes(fa.nFileSizeLow);
+            DWORD got = 0;
+            if (!ReadFile(f, bytes.data(), (DWORD)bytes.size(), &got, nullptr) || got != bytes.size() ||
+                !DecodeImageToBGRA(bytes, img, iw, ih, 512))
+                iw = ih = 0;
+            CloseHandle(f);
+        }
+    }
+    if (iw > 0 && ih > 0 && img.size() >= (size_t)iw * ih * 4) {
+        // Where Windows puts the picture: over this monitor, or across all of
+        // them for Span; filled (cropped), fitted (with bars) or stretched.
+        // Center and Tile are taken as Fill.
+        const RECT t = pos == DWPOS_SPAN ? span : r;
+        const double tw = t.right - t.left, th = t.bottom - t.top;
+        double kx, ky;   // screen pixels per picture pixel
+        if (pos == DWPOS_STRETCH) { kx = tw / iw; ky = th / ih; }
+        else kx = ky = pos == DWPOS_FIT ? std::min(tw / iw, th / ih) : std::max(tw / iw, th / ih);
+        const double left = t.left + (tw - iw * kx) / 2, top = t.top + (th - ih * ky) / 2;
+        for (int y = 0; y < wall->h; y++)
+            for (int x = 0; x < wall->w; x++) {
+                const double sx = (r.left + (x + 0.5) * monW / wall->w - left) / kx;
+                const double sy = (r.top + (y + 0.5) * monH / wall->h - top) / ky;
+                if (sx < 0 || sy < 0 || sx >= iw || sy >= ih) continue;
+                const BYTE* s = &img[((size_t)(int)sy * iw + (int)sx) * 4];
+                BYTE* d = &wall->px[((size_t)y * wall->w + x) * 4];
+                d[0] = s[0]; d[1] = s[1]; d[2] = s[2];
+            }
+    }
+    const int radius = std::max(2, wall->w / 20);
+    for (int i = 0; i < 3; i++) ApplyBoxBlurBGRA(wall->px, wall->w, wall->h, radius);
+    Wh_Log(L"Mica: wallpaper for a %dx%d monitor made from \"%s\"", monW, monH, path.c_str());
+    std::lock_guard<std::mutex> lk(g_micaWallMtx);
+    g_micaWalls[mon] = wall;
+    return wall;
+}
+
+// One wallpaper-Mica brush and the part it paints (found after it's set).
+struct MicaBrushEntry {
+    DWORD thread = 0;
+    winrt::weak_ref<ImageBrush> brush;
+    winrt::weak_ref<FrameworkElement> el;
+    bool alt = false;
+    double strength = 0.5;
+    HMONITOR mon = nullptr;
+    std::wstring wallKey;   // the wallpaper its picture was made from
+    double lastX = 0, lastY = 0;
+    bool placed = false;
+};
+static std::mutex g_micaBrushMtx;
+[[clang::no_destroy]] static std::vector<std::shared_ptr<MicaBrushEntry>> g_micaBrushes;
+
+static Brush MakeWallpaperMicaBrush(bool alt, double strength, double alpha) {
+    ImageBrush b;
+    b.Stretch(Stretch::None);
+    b.AlignmentX(AlignmentX::Left);
+    b.AlignmentY(AlignmentY::Top);
+    b.Transform(CompositeTransform());
+    b.Opacity(alpha);
+    auto entry = std::make_shared<MicaBrushEntry>();
+    entry->thread = GetCurrentThreadId();
+    entry->brush = winrt::make_weak(b);
+    entry->alt = alt;
+    entry->strength = strength;
+    {
+        std::lock_guard<std::mutex> lk(g_micaBrushMtx);
+        std::erase_if(g_micaBrushes, [](const std::shared_ptr<MicaBrushEntry>& x) { return !x->brush.get(); });
+        g_micaBrushes.push_back(entry);
+    }
+    // Placed once it's on a part and laid out.
+    try {
+        QueueOnDispatcher(b.Dispatcher(), winrt::Windows::UI::Core::CoreDispatcherPriority::Low,
+                          []() { UpdateMicaBrushesOnThisThread(); });
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    return b;
+}
+
 static Brush MakeBackgroundBrushFromParams(const BackgroundStyleParams& p) {
     auto& t = p.type;
 
@@ -7113,10 +7277,9 @@ static Brush MakeBackgroundBrushFromParams(const BackgroundStyleParams& p) {
         } catch (...) { LOG_IGNORED_EXCEPTION(); }
     }
 
-    // Mica and Mica Alt: Windows' own recipes (their base colors, tinted over a
-    // blur of what's behind), so the player picks up the wallpaper's colors like
-    // Mica does. They used to be a flat color. The opacity setting is how much
-    // of the base color covers it.
+    // Mica and Mica Alt: the wallpaper under the part, blurred and tinted with
+    // Windows' base colors (MakeWallpaperMicaBrush). The opacity setting is how
+    // much of the base color covers it.
     if (t == BackgroundType::Mica || t == BackgroundType::MicaAlt) {
         const bool light = IsSystemLightTheme();
         const bool alt = t == BackgroundType::MicaAlt;
@@ -7124,6 +7287,7 @@ static Brush MakeBackgroundBrushFromParams(const BackgroundStyleParams& p) {
             ? (alt ? winrt::Windows::UI::Color{0xFF, 0xDA, 0xDA, 0xDA} : winrt::Windows::UI::Color{0xFF, 0xF3, 0xF3, 0xF3})
             : (alt ? winrt::Windows::UI::Color{0xFF, 0x0A, 0x0A, 0x0A} : winrt::Windows::UI::Color{0xFF, 0x20, 0x20, 0x20});
         const double strength = std::clamp(p.micaOpacity, 0, 100) / 100.0;
+        try { return MakeWallpaperMicaBrush(alt, strength, materialAlpha); } catch (...) { LOG_IGNORED_EXCEPTION(); }
         try {
             winrt::Windows::UI::Xaml::Media::AcrylicBrush brush;
             brush.BackgroundSource(winrt::Windows::UI::Xaml::Media::AcrylicBackgroundSource::Backdrop);
@@ -10631,6 +10795,7 @@ COLD_UNOPTIMIZED static Grid BuildAlbumArtContainer() {
     placeholder.RadiusY(maxRadius);
     placeholder.HorizontalAlignment(HorizontalAlignment::Stretch);
     placeholder.VerticalAlignment(VerticalAlignment::Stretch);
+    placeholder.Margin({1, 1, 1, 1});
     artContainer.Children().Append(placeholder);
 
     Border artBorder;
@@ -10710,6 +10875,16 @@ COLD_UNOPTIMIZED static Grid BuildAlbumArtContainer() {
     artRing.BorderThickness({1,1,1,1});
     artRing.BorderBrush(MakeBrush({0x25,0x80,0x80,0x80}));
     artContainer.Children().Append(artRing);
+    if (disc) artRing.Visibility(Visibility::Collapsed);
+    else
+        artContainer.SizeChanged([weakRing = winrt::make_weak(artRing), maxRadius](winrt::Windows::Foundation::IInspectable const&,
+                                                                                    winrt::Windows::UI::Xaml::SizeChangedEventArgs const& e) {
+            try {
+                auto ring = weakRing.get();
+                const double side = std::min(e.NewSize().Width, e.NewSize().Height);
+                if (ring && side > 0) ring.Visibility(maxRadius * 2 >= side - 1 ? Visibility::Collapsed : Visibility::Visible);
+            } catch (...) { LOG_IGNORED_EXCEPTION(); }
+        });
 
     if (g_settings.showAppIcon) {
         Grid iconOverlay;
@@ -13911,6 +14086,111 @@ static HWND TaskbarWndForElement(FrameworkElement const& el) {
     return g_taskbarWnd;
 }
 
+// The wallpaper picture, tinted with the theme's Mica color.
+static WriteableBitmap BakeMicaBitmap(const MicaWall& w, bool alt, double strength) {
+    const bool light = IsSystemLightTheme();
+    const winrt::Windows::UI::Color base = light
+        ? (alt ? winrt::Windows::UI::Color{0xFF, 0xDA, 0xDA, 0xDA} : winrt::Windows::UI::Color{0xFF, 0xF3, 0xF3, 0xF3})
+        : (alt ? winrt::Windows::UI::Color{0xFF, 0x0A, 0x0A, 0x0A} : winrt::Windows::UI::Color{0xFF, 0x20, 0x20, 0x20});
+    const double t = std::clamp(strength, 0.0, 1.0) * (alt ? 0.95 : 0.9);
+    WriteableBitmap wb(w.w, w.h);
+    BYTE* dst = nullptr;
+    auto buf = wb.PixelBuffer();
+    buf.as<Windows::Storage::Streams::IBufferByteAccess>()->Buffer(&dst);
+    if (!dst) return nullptr;
+    const BYTE baseC[3] = {base.B, base.G, base.R};
+    for (size_t i = 0; i + 3 < w.px.size(); i += 4) {
+        for (int c = 0; c < 3; c++) dst[i + c] = (BYTE)std::lround(w.px[i + c] * (1.0 - t) + baseC[c] * t);
+        dst[i + 3] = 255;
+    }
+    buf.Length((uint32_t)w.px.size());
+    wb.Invalidate();
+    return wb;
+}
+
+// Lines a wallpaper-Mica brush's picture up with where its part is on screen,
+// so each part shows the bit of wallpaper behind it, as Mica does.
+static void PlaceMicaBrush(MicaBrushEntry& e) {
+    auto el = e.el.get();
+    auto brush = e.brush.get();
+    if (!el || !brush) return;
+    try {
+        const auto at = el.TransformToVisual(nullptr).TransformPoint({0, 0});
+        if (e.placed && at.X == e.lastX && at.Y == e.lastY) return;
+        HWND tb = TaskbarWndForElement(el);
+        HMONITOR mon = tb ? MonitorFromWindow(tb, MONITOR_DEFAULTTONEAREST) : nullptr;
+        auto wall = mon == e.mon ? CachedMicaWall(mon) : nullptr;
+        if (!wall) wall = MicaWallFor(mon);
+        if (!wall) return;
+        e.mon = mon;
+        if (e.wallKey != wall->key) {
+            if (auto wb = BakeMicaBitmap(*wall, e.alt, e.strength)) brush.ImageSource(wb);
+            e.wallKey = wall->key;
+        }
+        POINT origin{0, 0};
+        ClientToScreen(tb, &origin);
+        double scale = 1.0;
+        if (auto xr = el.XamlRoot()) scale = xr.RasterizationScale();
+        if (scale <= 0) scale = 1.0;
+        auto tf = brush.Transform().try_as<CompositeTransform>();
+        if (!tf) { tf = CompositeTransform(); brush.Transform(tf); }
+        tf.ScaleX((wall->mon.right - wall->mon.left) / scale / wall->w);
+        tf.ScaleY((wall->mon.bottom - wall->mon.top) / scale / wall->h);
+        tf.TranslateX(-((origin.x - wall->mon.left) / scale + at.X));
+        tf.TranslateY(-((origin.y - wall->mon.top) / scale + at.Y));
+        e.lastX = at.X;
+        e.lastY = at.Y;
+        e.placed = true;
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+}
+
+// Finds the part each new brush paints (a panel or border whose background it
+// is), then keeps it placed as the part moves and resizes.
+static void BindMicaBrushes(DependencyObject const& node, std::vector<std::shared_ptr<MicaBrushEntry>>& unbound, int depth) {
+    if (!node || depth > 24 || unbound.empty()) return;
+    Brush bg{nullptr};
+    if (auto p = node.try_as<Panel>()) bg = p.Background();
+    else if (auto b = node.try_as<Border>()) bg = b.Background();
+    if (auto ib = bg ? bg.try_as<ImageBrush>() : nullptr) {
+        for (auto it = unbound.begin(); it != unbound.end(); ++it) {
+            if ((*it)->brush.get() != ib) continue;
+            auto fe = node.as<FrameworkElement>();
+            (*it)->el = winrt::make_weak(fe);
+            fe.SizeChanged([weak = std::weak_ptr<MicaBrushEntry>(*it)](winrt::Windows::Foundation::IInspectable const&,
+                                                                        SizeChangedEventArgs const&) {
+                if (auto s = weak.lock()) { s->placed = false; PlaceMicaBrush(*s); }
+            });
+            PlaceMicaBrush(**it);
+            unbound.erase(it);
+            break;
+        }
+    }
+    const int n = VisualTreeHelper::GetChildrenCount(node);
+    for (int i = 0; i < n && !unbound.empty(); i++) BindMicaBrushes(VisualTreeHelper::GetChild(node, i), unbound, depth + 1);
+}
+
+static void UpdateMicaBrushesOnThisThread() {
+    const DWORD me = GetCurrentThreadId();
+    std::vector<std::shared_ptr<MicaBrushEntry>> mine, unbound;
+    {
+        std::lock_guard<std::mutex> lk(g_micaBrushMtx);
+        for (auto& x : g_micaBrushes) if (x->thread == me) mine.push_back(x);
+    }
+    for (auto& x : mine) {
+        if (!x->brush.get()) continue;
+        if (x->el.get()) PlaceMicaBrush(*x);
+        else unbound.push_back(x);
+    }
+    if (unbound.empty()) return;
+    try {
+        std::vector<FrameworkElement> roots{ g_playerGrid };
+        for (DetachedWidgetState* dw : { &g_detachedAlbumArt, &g_detachedInfo, &g_detachedButtons, &g_detachedViz, &g_detachedWeather })
+            roots.push_back(dw->grid);
+        for (auto& root : roots)
+            if (root && root.Dispatcher().HasThreadAccess()) BindMicaBrushes(root, unbound, 0);
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+}
+
 static bool GetTaskbarMonitorWorkAreaInfo(FrameworkElement const& rootContent,
                                           RECT& outWorkAreaPx,
                                           POINT& outOriginPx,
@@ -16641,6 +16921,7 @@ static void RefreshPlayerContents() {
     if (RefreshAlbumArt(m)) ApplyPaletteColors();
     RefreshDetachedBlurs();
     RefreshAppIcon(m.appIconBytes);
+    UpdateMicaBrushesOnThisThread();   // the player may have moved
 }
 
 // The window in front covers its monitor and has no title bar (borderless
@@ -18746,6 +19027,15 @@ static FrameworkElement WrapDetachedContent(FrameworkElement content, const Deta
         blur.CornerRadius({bg.cornerRadiusTL, bg.cornerRadiusTR, bg.cornerRadiusBR, bg.cornerRadiusBL});
         blur.HorizontalAlignment(HorizontalAlignment::Stretch);
         blur.VerticalAlignment(VerticalAlignment::Stretch);
+        // The frame's own limits: content taller than the player stretched the
+        // blur past the frame.
+        if (IsSidebarMode()) {
+            if (chromeMin > 0) blur.MinWidth(chromeMin);
+            if (chromeMax > 0) blur.MaxWidth(chromeMax);
+        } else {
+            if (chromeMin > 0) blur.MinHeight(chromeMin);
+            if (chromeMax > 0) blur.MaxHeight(chromeMax);
+        }
         blur.IsHitTestVisible(false);
         Canvas::SetZIndex(blur, 0);
         PaintDetachedBlur(blur);
@@ -21351,7 +21641,7 @@ COLD_UNOPTIMIZED static SettingCategory BuildBehaviorClicksCategory() {
     int numWheel = std::clamp(g_svNumWheelActionCards, 1, 20);
 
     SettingCard clicks;
-    clicks.section = L"Click Actions";
+    clicks.section = L"Click actions";
     clicks.actionAddId = L"__add_click_action";
     clicks.actionRemovePrefix = L"__remove_click_action:";
     clicks.actionAddLabel = L"Add click action";
@@ -21364,7 +21654,7 @@ COLD_UNOPTIMIZED static SettingCategory BuildBehaviorClicksCategory() {
     allCards.push_back(clicks);
 
     SettingCard wheels;
-    wheels.section = L"Mouse Wheel Actions";
+    wheels.section = L"Mouse wheel actions";
     wheels.actionAddId = L"__add_wheel_action";
     wheels.actionRemovePrefix = L"__remove_wheel_action:";
     wheels.actionAddLabel = L"Add scroll action";
@@ -21377,7 +21667,7 @@ COLD_UNOPTIMIZED static SettingCategory BuildBehaviorClicksCategory() {
     allCards.push_back(wheels);
 
     SettingCategory cat;
-    cat.label = L"Behaviour & Clicks";
+    cat.label = L"Behaviour & clicks";
     cat.badge = L"";
     cat.cards = allCards;
     return cat;
@@ -21460,7 +21750,7 @@ COLD_UNOPTIMIZED static SettingCategory BuildPlayerMenuCategory() {
     };
 
     SettingCategory cat;
-    cat.label = L"Mini Player Menu";
+    cat.label = L"Mini player menu";
     cat.badge = L"\uE8D6";
     cat.cards = { general, nearCard, screenCard, contents, style };
     cat.enabledRow = WithDesc(RowBool(L"Mini player menu", L"PlayerMenuSettings.miniPlayerEnabled"),
@@ -21601,7 +21891,7 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
             {L"text_line", L"In the text, as its own line"}
         };
         SettingCard progressBar;
-        progressBar.title = L"Progress Bar";
+        progressBar.title = L"Progress bar";
         progressBar.expander = true;
         progressBar.rows = {
             RowBool(L"Show progress bar", L"MainSettings.ProgressBarSettings.showProgressBar"),
@@ -21650,7 +21940,7 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
         buttons.rows.push_back(RowBool(L"Hide unsupported buttons", L"MainSettings.MediaButtonsSettings.hideUnsupportedButtons"));
 
         SettingCard picker;
-        picker.title = L"Buttons Shown";
+        picker.title = L"Buttons shown";
         struct { const wchar_t* kw; const wchar_t* label; } mediaBtnLabels[] = {
             {L"prev", L"Previous Track"}, {L"play", L"Play/Pause"}, {L"next", L"Next Track"},
             {L"rewind", L"Rewind 5s"}, {L"forward", L"Forward 5s"}, {L"shuffle", L"Toggle Shuffle"},
@@ -21682,7 +21972,7 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
         }
 
         SettingCard style;
-        style.title = L"Buttons Style";
+        style.title = L"Buttons style";
         style.rows = {
             RowCombo(L"Icon style", L"AppearanceSettings.MediaButtonsStyleSettings.iconStyle", L"fluent_outline", mediaIconStyleOptions),
             RowText(L"Button spacing", L"AppearanceSettings.MediaButtonsStyleSettings.buttonSpacing", L"0", true),
@@ -21738,7 +22028,7 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
             WithDesc(RowBool(L"Show Widgets when nothing plays", L"MainSettings.NativeWidgetsSetting.showWidgetsWhenIdle"),
                      L"The player hides when nothing is playing and the Widgets button (with the weather) shows in its place."),
         };
-        cats.push_back(SettingCategory{ L"Windows Buttons", L"\uE8CC", { hideButtons, hideTray, weatherWidget } });
+        cats.push_back(SettingCategory{ L"Windows buttons", L"\uE8CC", { hideButtons, hideTray, weatherWidget } });
     }
 
     {
@@ -21792,7 +22082,7 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
             RowTextAllowEmpty(L"No-media artist text", L"MainSettings.TextAreaSetting.noMediaArtistText"),
         };
         SettingCard titleStyle;
-        titleStyle.title = L"Top Line Style";
+        titleStyle.title = L"Top line style";
         titleStyle.rows = {
             RowColorAlpha(L"Color", L"AppearanceSettings.TitleTextStyleSettings.titleColor", L"0 0 0$255 255 255",
                           L"Color opacity", L"AppearanceSettings.TitleTextStyleSettings.titleColorOpacity"),
@@ -21804,7 +22094,7 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
             RowText(L"Character spacing", L"AppearanceSettings.TitleTextStyleSettings.titleCharacterSpacing", L"0", true),
         };
         SettingCard artistStyle;
-        artistStyle.title = L"Bottom Line Style";
+        artistStyle.title = L"Bottom line style";
         artistStyle.rows = {
             RowColorAlpha(L"Color", L"AppearanceSettings.ArtistTextStyleSettings.artistColor", L"0 0 0$255 255 255",
                           L"Color opacity", L"AppearanceSettings.ArtistTextStyleSettings.artistColorOpacity", L"80"),
@@ -21883,7 +22173,7 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
             WithDesc(RowBool(L"Rotate album art", L"MainSettings.PlayerSetting.sidebarRotateAlbumArt"),
                      L"Turns the art with the text (shows on non-square art)."),
         };
-        cats.push_back(SettingCategory{ L"Album Art", L"\uE8B9", { card, display, pauseCard, appIconCard, emptyCard, sidebarArtCard } });
+        cats.push_back(SettingCategory{ L"Album art", L"\uE8B9", { card, display, pauseCard, appIconCard, emptyCard, sidebarArtCard } });
         cats.back().enabledRow = RowBool(L"Show album art", L"MainSettings.AlbumArtSetting.showAlbumArt");
     }
 
@@ -21956,7 +22246,7 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
             RowCombo(L"EQ preset", L"MainSettings.VisualizerFunctionsSettings.vizEQ", L"default", vizEQOptions),
         };
         SettingCard bandSens;
-        bandSens.title = L"Band Sensitivity";
+        bandSens.title = L"Band sensitivity";
         bandSens.rows = {
             RowSlider(L"Band 1 (20-120 Hz)", L"MainSettings.VisualizerFunctionsSettings.vizBand1Sensitivity", L"100", 0, 300),
             RowSlider(L"Band 2 (120-300 Hz)", L"MainSettings.VisualizerFunctionsSettings.vizBand2Sensitivity", L"100", 0, 300),
@@ -21998,7 +22288,7 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
                      L"Insets the background from the taskbar's edges."),
         };
         SettingCard order;
-        order.title = L"Container Order";
+        order.title = L"Container order";
         order.rows = {
             RowText(L"Album art (1-4)", L"MainSettings.AlbumArtSetting.albumArtOrder", L"1", true),
             RowText(L"Info (1-4)", L"MainSettings.TextAreaSetting.infoOrder", L"2", true),
@@ -22047,7 +22337,7 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
             return c;
         };
         SettingCard albumArtCard = BuildDetachedContainerCard(
-            L"Album Art", L"MainSettings.AlbumArtSetting.albumArtDetached",
+            L"Album art", L"MainSettings.AlbumArtSetting.albumArtDetached",
             L"MainSettings.AlbumArtSetting.albumArtDetachedPosition",
             L"MainSettings.AlbumArtSetting.albumArtDetachedMonitor",
             L"MainSettings.AlbumArtSetting.albumArtDetachedBackground");
@@ -22127,7 +22417,7 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
 
     {
         SettingCard picker;
-        picker.title = L"Items Shown";
+        picker.title = L"Items shown";
         struct { const wchar_t* kw; const wchar_t* label; } cmItemLabels[] = {
             {L"repeat", L"Repeat"}, {L"shuffle", L"Shuffle"}, {L"forward", L"Forward 5s"}, {L"rewind", L"Rewind 5s"},
             {L"next", L"Next Track"}, {L"prev", L"Previous Track"}, {L"switch_sessions", L"Switch Sessions"}, {L"open_app", L"Open media app"}
@@ -22169,7 +22459,7 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
             RowColorAlpha(L"Icon color", L"ContextMenuSettings.contextMenuIconColor", L"",
                           L"Icon opacity", L"ContextMenuSettings.contextMenuIconOpacity"),
         };
-        cats.push_back(SettingCategory{ L"Context Menu", L"\uE700", { picker, card } });
+        cats.push_back(SettingCategory{ L"Context menu", L"\uE700", { picker, card } });
     }
 
     {
@@ -22255,9 +22545,9 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
 
     {
         static const wchar_t* const NAV_ORDER[] = {
-            L"Appearance", L"Layout", L"Behaviour & Clicks", L"Mini Player Menu",
-            L"Album Art", L"Info", L"Buttons", L"Visualizer", L"Weather",
-            L"Context Menu", L"Windows Buttons", L"Other",
+            L"Appearance", L"Layout", L"Behaviour & clicks", L"Mini player menu",
+            L"Album art", L"Info", L"Buttons", L"Visualizer", L"Weather",
+            L"Context menu", L"Windows buttons", L"Other",
         };
         auto rank = [](const std::wstring& label) {
             for (size_t i = 0; i < ARRAYSIZE(NAV_ORDER); i++)
@@ -22994,7 +23284,7 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"Line", L"Лінія", L"Линия", L"Linie", L"रेखा", L"线条", L"線條", L"Línea", L"Ligne", L"Linha", L"Linea", L"Linia", L"Çizgi", L"ライン", L"선" },
     { L"Line draws one thin stroke, like the taskbar's icons.", L"«Лінія» малює одну тонку лінію, як значки панелі задач.", L"«Линия» рисует одну тонкую линию, как значки панели задач.", L"\"Linie\" zeichnet einen dünnen Strich wie die Taskleisten-Symbole.", L"\"रेखा\" टास्कबार आइकनों जैसी एक पतली रेखा बनाती है।", L"“线条”绘制一条细线，与任务栏图标风格一致。", L"「線條」繪製一條細線，與工作列圖示風格一致。", L"\"Línea\" dibuja un trazo fino, como los iconos de la barra.", L"« Ligne » trace un trait fin, comme les icônes de la barre.", L"\"Linha\" desenha um traço fino, como os ícones da barra.", L"\"Linea\" disegna un tratto sottile, come le icone della barra.", L"„Linia” rysuje cienką kreskę jak ikony paska zadań.", L"\"Çizgi\" görev çubuğu simgeleri gibi ince bir çizgi çizer.", L"「ライン」はタスクバーのアイコンのような細い線を描きます。", L"'선'은 작업 표시줄 아이콘처럼 가는 선을 그립니다." },
     { L"Sensitivity", L"Чутливість", L"Чувствительность", L"Empfindlichkeit", L"संवेदनशीलता", L"灵敏度", L"靈敏度", L"Sensibilidad", L"Sensibilité", L"Sensibilidade", L"Sensibilità", L"Czułość", L"Hassasiyet", L"感度", L"감도" },
-    { L"Band Sensitivity", L"Чутливість смуг", L"Чувствительность полос", L"Bandempfindlichkeit", L"बैंड संवेदनशीलता", L"频段灵敏度", L"頻段靈敏度", L"Sensibilidad por banda", L"Sensibilité par bande", L"Sensibilidade por banda", L"Sensibilità per banda", L"Czułość pasm", L"Bant hassasiyeti", L"帯域ごとの感度", L"대역별 감도" },
+    { L"Band sensitivity", L"Чутливість смуг", L"Чувствительность полос", L"Bandempfindlichkeit", L"बैंड संवेदनशीलता", L"频段灵敏度", L"頻段靈敏度", L"Sensibilidad por banda", L"Sensibilité par bande", L"Sensibilidade por banda", L"Sensibilità per banda", L"Czułość pasm", L"Bant hassasiyeti", L"帯域ごとの感度", L"대역별 감도" },
     { L"Band 1 (20-120 Hz)", L"Смуга 1 (20-120 Гц)", L"Полоса 1 (20-120 Гц)", L"Band 1 (20-120 Hz)", L"बैंड 1 (20-120 Hz)", L"频段 1 (20-120 Hz)", L"頻段 1 (20-120 Hz)", L"Banda 1 (20-120 Hz)", L"Bande 1 (20-120 Hz)", L"Banda 1 (20-120 Hz)", L"Banda 1 (20-120 Hz)", L"Pasmo 1 (20-120 Hz)", L"Bant 1 (20-120 Hz)", L"帯域 1 (20-120 Hz)", L"대역 1 (20-120 Hz)" },
     { L"Band 2 (120-300 Hz)", L"Смуга 2 (120-300 Гц)", L"Полоса 2 (120-300 Гц)", L"Band 2 (120-300 Hz)", L"बैंड 2 (120-300 Hz)", L"频段 2 (120-300 Hz)", L"頻段 2 (120-300 Hz)", L"Banda 2 (120-300 Hz)", L"Bande 2 (120-300 Hz)", L"Banda 2 (120-300 Hz)", L"Banda 2 (120-300 Hz)", L"Pasmo 2 (120-300 Hz)", L"Bant 2 (120-300 Hz)", L"帯域 2 (120-300 Hz)", L"대역 2 (120-300 Hz)" },
     { L"Band 3 (300-800 Hz)", L"Смуга 3 (300-800 Гц)", L"Полоса 3 (300-800 Гц)", L"Band 3 (300-800 Hz)", L"बैंड 3 (300-800 Hz)", L"频段 3 (300-800 Hz)", L"頻段 3 (300-800 Hz)", L"Banda 3 (300-800 Hz)", L"Bande 3 (300-800 Hz)", L"Banda 3 (300-800 Hz)", L"Banda 3 (300-800 Hz)", L"Pasmo 3 (300-800 Hz)", L"Bant 3 (300-800 Hz)", L"帯域 3 (300-800 Hz)", L"대역 3 (300-800 Hz)" },
@@ -23052,8 +23342,8 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"Show app icon", L"Показувати значок застосунку", L"Показывать значок приложения", L"App-Symbol anzeigen", L"ऐप आइकन दिखाएँ", L"显示应用图标", L"顯示應用程式圖示", L"Mostrar icono de la aplicación", L"Afficher l'icône de l'application", L"Mostrar ícone do aplicativo", L"Mostra icona dell'app", L"Pokazuj ikonę aplikacji", L"Uygulama simgesini göster", L"アプリのアイコンを表示", L"앱 아이콘 표시" },
     { L"App icon corner", L"Кут значка застосунку", L"Угол значка приложения", L"Ecke des App-Symbols", L"ऐप आइकन कोना", L"应用图标位置", L"應用程式圖示位置", L"Esquina del icono de la aplicación", L"Coin de l'icône de l'application", L"Canto do ícone do aplicativo", L"Angolo dell'icona dell'app", L"Narożnik ikony aplikacji", L"Uygulama simgesi köşesi", L"アプリ アイコンの位置", L"앱 아이콘 위치" },
     { L"App icon size", L"Розмір значка застосунку", L"Размер значка приложения", L"Größe des App-Symbols", L"ऐप आइकन आकार", L"应用图标大小", L"應用程式圖示大小", L"Tamaño del icono de la aplicación", L"Taille de l'icône de l'application", L"Tamanho do ícone do aplicativo", L"Dimensione icona dell'app", L"Rozmiar ikony aplikacji", L"Uygulama simgesi boyutu", L"アプリ アイコンのサイズ", L"앱 아이콘 크기" },
-    { L"Top Line Style", L"Стиль верхнього рядка", L"Стиль верхней строки", L"Stil der oberen Zeile", L"ऊपरी पंक्ति की शैली", L"上行样式", L"上行樣式", L"Estilo de la línea superior", L"Style de la ligne du haut", L"Estilo da linha de cima", L"Stile della riga superiore", L"Styl górnej linii", L"Üst satır stili", L"上の行のスタイル", L"윗줄 스타일" },
-    { L"Bottom Line Style", L"Стиль нижнього рядка", L"Стиль нижней строки", L"Stil der unteren Zeile", L"निचली पंक्ति की शैली", L"下行样式", L"下行樣式", L"Estilo de la línea inferior", L"Style de la ligne du bas", L"Estilo da linha de baixo", L"Stile della riga inferiore", L"Styl dolnej linii", L"Alt satır stili", L"下の行のスタイル", L"아랫줄 스타일" },
+    { L"Top line style", L"Стиль верхнього рядка", L"Стиль верхней строки", L"Stil der oberen Zeile", L"ऊपरी पंक्ति की शैली", L"上行样式", L"上行樣式", L"Estilo de la línea superior", L"Style de la ligne du haut", L"Estilo da linha de cima", L"Stile della riga superiore", L"Styl górnej linii", L"Üst satır stili", L"上の行のスタイル", L"윗줄 스타일" },
+    { L"Bottom line style", L"Стиль нижнього рядка", L"Стиль нижней строки", L"Stil der unteren Zeile", L"निचली पंक्ति की शैली", L"下行样式", L"下行樣式", L"Estilo de la línea inferior", L"Style de la ligne du bas", L"Estilo da linha de baixo", L"Stile della riga inferiore", L"Styl dolnej linii", L"Alt satır stili", L"下の行のスタイル", L"아랫줄 스타일" },
     { L"Color opacity", L"Непрозорість кольору", L"Непрозрачность цвета", L"Deckkraft der Farbe", L"रंग की अपारदर्शिता", L"颜色不透明度", L"顏色不透明度", L"Opacidad del color", L"Opacité de la couleur", L"Opacidade da cor", L"Opacità del colore", L"Krycie koloru", L"Renk opaklığı", L"色の不透明度", L"색 불투명도" },
     { L"Font", L"Шрифт", L"Шрифт", L"Schriftart", L"फ़ॉन्ट", L"字体", L"字型", L"Fuente", L"Police", L"Fonte", L"Carattere", L"Czcionka", L"Yazı tipi", L"フォント", L"글꼴" },
     { L"Font size", L"Розмір шрифту", L"Размер шрифта", L"Schriftgröße", L"फ़ॉन्ट आकार", L"字号", L"字型大小", L"Tamaño de fuente", L"Taille de police", L"Tamanho da fonte", L"Dimensione carattere", L"Rozmiar czcionki", L"Yazı tipi boyutu", L"フォント サイズ", L"글꼴 크기" },
@@ -23119,7 +23409,6 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"Mini player menu", L"Міні-плеєр", L"Мини-плеер", L"Mini-Player-Menü", L"मिनी प्लेयर मेनू", L"迷你播放器菜单", L"迷你播放器選單", L"Menú del minirreproductor", L"Menu du mini-lecteur", L"Menu do miniplayer", L"Menu del mini player", L"Menu miniodtwarzacza", L"Mini oynatıcı menüsü", L"ミニ プレーヤー メニュー", L"미니 플레이어 메뉴" },
     { L"Off: \"Open mini player menu\" clicks do nothing.", L"Вимкнено: кліки «Відкрити меню міні-програвача» нічого не роблять.", L"Выключено: клики «Открыть меню мини-плеера» ничего не делают.", L"Aus: Klicks auf \"Mini-Player-Menü öffnen\" tun nichts.", L"बंद: \"मिनी प्लेयर मेनू खोलें\" वाले क्लिक कुछ नहीं करते।", L"关闭后，“打开迷你播放器菜单”点击无效。", L"關閉後，「開啟迷你播放器選單」點擊無效。", L"Desactivado: los clics de \"Abrir el menú del minirreproductor\" no hacen nada.", L"Désactivé : les clics « Ouvrir le menu du mini-lecteur » ne font rien.", L"Desligado: cliques em \"Abrir o menu do miniplayer\" não fazem nada.", L"Disattivato: i clic \"Apri il menu del mini lettore\" non fanno nulla.", L"Wyłączone: kliknięcia „Otwórz menu miniodtwarzacza” nic nie robią.", L"Kapalı: \"Mini oynatıcı menüsünü aç\" tıklamaları bir şey yapmaz.", L"オフ: 「ミニ プレーヤー メニューを開く」のクリックは何もしません。", L"끄면 '미니 플레이어 메뉴 열기' 클릭이 동작하지 않습니다." },
     { L"Keep menu open on click-outside", L"Не закривати меню при кліку поза ним", L"Не закрывать меню при клике вне", L"Menü offen lassen", L"बाहर क्लिक पर मेनू खुला रखें", L"点击外部时保持菜单", L"點擊外部時保持選單", L"Mantener el menú abierto al hacer clic fuera", L"Garder le menu ouvert lors d'un clic à l'extérieur", L"Manter o menu aberto ao clicar fora", L"Tieni il menu aperto con clic all'esterno", L"Nie zamykaj menu po kliknięciu poza nim", L"Dışarı tıklanınca menüyü açık tut", L"外側をクリックしてもメニューを開いたままにする", L"바깥을 클릭해도 메뉴 유지" },
-    { L"Mini Player Menu", L"Меню міні-програвача", L"Меню мини-плеера", L"Mini-Player-Menü", L"मिनी प्लेयर मेनू", L"迷你播放器菜单", L"迷你播放器選單", L"Menú del minirreproductor", L"Menu du mini-lecteur", L"Menu do miniplayer", L"Menu del mini lettore", L"Menu miniodtwarzacza", L"Mini oynatıcı menüsü", L"ミニ プレーヤー メニュー", L"미니 플레이어 메뉴" },
     { L"General", L"Загальні", L"Общие", L"Allgemein", L"सामान्य", L"常规", L"一般", L"General", L"Général", L"Geral", L"Generale", L"Ogólne", L"Genel", L"全般", L"일반" },
     { L"Horizontal offset", L"Зсув по горизонталі", L"Сдвиг по горизонтали", L"Horizontaler Versatz", L"क्षैतिज ऑफ़सेट", L"水平偏移", L"水平位移", L"Desplazamiento horizontal", L"Décalage horizontal", L"Deslocamento horizontal", L"Spostamento orizzontale", L"Przesunięcie w poziomie", L"Yatay kaydırma", L"水平オフセット", L"가로 오프셋" },
     { L"Vertical placement", L"Розміщення по вертикалі", L"Размещение по вертикали", L"Vertikale Platzierung", L"लंबवत स्थान", L"垂直位置", L"垂直位置", L"Posición vertical", L"Position verticale", L"Posição vertical", L"Posizione verticale", L"Położenie w pionie", L"Dikey konum", L"垂直方向の配置", L"세로 배치" },
@@ -23313,25 +23602,25 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"Buttons", L"Кнопки", L"Кнопки", L"Schaltflächen", L"बटन", L"按钮", L"按鈕", L"Botones", L"Boutons", L"Botões", L"Pulsanti", L"Przyciski", L"Düğmeler", L"ボタン", L"버튼" },
     { L"Native Widgets", L"Віджети Windows", L"Виджеты Windows", L"Windows-Widgets", L"विंडोज़ विजेट", L"Windows 小组件", L"Windows 小工具", L"Widgets nativos", L"Widgets natifs", L"Widgets nativos", L"Widget nativi", L"Natywne widżety", L"Yerel pencere öğeleri", L"ネイティブ ウィジェット", L"기본 위젯" },
     { L"Info", L"Інформація", L"Текст", L"Titelinfo", L"जानकारी", L"曲目信息", L"曲目資訊", L"Información", L"Infos", L"Informações", L"Info", L"Informacje", L"Bilgi", L"情報", L"정보" },
-    { L"Album Art", L"Обкладинка альбому", L"Обложка альбома", L"Albumcover", L"एल्बम कवर", L"专辑封面", L"專輯封面", L"Carátula", L"Pochette", L"Capa do álbum", L"Copertina", L"Okładka", L"Albüm kapağı", L"アルバム アート", L"앨범 아트" },
+    { L"Album art", L"Обкладинка альбому", L"Обложка альбома", L"Albumcover", L"एल्बम कवर", L"专辑封面", L"專輯封面", L"Carátula", L"Pochette", L"Capa do álbum", L"Copertina", L"Okładka", L"Albüm kapağı", L"アルバム アート", L"앨범 아트" },
     { L"Visualizer", L"Візуалізатор", L"Визуализатор", L"Visualizer", L"विज़ुअलाइज़र", L"音频可视化", L"音訊視覺化", L"Visualizador", L"Visualiseur", L"Visualizador", L"Visualizzatore", L"Wizualizator", L"Görselleştirici", L"ビジュアライザー", L"비주얼라이저" },
     { L"Layout", L"Розташування", L"Расположение", L"Layout", L"लेआउट", L"布局", L"版面配置", L"Diseño", L"Disposition", L"Layout", L"Layout", L"Układ", L"Yerleşim", L"レイアウト", L"레이아웃" },
-    { L"Behaviour & Clicks", L"Поведінка та кліки", L"Поведение и клики", L"Verhalten & Klicks", L"व्यवहार और क्लिक", L"行为与点击", L"行為與點擊", L"Comportamiento y clics", L"Comportement et clics", L"Comportamento e cliques", L"Comportamento e clic", L"Zachowanie i kliknięcia", L"Davranış ve tıklamalar", L"動作とクリック", L"동작 및 클릭" },
-    { L"Context Menu", L"Контекстне меню", L"Контекстное меню", L"Kontextmenü", L"कॉन्टेक्स्ट मेनू", L"右键菜单", L"右鍵選單", L"Menú contextual", L"Menu contextuel", L"Menu de contexto", L"Menu contestuale", L"Menu kontekstowe", L"Bağlam menüsü", L"コンテキスト メニュー", L"상황에 맞는 메뉴" },
+    { L"Behaviour & clicks", L"Поведінка та кліки", L"Поведение и клики", L"Verhalten & Klicks", L"व्यवहार और क्लिक", L"行为与点击", L"行為與點擊", L"Comportamiento y clics", L"Comportement et clics", L"Comportamento e cliques", L"Comportamento e clic", L"Zachowanie i kliknięcia", L"Davranış ve tıklamalar", L"動作とクリック", L"동작 및 클릭" },
+    { L"Context menu", L"Контекстне меню", L"Контекстное меню", L"Kontextmenü", L"कॉन्टेक्स्ट मेनू", L"右键菜单", L"右鍵選單", L"Menú contextual", L"Menu contextuel", L"Menu de contexto", L"Menu contestuale", L"Menu kontekstowe", L"Bağlam menüsü", L"コンテキスト メニュー", L"상황에 맞는 메뉴" },
     { L"Other", L"Інше", L"Прочее", L"Sonstiges", L"अन्य", L"其他", L"其他", L"Otros", L"Autre", L"Outros", L"Altro", L"Inne", L"Diğer", L"その他", L"기타" },
     { L"Background", L"Фон", L"Фон", L"Hintergrund", L"पृष्ठभूमि", L"背景", L"背景", L"Fondo", L"Arrière-plan", L"Fundo", L"Sfondo", L"Tło", L"Arka plan", L"背景", L"배경" },
     { L"Player", L"Програвач", L"Плеер", L"Player", L"प्लेयर", L"播放器", L"播放器", L"Reproductor", L"Lecteur", L"Player", L"Player", L"Odtwarzacz", L"Oynatıcı", L"プレーヤー", L"플레이어" },
-    { L"Buttons Shown", L"Показані кнопки", L"Отображаемые кнопки", L"Angezeigte Schaltflächen", L"दिखाए गए बटन", L"显示的按钮", L"顯示的按鈕", L"Botones visibles", L"Boutons affichés", L"Botões exibidos", L"Pulsanti visibili", L"Widoczne przyciski", L"Gösterilen düğmeler", L"表示するボタン", L"표시할 버튼" },
-    { L"Buttons Style", L"Стиль кнопок", L"Стиль кнопок", L"Schaltflächen-Stil", L"बटन शैली", L"按钮样式", L"按鈕樣式", L"Estilo de los botones", L"Style des boutons", L"Estilo dos botões", L"Stile dei pulsanti", L"Styl przycisków", L"Düğme stili", L"ボタンのスタイル", L"버튼 스타일" },
+    { L"Buttons shown", L"Показані кнопки", L"Отображаемые кнопки", L"Angezeigte Schaltflächen", L"दिखाए गए बटन", L"显示的按钮", L"顯示的按鈕", L"Botones visibles", L"Boutons affichés", L"Botões exibidos", L"Pulsanti visibili", L"Widoczne przyciski", L"Gösterilen düğmeler", L"表示するボタン", L"표시할 버튼" },
+    { L"Buttons style", L"Стиль кнопок", L"Стиль кнопок", L"Schaltflächen-Stil", L"बटन शैली", L"按钮样式", L"按鈕樣式", L"Estilo de los botones", L"Style des boutons", L"Estilo dos botões", L"Stile dei pulsanti", L"Styl przycisków", L"Düğme stili", L"ボタンのスタイル", L"버튼 스타일" },
     { L"Title Style", L"Стиль назви", L"Стиль названия", L"Titel-Stil", L"शीर्षक शैली", L"标题样式", L"標題樣式", L"Estilo del título", L"Style du titre", L"Estilo do título", L"Stile del titolo", L"Styl tytułu", L"Başlık stili", L"タイトルのスタイル", L"제목 스타일" },
     { L"Artist Style", L"Стиль виконавця", L"Стиль исполнителя", L"Interpret-Stil", L"कलाकार शैली", L"艺术家样式", L"藝人樣式", L"Estilo del artista", L"Style de l'artiste", L"Estilo do artista", L"Stile dell'artista", L"Styl wykonawcy", L"Sanatçı stili", L"アーティストのスタイル", L"아티스트 스타일" },
     { L"Display", L"Відображення", L"Отображение", L"Anzeige", L"प्रदर्शन", L"显示", L"顯示", L"Visualización", L"Affichage", L"Exibição", L"Visualizzazione", L"Wyświetlanie", L"Görüntü", L"表示", L"표시" },
-    { L"Container Order", L"Порядок контейнерів", L"Порядок контейнеров", L"Reihenfolge der Elemente", L"कंटेनर क्रम", L"容器顺序", L"容器順序", L"Orden de los contenedores", L"Ordre des conteneurs", L"Ordem dos contêineres", L"Ordine dei contenitori", L"Kolejność kontenerów", L"Kapsayıcı sırası", L"コンテナーの順序", L"컨테이너 순서" },
-    { L"Progress Bar", L"Смуга прогресу", L"Полоса прогресса", L"Fortschrittsleiste", L"प्रगति पट्टी", L"进度条", L"進度列", L"Barra de progreso", L"Barre de progression", L"Barra de progresso", L"Barra di avanzamento", L"Pasek postępu", L"İlerleme çubuğu", L"進行状況バー", L"진행률 표시줄" },
+    { L"Container order", L"Порядок контейнерів", L"Порядок контейнеров", L"Reihenfolge der Elemente", L"कंटेनर क्रम", L"容器顺序", L"容器順序", L"Orden de los contenedores", L"Ordre des conteneurs", L"Ordem dos contêineres", L"Ordine dei contenitori", L"Kolejność kontenerów", L"Kapsayıcı sırası", L"コンテナーの順序", L"컨테이너 순서" },
+    { L"Progress bar", L"Смуга прогресу", L"Полоса прогресса", L"Fortschrittsleiste", L"प्रगति पट्टी", L"进度条", L"進度列", L"Barra de progreso", L"Barre de progression", L"Barra de progresso", L"Barra di avanzamento", L"Pasek postępu", L"İlerleme çubuğu", L"進行状況バー", L"진행률 표시줄" },
     { L"Vertical taskbar", L"Вертикальна панель задач", L"Вертикальная панель", L"Vertikale Taskleiste", L"वर्टिकल टास्कबार", L"垂直任务栏", L"垂直工作列", L"Barra de tareas vertical", L"Barre des tâches verticale", L"Barra de tarefas vertical", L"Barra delle applicazioni verticale", L"Pionowy pasek zadań", L"Dikey görev çubuğu", L"縦のタスクバー", L"세로 작업 표시줄" },
-    { L"Items Shown", L"Показані елементи", L"Отображаемые пункты", L"Angezeigte Einträge", L"दिखाए गए आइटम", L"显示的项目", L"顯示的項目", L"Elementos visibles", L"Éléments affichés", L"Itens exibidos", L"Elementi visibili", L"Widoczne elementy", L"Gösterilen öğeler", L"表示する項目", L"표시할 항목" },
-    { L"Click Actions", L"Дії при кліку", L"Действия при клике", L"Klick-Aktionen", L"क्लिक क्रियाएँ", L"点击操作", L"點擊動作", L"Acciones de clic", L"Actions de clic", L"Ações de clique", L"Azioni di clic", L"Akcje kliknięcia", L"Tıklama eylemleri", L"クリック操作", L"클릭 동작" },
-    { L"Mouse Wheel Actions", L"Дії коліщатка миші", L"Действия колеса мыши", L"Mausrad-Aktionen", L"माउस व्हील क्रियाएँ", L"滚轮操作", L"滾輪動作", L"Acciones de la rueda del ratón", L"Actions de la molette", L"Ações da roda do mouse", L"Azioni della rotellina", L"Akcje kółka myszy", L"Fare tekerleği eylemleri", L"マウス ホイール操作", L"마우스 휠 동작" },
+    { L"Items shown", L"Показані елементи", L"Отображаемые пункты", L"Angezeigte Einträge", L"दिखाए गए आइटम", L"显示的项目", L"顯示的項目", L"Elementos visibles", L"Éléments affichés", L"Itens exibidos", L"Elementi visibili", L"Widoczne elementy", L"Gösterilen öğeler", L"表示する項目", L"표시할 항목" },
+    { L"Click actions", L"Дії при кліку", L"Действия при клике", L"Klick-Aktionen", L"क्लिक क्रियाएँ", L"点击操作", L"點擊動作", L"Acciones de clic", L"Actions de clic", L"Ações de clique", L"Azioni di clic", L"Akcje kliknięcia", L"Tıklama eylemleri", L"クリック操作", L"클릭 동작" },
+    { L"Mouse wheel actions", L"Дії коліщатка миші", L"Действия колеса мыши", L"Mausrad-Aktionen", L"माउस व्हील क्रियाएँ", L"滚轮操作", L"滾輪動作", L"Acciones de la rueda del ratón", L"Actions de la molette", L"Ações da roda do mouse", L"Azioni della rotellina", L"Akcje kółka myszy", L"Fare tekerleği eylemleri", L"マウス ホイール操作", L"마우스 휠 동작" },
     { L"When to hide", L"Коли ховати", L"Когда скрывать", L"Wann ausblenden", L"कब छिपाएं", L"何时隐藏", L"何時隱藏", L"Cuándo ocultar", L"Quand masquer", L"Quando ocultar", L"Quando nascondere", L"Kiedy ukrywać", L"Ne zaman gizlensin", L"非表示にするタイミング", L"숨길 때" },
     { L"Size & spacing", L"Розмір і відступи", L"Размер и отступы", L"Größe & Abstände", L"आकार और अंतर", L"大小和间距", L"大小與間距", L"Tamaño y espaciado", L"Taille et espacement", L"Tamanho e espaçamento", L"Dimensioni e spaziatura", L"Rozmiar i odstępy", L"Boyut ve aralık", L"サイズと間隔", L"크기 및 간격" },
     { L"Scrolling", L"Прокручування", L"Прокрутка", L"Scrollen", L"स्क्रॉलिंग", L"滚动", L"捲動", L"Desplazamiento", L"Défilement", L"Rolagem", L"Scorrimento", L"Przewijanie", L"Kaydırma", L"スクロール", L"스크롤" },
@@ -23428,7 +23717,7 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"The Windows key still opens Start.", L"Клавіша Windows і далі відкриває «Пуск».", L"Клавиша Windows по-прежнему открывает «Пуск».", L"Die Windows-Taste öffnet Start weiterhin.", L"Windows कुंजी से स्टार्ट अब भी खुलता है।", L"Windows 键仍可打开“开始”。", L"Windows 鍵仍可開啟「開始」。", L"La tecla Windows sigue abriendo Inicio.", L"La touche Windows ouvre toujours Démarrer.", L"A tecla Windows ainda abre o Iniciar.", L"Il tasto Windows apre comunque Start.", L"Klawisz Windows nadal otwiera Start.", L"Windows tuşu Başlat'ı açmaya devam eder.", L"Windows キーでスタートは引き続き開きます。", L"Windows 키로는 여전히 시작이 열립니다." },
     { L"Hide Search", L"Сховати пошук", L"Скрыть поиск", L"Suche ausblenden", L"खोज छिपाएँ", L"隐藏搜索", L"隱藏搜尋", L"Ocultar Búsqueda", L"Masquer la recherche", L"Ocultar a Pesquisa", L"Nascondi Cerca", L"Ukryj wyszukiwanie", L"Aramayı gizle", L"検索を隠す", L"검색 숨기기" },
     { L"Hide Task View", L"Сховати подання завдань", L"Скрыть представление задач", L"Aufgabenansicht ausblenden", L"टास्क व्यू छिपाएँ", L"隐藏任务视图", L"隱藏工作檢視", L"Ocultar Vista de tareas", L"Masquer les applications actives", L"Ocultar a Visão de Tarefas", L"Nascondi Visualizzazione attività", L"Ukryj widok zadań", L"Görev Görünümü'nü gizle", L"タスク ビューを隠す", L"작업 보기 숨기기" },
-    { L"Windows Buttons", L"Кнопки Windows", L"Кнопки Windows", L"Windows-Schaltflächen", L"Windows बटन", L"Windows 按钮", L"Windows 按鈕", L"Botones de Windows", L"Boutons Windows", L"Botões do Windows", L"Pulsanti di Windows", L"Przyciski Windows", L"Windows düğmeleri", L"Windows のボタン", L"Windows 버튼" },
+    { L"Windows buttons", L"Кнопки Windows", L"Кнопки Windows", L"Windows-Schaltflächen", L"Windows बटन", L"Windows 按钮", L"Windows 按鈕", L"Botones de Windows", L"Boutons Windows", L"Botões do Windows", L"Pulsanti di Windows", L"Przyciski Windows", L"Windows düğmeleri", L"Windows のボタン", L"Windows 버튼" },
     { L"Hide on the taskbar", L"Ховати на панелі завдань", L"Скрывать на панели задач", L"Auf der Taskleiste ausblenden", L"टास्कबार पर छिपाएँ", L"在任务栏上隐藏", L"在工作列上隱藏", L"Ocultar en la barra de tareas", L"Masquer dans la barre des tâches", L"Ocultar na barra de tarefas", L"Nascondi nella barra delle applicazioni", L"Ukryj na pasku zadań", L"Görev çubuğunda gizle", L"タスク バーで隠す", L"작업 표시줄에서 숨기기" },
     { L"Hide the weather widget", L"Сховати віджет погоди", L"Скрыть виджет погоды", L"Wetter-Widget ausblenden", L"मौसम विजेट छिपाएँ", L"隐藏天气小组件", L"隱藏天氣小工具", L"Ocultar el widget del tiempo", L"Masquer le widget météo", L"Ocultar o widget do clima", L"Nascondi il widget meteo", L"Ukryj widżet pogody", L"Hava durumu pencere öğesini gizle", L"天気ウィジェットを隠す", L"날씨 위젯 숨기기" },
     { L"Windows' Widgets button, with the weather.", L"Кнопка віджетів Windows із погодою.", L"Кнопка виджетов Windows с погодой.", L"Die Widgets-Schaltfläche von Windows mit dem Wetter.", L"Windows का विजेट्स बटन, मौसम के साथ।", L"Windows 的小组件按钮（显示天气）。", L"Windows 的小工具按鈕（顯示天氣）。", L"El botón de Widgets de Windows, con el tiempo.", L"Le bouton Widgets de Windows, avec la météo.", L"O botão de Widgets do Windows, com o clima.", L"Il pulsante Widget di Windows, con il meteo.", L"Przycisk widżetów Windows z pogodą.", L"Windows'un hava durumunu gösteren Pencere Öğeleri düğmesi.", L"天気を表示する Windows のウィジェット ボタン。", L"날씨가 표시되는 Windows 위젯 버튼." },
@@ -23703,10 +23992,20 @@ static wuxm::SolidColorBrush Brush(BYTE a, BYTE r, BYTE g, BYTE b) {
 
 [[maybe_unused]] static const wchar_t* ACCENT_KEY = L"SettingsWindowSettings.accentColor";
 
+// How light a color looks (WCAG relative luminance, 0..1).
+static double RelativeLuminance(winrt::Windows::UI::Color c) {
+    auto lin = [](BYTE v) { const double s = v / 255.0; return s <= 0.04045 ? s / 12.92 : std::pow((s + 0.055) / 1.055, 2.4); };
+    return 0.2126 * lin(c.R) + 0.7152 * lin(c.G) + 0.0722 * lin(c.B);
+}
+// Black or white text, whichever reads better on `c`. The old brightness
+// guess put white on light greens (about 1.9:1).
+static bool PrefersDarkText(winrt::Windows::UI::Color c) {
+    const double l = RelativeLuminance(c);
+    return (l + 0.05) / 0.05 >= 1.05 / (l + 0.05);
+}
 static winrt::Windows::UI::Color ContrastColor(winrt::Windows::UI::Color c) {
-    double lum = 0.299 * c.R + 0.587 * c.G + 0.114 * c.B;
-    return lum > 150.0 ? winrt::Windows::UI::Color{ 255, 0, 0, 0 }
-                       : winrt::Windows::UI::Color{ 255, 255, 255, 255 };
+    return PrefersDarkText(c) ? winrt::Windows::UI::Color{ 255, 0, 0, 0 }
+                              : winrt::Windows::UI::Color{ 255, 255, 255, 255 };
 }
 
 [[clang::no_destroy]] static wuxm::SolidColorBrush s_accentBrush{ nullptr };
@@ -26076,7 +26375,7 @@ struct LpPart {
 static const LpPart LP_PARTS[] = {
     { L"Player", nullptr, nullptr, nullptr,
       L"MainSettings.PlayerSetting.position", L"MainSettings.PlayerSetting.monitor", L"tray_left" },
-    { L"Album Art", L"MainSettings.AlbumArtSetting.showAlbumArt", nullptr, L"MainSettings.AlbumArtSetting.albumArtDetached",
+    { L"Album art", L"MainSettings.AlbumArtSetting.showAlbumArt", nullptr, L"MainSettings.AlbumArtSetting.albumArtDetached",
       L"MainSettings.AlbumArtSetting.albumArtDetachedPosition", L"MainSettings.AlbumArtSetting.albumArtDetachedMonitor", L"taskbar_left_edge" },
     { L"Info", L"MainSettings.TextAreaSetting.showTrackTitle", L"MainSettings.TextAreaSetting.showTrackArtist", L"MainSettings.TextAreaSetting.infoDetached",
       L"MainSettings.TextAreaSetting.infoDetachedPosition", L"MainSettings.TextAreaSetting.infoDetachedMonitor", L"taskbar_left_edge" },
@@ -28269,6 +28568,7 @@ static void BuildPage(const SettingCategory& cat, bool animate = false) {
                 rowsPanel.Children().Append(div);
             }
             auto rowGrid = MakeRow(row);
+            if (rowsPanel != inner) rowGrid.Margin(wux::Thickness{ 0, 0, 40, 0 });   // under the header's switch, past its chevron
             rowsPanel.Children().Append(rowGrid);
 
             // For colorPicker rows: append an inline expand panel below the row.
@@ -28773,8 +29073,7 @@ static int WantedMaterial() {
 // color, where it goes by that color (dark text on a light one, and so on).
 static bool WantedLightTheme() {
     if (WantedMaterial() == XS_MATERIAL_COLOR) {
-        const auto c = XsWindowColor();
-        return 0.299 * c.R + 0.587 * c.G + 0.114 * c.B > 150.0;
+        return PrefersDarkText(XsWindowColor());
     }
     return IsSystemLightTheme();
 }
@@ -29600,6 +29899,8 @@ void Wh_ModUninit() {
     WaitForTrackedWorkers();
     if (g_trackingGroups->empty()) g_trackingGroups.reset();  // nothing XAML left in it
     if (g_timerUpdateEvent) { CloseHandle(g_timerUpdateEvent); g_timerUpdateEvent = nullptr; }
+    { std::lock_guard<std::mutex> lk(g_micaBrushMtx); g_micaBrushes.clear(); }
+    { std::lock_guard<std::mutex> lk(g_micaWallMtx); g_micaWalls.clear(); }
     ShutdownGdiplusIfStarted();
 }
 
