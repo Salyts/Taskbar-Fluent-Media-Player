@@ -29,7 +29,7 @@ Weather part, hiding Windows' own taskbar buttons, smooth song changes, real Mic
 * New looks: album art that spins like a record, a glow while playing, morphing album art, a compact mini player with its own visualizer, a seek bar that can be a visualizer.
 * Progress bar: its own background color, hide when idle, show or grow on hover, or sit in the text as its own line.
 * Lighter on power: visualizer frame rate, pause on battery saver, nothing animates with the screen off.
-* Fixes: stale song after quick skips, settings saved safely, visualizer with Wave Link/Voicemeeter, GitHub #114 to #117 and more. Full list: https://github.com/Salyts/Taskbar-Fluent-Media-Player/blob/main/CHANGELOG.md
+* Fixes: stale song after quick skips, settings saved safely, visualizer with Wave Link/Voicemeeter, the Layout page's taskbar copy, the player's width with only the cover in it, GitHub #114 to #117 and more. Full list: https://github.com/Salyts/Taskbar-Fluent-Media-Player/blob/main/CHANGELOG.md
 
 <!-- changelog:end -->
 ```
