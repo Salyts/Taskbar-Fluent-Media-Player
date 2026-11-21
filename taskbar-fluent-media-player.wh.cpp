@@ -15100,11 +15100,10 @@ COLD_UNOPTIMIZED static Grid BuildPlayerGrid() {
         panel.Name(PANEL_GRID_NAME);
         panel.VerticalAlignment(VerticalAlignment::Center);
         panel.HorizontalAlignment(HorizontalAlignment::Stretch);
-        if (hasTextOrButtons) {
-            // Breathing room runs along the bar, so the padding swaps axes too.
-            if (sidebar) panel.Margin({2, 4, 2, 4});
-            else         panel.Margin({4, 2, 4, 2});
-        }
+        // Breathing room runs along the bar, so the padding swaps axes too. Kept
+        // with just the cover in the player too, or it touched the edges.
+        if (sidebar) panel.Margin({2, 4, 2, 4});
+        else         panel.Margin({4, 2, 4, 2});
         // The panel outline and anchor overlay are added AFTER the slots exist
         // (see spanAllSlots below) - they have to span every slot, and up here
         // there is nothing yet to span.
