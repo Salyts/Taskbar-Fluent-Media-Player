@@ -27526,7 +27526,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         }
         // Read mid-resize (a part just moved in or out, a glide), a part can be
         // caught far too narrow: never less than what it holds needs.
-        for (auto& p : snap.parts) p.w = std::max(p.w, LpDefaultWidth(p.part, snap.height) * 0.9);
+        for (auto& p : snap.parts) p.w = std::max(p.w, LpDefaultWidth(p.part, snap.height) * 0.4);
         CompactLpSnap(snap, TaskbarIconsCentered());
         PackLpSnap(snap);
 
@@ -27537,7 +27537,6 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         const double s = avail / snap.width;
         std::vector<std::pair<double, double>> solid;   // [start, end) of what's drawn, merged
         for (const auto& it : snap.items) if (it.kind != LpApp) solid.push_back({ it.x, it.x + it.w });
-        for (const auto& r : snap.parts) solid.push_back({ r.x, r.x + r.w });
         std::sort(solid.begin(), solid.end());
         std::vector<std::pair<double, double>> merged;
         for (auto& iv : solid) {
@@ -27547,7 +27546,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         double solidW = 0;
         for (auto& iv : merged) solidW += iv.second - iv.first;
         const double emptyW = std::max(1.0, snap.width - solidW);
-        double is = std::max(s, 0.8);                                   // scale for the things
+        double is = std::max(s, 0.62);                                  // scale for Windows' own things
         if (solidW * is > avail * 0.9) is = std::max(s, avail * 0.9 / std::max(1.0, solidW));
         const double gs = std::max(0.0, (avail - solidW * is) / emptyW);  // scale for the gaps
         auto MX = [&](double x) {
@@ -27714,7 +27713,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
                 double sx = -1;
                 for (auto& sl : strip.slots) if (pl.position == sl.value) { sx = sl.x; break; }
                 if (sx < 0) sx = W / 2;
-                w = LpDefaultWidth(pl.part, ih);
+                w = LpDefaultWidth(pl.part, snap.height) * gs;   // the same scale as the parts showing
                 double& off = stacked[pl.position];
                 auto taken = liveEnd.find(pl.position);
                 x = (taken != liveEnd.end() ? taken->second + 4 : sx - w / 2) + off;
