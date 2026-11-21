@@ -77,6 +77,7 @@
 
 ### Fixes
 
+- With the info and buttons moved out into parts of their own, the player is just as wide as the cover. It used to keep the minimum width meant for its text, an empty stretch beside the cover.
 - Layout page: the player and its parts in the taskbar copy are drawn at a set size worked out from what they hold (the same as their tiles in the boxes below), placed where they really sit, and moved apart instead of overlapping. They used to be stretched or squeezed by the taskbar's own scale.
 - Hovering a part with an Acrylic, Mica, gradient or Glass background no longer swaps it for a flat hover color: the materials get a lighter or darker shade of themselves, the others keep their look and show the hover outline.
 - New "Blur amount" (Appearance, Background) for Mica and Glass: extra blur on top of Windows' own (0 = just that).

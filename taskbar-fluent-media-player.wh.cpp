@@ -15000,6 +15000,14 @@ static void RefreshMainArtistTimeText() {
     } catch (...) { LOG_IGNORED_EXCEPTION(); }
 }
 
+// The player's minimum width is for its text and buttons: it applies only
+// while they're in it, not moved out into parts of their own (with just the
+// cover left, the player kept an empty stretch that wide).
+static bool PlayerHoldsTextOrButtons() {
+    return ((g_settings.showTrackTitle || g_settings.showTrackArtist) && !g_settings.infoDetached) ||
+           (g_settings.showMediaButtons && !g_mediaButtons.empty() && !g_settings.buttonsDetached);
+}
+
 COLD_UNOPTIMIZED static Grid BuildPlayerGrid() {
     try {
         g_vizBars->clear();
@@ -15021,7 +15029,7 @@ COLD_UNOPTIMIZED static Grid BuildPlayerGrid() {
                                 : 0.0;
         }
 
-        bool hasTextOrButtons = g_settings.showTrackTitle || g_settings.showTrackArtist || (g_settings.showMediaButtons && !g_mediaButtons.empty());
+        const bool hasTextOrButtons = PlayerHoldsTextOrButtons();
 
         Border backgroundBorder;
         backgroundBorder.Name(L"FluentMedia_Background");
@@ -16962,8 +16970,7 @@ static void UpdateVisibility() {
                         g_playerGrid.MaxWidth(0);
                         g_playerGrid.Width(0);
                     } else {
-                        bool hasTextOrButtons = g_settings.showTrackTitle || g_settings.showTrackArtist || (g_settings.showMediaButtons && !g_mediaButtons.empty());
-                        if (hasTextOrButtons && g_settings.playerMinWidth > 0) {
+                        if (PlayerHoldsTextOrButtons() && g_settings.playerMinWidth > 0) {
                             g_playerGrid.MinWidth((double)g_settings.playerMinWidth);
                         } else {
                             g_playerGrid.MinWidth(0);
