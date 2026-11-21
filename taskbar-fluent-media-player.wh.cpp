@@ -3,7 +3,7 @@
 // @name                Taskbar Fluent Media Player
 // @description         A media player built into the Windows 11 taskbar in native Fluent Design: album art, track info, media controls, an audio visualizer and a mini player popup.
 // @description:ru-RU   Медиаплеер, встроенный в панель задач Windows 11 в стиле Fluent Design: обложка альбома, информация о треке, управление воспроизведением, аудиовизуализатор и мини-плеер.
-// @version             1.7.1-alpha
+// @version             1.7.1
 // @author              Salyts
 // @github              https://github.com/Salyts
 // @homepage            https://discord.gg/vdSrFVMY6J
@@ -44,7 +44,7 @@ A full media player on your Windows 11 taskbar, styled to fit in with the rest o
 - **Smooth song changes:** the text fades in and the player glides to its new width.
 - **Lighter on power:** a frame rate setting for the visualizer, pausing on battery saver, and nothing animates with the screen off or a game fullscreen.
 - **Progress bar:** its own background color, hide it when nothing plays, show it only on hover, or let it grow on hover.
-- **New looks:** a Glass background, album art that spins like a record, and a glow while playing. Mica and Mica Alt look like Mica now.
+- **New looks:** a Glass background, album art that spins like a record, and a glow while playing. Mica, Mica Alt and Glass blur what's really behind them now, with a Blur amount, and Acrylic has separate tint and strength settings.
 - **Mini player:** a compact layout, its own visualizer, a seek bar that can be a visualizer, and a bouncy opening.
 - **Visualizer:** a Song progress color mode that fills the bars as the song plays. The player itself can grow a little on hover, or show only its cover until you hover it.
 
@@ -27547,7 +27547,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
         double solidW = 0;
         for (auto& iv : merged) solidW += iv.second - iv.first;
         const double emptyW = std::max(1.0, snap.width - solidW);
-        double is = std::max(s, 0.62);                                  // scale for the things
+        double is = std::max(s, 0.8);                                   // scale for the things
         if (solidW * is > avail * 0.9) is = std::max(s, avail * 0.9 / std::max(1.0, solidW));
         const double gs = std::max(0.0, (avail - solidW * is) / emptyW);  // scale for the gaps
         auto MX = [&](double x) {
@@ -27562,7 +27562,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
             return out + (x - at) * gs;
         };
         auto MW = [&](double x, double w) { return std::max(0.0, MX(x + w) - MX(x)); };
-        const double H = std::clamp(snap.height * is, 34.0, 60.0);
+        const double H = std::clamp(snap.height * is, 42.0, 60.0);
         const double ih = std::round(H * 0.74);
         const double y0 = std::round((H - ih) / 2);
 
@@ -27702,6 +27702,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
 
         // Ours: where they really are, or at their spot when they aren't showing now.
         std::map<std::wstring, double> stacked;
+        std::map<std::wstring, double> liveEnd;   // right edge of what's showing at each spot
         struct Beside { int part; double x, w; const wchar_t* value; };
         std::vector<Beside> beside;
         for (const Placed& pl : placed) {
@@ -27715,13 +27716,15 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
                 if (sx < 0) sx = W / 2;
                 w = LpDefaultWidth(pl.part, ih);
                 double& off = stacked[pl.position];
-                x = sx - w / 2 + off;
+                auto taken = liveEnd.find(pl.position);
+                x = (taken != liveEnd.end() ? taken->second + 4 : sx - w / 2) + off;
                 off += w + 4;
             }
             if (pl.part == 1) { const double cx = x + w / 2; w = ih; x = cx - w / 2; }   // always a square
             w = std::max(w, ih * 0.8);
             if (live && w > ih) { x += 2; w -= 4; }   // a little air from the neighbours
             x = std::clamp(x, pad, W - pad - w);
+            if (live) liveEnd[pl.position] = std::max(liveEnd.count(pl.position) ? liveEnd[pl.position] : 0.0, x + w);
             auto ph = MakeLpPlaceholder(pl.part, w, ih, live);
             wuxc::Canvas::SetLeft(ph, x);
             wuxc::Canvas::SetTop(ph, y0);

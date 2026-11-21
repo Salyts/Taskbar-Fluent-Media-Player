@@ -10,9 +10,9 @@ Windhawk only accepts an update from the account in the mod's `@github`, so this
 ## Commit message
 
 ```
-Taskbar Fluent Media Player v1.7.0
+Taskbar Fluent Media Player v1.7.1
 
-Its own settings window, moving parts of the player, a seekable progress bar, monitor buttons and vertical taskbars.
+Weather part, hiding Windows' own taskbar buttons, smooth song changes, real Mica/Acrylic/Glass backgrounds and lighter on power.
 ```
 
 ## Pull request text
@@ -22,14 +22,14 @@ Its own settings window, moving parts of the player, a seekable progress bar, mo
 
 <!-- changelog:start -->
 
-* Its own settings window: right-click the player and pick Settings. Changes show live, and it comes in 15 languages with Mica and Acrylic backgrounds. Your settings carry over.
-* Album art, track info, buttons and the visualizer can each be moved elsewhere on the taskbar or tray, with their own background and monitor.
-* Progress bar you can click or drag to seek.
-* Monitor buttons: pick a monitor, click it again to hide the player. Monitors that aren't connected stay gray.
-* Vertical taskbars are supported.
-* Visualizer: only moves with the app in the player (Windows 11), Line and Micro styles, can fill the background behind the player, choose its audio device, tune each band.
-* Works again after the Windows updates that changed the system tray and taskbar.
-* Fixes for the player not appearing at startup, media keys after an Explorer restart, session switching, album colors and more. Full list: https://github.com/Salyts/Taskbar-Fluent-Media-Player/blob/main/CHANGELOG.md
+* Weather: the weather from Windows' Widgets button as a part of its own, anywhere on the taskbar. It can show only when nothing plays, or take the player's place.
+* Hide Windows' own buttons: Start, Search, Task View, Widgets and tray items, and the year on the clock. The Layout page shows them and lets you place parts around them.
+* Smooth song changes: the text fades and the player glides to its new width instead of jumping.
+* Backgrounds: Mica, Mica Alt and Glass blur what's behind them, with a blur amount; Acrylic has separate tint and strength. Hover keeps the material.
+* New looks: album art that spins like a record, a glow while playing, morphing album art, a compact mini player with its own visualizer, a seek bar that can be a visualizer.
+* Progress bar: its own background color, hide when idle, show or grow on hover, or sit in the text as its own line.
+* Lighter on power: visualizer frame rate, pause on battery saver, nothing animates with the screen off.
+* Fixes: stale song after quick skips, settings saved safely, visualizer with Wave Link/Voicemeeter, GitHub #114 to #117 and more. Full list: https://github.com/Salyts/Taskbar-Fluent-Media-Player/blob/main/CHANGELOG.md
 
 <!-- changelog:end -->
 ```

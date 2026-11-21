@@ -2,7 +2,7 @@
 
 Paste-ready. "1.7" means the release we're about to put out.
 
-## 1.7.1 (alpha on the Windhawk Discord, not posted yet)
+## 1.7.1 (on main, not posted yet)
 
 **#117** (progress bar hidden with the buttons or the info)
 > Thanks for the clear steps! Fixed in 1.7.1: when the bar is set to sit under a part that's hidden, it spans the whole player instead of disappearing with it.

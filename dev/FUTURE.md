@@ -49,9 +49,9 @@ Windhawk 2.0 is in alpha (alpha 6 as of Sept 21). Things in it that matter to th
   `Wh_GetStringValue` storage is getting attention. That's the API our settings
   store uses.
 
-## 1.7.1 (in alpha)
+## 1.7.1
 
-Done on the `1.7.1` branch, not on Windhawk yet:
+On `main`, not sent to Windhawk yet (see windhawk-pr.md):
 
 - **Idle mode:** partly. "Weather takes the player's place" keeps something in
   the player's spot when nothing plays, and "Show Widgets when nothing plays"

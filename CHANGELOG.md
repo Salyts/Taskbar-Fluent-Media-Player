@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.7.1 (alpha)
+## 1.7.1
 
 ### Weather
 
@@ -77,6 +77,7 @@
 
 ### Fixes
 
+- Layout page: the copy of the taskbar is drawn bigger, so the player is readable and as tall as the same tiles below it, and a part that shares a spot with one showing (the weather taking the player's place) sits beside it instead of on top.
 - Hovering a part with an Acrylic, Mica, gradient or Glass background no longer swaps it for a flat hover color: the materials get a lighter or darker shade of themselves, the others keep their look and show the hover outline.
 - New "Blur amount" (Appearance, Background) for Mica and Glass: extra blur on top of Windows' own (0 = just that).
 - Mica, Mica Alt and Glass on the player and the detached parts use the same effect as the settings window's background: Glass blurs what's really behind the taskbar, Mica uses Windows' own blurred wallpaper. Inside the taskbar the old blur only found the taskbar's own even color, so they looked flat.

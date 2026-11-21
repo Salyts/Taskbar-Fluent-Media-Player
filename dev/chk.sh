@@ -3,7 +3,7 @@
 SRC="$1"; MODE="$2"; OUT="${3:-${TEMP:-/tmp}/fmp-chk}"
 LIB="C:/Program Files/Windhawk/Engine/1.7.3/64/windhawk.lib"
 ID='-DWH_MOD_ID=L"local@taskbar-fluent-media-player"'
-VER='-DWH_MOD_VERSION=L"1.7.1-alpha"'
+VER='-DWH_MOD_VERSION=L"1.7.1"'
 OPTS=$(sed -n 's|^// @compilerOptions *||p' "$SRC" | head -1 | tr -d '\r')  # the mod's own link flags
 DEFS="-DUNICODE -D_UNICODE -DWINVER=0x0A00 -D_WIN32_WINNT=0x0A00 -D_WIN32_IE=0x0A00 -DNTDDI_VERSION=0x0A000008 -D__USE_MINGW_ANSI_STDIO=0 -DWH_MOD"
 cd "C:/Program Files/Windhawk/Compiler" || exit 1
