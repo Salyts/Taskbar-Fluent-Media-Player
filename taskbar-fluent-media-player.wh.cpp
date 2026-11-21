@@ -27699,32 +27699,42 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
             strip.pad = pad;
         }
 
-        // Ours: where they really are, or at their spot when they aren't showing now.
-        std::map<std::wstring, double> stacked;
-        std::map<std::wstring, double> liveEnd;   // right edge of what's showing at each spot
+        // Ours: each at a set size worked out from what it holds (the same as
+        // its tiles in the boxes below), so it's always readable; only where
+        // it sits comes from the taskbar (or its spot, when it isn't showing).
+        // Parts that would overlap are moved apart.
         struct Beside { int part; double x, w; const wchar_t* value; };
         std::vector<Beside> beside;
+        struct Spot { const Placed* pl; double x, w; bool live; };
+        std::vector<Spot> spots;
+        std::map<std::wstring, double> stacked;
         for (const Placed& pl : placed) {
             if (pl.zone != 0 || pl.monitor != m.value) continue;
-            double x = -1, w = 0;
+            const double w = std::max(ih, pl.part == 1 ? ih : LpDefaultWidth(pl.part, ih));
+            double x = -1;
             bool live = false;
-            for (auto& r : snap.parts) if (r.part == pl.part) { x = MX(r.x); w = MW(r.x, r.w); live = true; break; }
+            for (auto& r : snap.parts) if (r.part == pl.part) { x = MX(r.x); live = true; break; }
             if (!live) {
                 double sx = -1;
                 for (auto& sl : strip.slots) if (pl.position == sl.value) { sx = sl.x; break; }
                 if (sx < 0) sx = W / 2;
-                w = LpDefaultWidth(pl.part, snap.height) * gs;   // the same scale as the parts showing
                 double& off = stacked[pl.position];
-                auto taken = liveEnd.find(pl.position);
-                x = (taken != liveEnd.end() ? taken->second + 4 : sx - w / 2) + off;
+                x = sx - w / 2 + off;
                 off += w + 4;
             }
-            if (pl.part == 1) { const double cx = x + w / 2; w = ih; x = cx - w / 2; }   // always a square
-            w = std::max(w, ih * 0.8);
-            if (live && w > ih) { x += 2; w -= 4; }   // a little air from the neighbours
-            x = std::clamp(x, pad, W - pad - w);
-            if (live) liveEnd[pl.position] = std::max(liveEnd.count(pl.position) ? liveEnd[pl.position] : 0.0, x + w);
-            auto ph = MakeLpPlaceholder(pl.part, w, ih, live);
+            spots.push_back({ &pl, x, w, live });
+        }
+        std::sort(spots.begin(), spots.end(), [](const Spot& l, const Spot& r) { return l.x < r.x; });
+        for (size_t i = 1; i < spots.size(); i++)
+            spots[i].x = std::max(spots[i].x, spots[i - 1].x + spots[i - 1].w + 4);
+        for (size_t i = spots.size(); i-- > 0;) {   // what runs past the end comes back
+            const double limit = (i + 1 < spots.size() ? spots[i + 1].x - 4 : W - pad) - spots[i].w;
+            spots[i].x = std::max(pad, std::min(spots[i].x, limit));
+        }
+        for (const Spot& sp : spots) {
+            const Placed& pl = *sp.pl;
+            const double x = sp.x, w = sp.w;
+            auto ph = MakeLpPlaceholder(pl.part, w, ih, sp.live);
             wuxc::Canvas::SetLeft(ph, x);
             wuxc::Canvas::SetTop(ph, y0);
             wuxc::Canvas::SetZIndex(ph, 10);
@@ -27735,7 +27745,7 @@ static wuxc::Grid BuildLayoutPreviewAt(double W) {
             const PlayerPosition pos = ParseSettingChoice(pl.position, PLAYER_POSITIONS, PlayerPosition::TrayLeft);
             strip.movers.push_back({ winrt::make_weak(ph.as<wux::FrameworkElement>()), x, w, IsEdgePosition(pos), 0, LpIsGroupPosition(PositionKey(pos)) });
             if (!IsTaskbarPosition(pos)) strip.trayX = std::min(strip.trayX, x);
-            if (!IsEdgePosition(pos)) beside.push_back({ pl.part, x, live ? w : std::min(w, LpDefaultWidth(pl.part, ih)), PositionKey(pos) });
+            if (!IsEdgePosition(pos)) beside.push_back({ pl.part, x, w, PositionKey(pos) });
         }
 
         // Next to ours: parts sharing a spot line up side by side, so either

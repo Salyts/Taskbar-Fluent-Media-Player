@@ -77,7 +77,7 @@
 
 ### Fixes
 
-- Layout page: the player and its parts take their real share of the taskbar copy instead of being drawn far bigger than they are, the copy is a little taller, and a part that shares a spot with one showing (the weather taking the player's place) sits beside it instead of on top.
+- Layout page: the player and its parts in the taskbar copy are drawn at a set size worked out from what they hold (the same as their tiles in the boxes below), placed where they really sit, and moved apart instead of overlapping. They used to be stretched or squeezed by the taskbar's own scale.
 - Hovering a part with an Acrylic, Mica, gradient or Glass background no longer swaps it for a flat hover color: the materials get a lighter or darker shade of themselves, the others keep their look and show the hover outline.
 - New "Blur amount" (Appearance, Background) for Mica and Glass: extra blur on top of Windows' own (0 = just that).
 - Mica, Mica Alt and Glass on the player and the detached parts use the same effect as the settings window's background: Glass blurs what's really behind the taskbar, Mica uses Windows' own blurred wallpaper. Inside the taskbar the old blur only found the taskbar's own even color, so they looked flat.
