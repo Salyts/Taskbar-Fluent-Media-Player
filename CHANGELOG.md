@@ -77,13 +77,12 @@
 
 ### Fixes
 
-- An app picked by hand (the session list, or "Switch media app") stays picked until it has played and stopped, or closes. It used to be forgotten about a second later, so the player could jump back.
+- With "Auto-switch to active media session" off, the player stays on its app when other media apps open or close. It used to lose it every time the list of apps changed.
 - Switching Windows between light and dark reaches the detached parts too, also with the main player off. A Mica part used to stay light under white text.
 - With the info and buttons moved out into parts of their own, the player is just as wide as the cover plus its usual padding. It used to keep the minimum width meant for its text, an empty stretch beside the cover.
 - Layout page: the player and its parts in the taskbar copy are drawn at a set size worked out from what they hold (the same as their tiles in the boxes below), placed where they really sit, and moved apart instead of overlapping. They used to be stretched or squeezed by the taskbar's own scale.
-- Hovering a part with a Mica, Glass, Acrylic or gradient background no longer swaps it for a flat hover color: Mica and Glass get a lighter or darker shade of themselves, Acrylic and gradients keep their look and show the hover outline.
-- New "Blur amount" (Appearance, Background) for Mica and Glass: extra blur on top of Windows' own (0 = just that).
-- Mica, Mica Alt and Glass on the player and the detached parts use the settings window's own effect: Glass blurs what's behind the taskbar, Mica shows Windows' blurred wallpaper (so it's plain on a black one). With Windows' "Transparency effects" off they're a plain color.
+- Hovering a part with a Mica, Glass, Acrylic or gradient background no longer swaps it for a flat hover color: Mica gets a lighter or darker shade of itself, the others keep their look and show the hover outline.
+- Acrylic and Glass on the player and the detached parts blur what's behind the taskbar. Mica and Mica Alt show Windows' blurred wallpaper (so they're plain on a black one), and a plain color with Windows' "Transparency effects" off.
 - Acrylic has two settings that don't touch each other: "Acrylic tint opacity" (how much color) and the new "Acrylic strength" (how frosted). "Background opacity" fades Acrylic, Mica and Glass, and these sliders show whenever the player or a detached part uses them.
 - A detached part with a blurred-cover background no longer shows the blur taller than its frame.
 - A fully round album cover (or the spinning record) has no outline, and the gray stand-in behind the cover no longer peeks out around its edge.

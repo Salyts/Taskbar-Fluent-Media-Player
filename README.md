@@ -48,7 +48,7 @@ A media player built into the Windows 11 taskbar, styled to fit in with the rest
 
 ### Appearance
 
-- Backgrounds: Acrylic, Mica, Mica Alt, Glass, a blurred album cover, a solid color or a gradient, with an optional glow while playing. Acrylic has its own tint and strength; Mica and Glass a blur amount.
+- Backgrounds: Acrylic, Mica, Mica Alt, Glass, a blurred album cover, a solid color or a gradient, with an optional glow while playing. Acrylic has its own tint and strength.
 - The album art can spin like a record while music plays.
 - Colors can be `R G B` or hex, can differ between light and dark theme, and can follow the album art or your accent color.
 - Mirror the layout, change the order of the parts, and set sizes, margins and corner radius.

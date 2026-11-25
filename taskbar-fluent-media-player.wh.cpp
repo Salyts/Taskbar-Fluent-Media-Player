@@ -44,7 +44,7 @@ A full media player on your Windows 11 taskbar, styled to fit in with the rest o
 - **Smooth song changes:** the text fades in and the player glides to its new width.
 - **Lighter on power:** a frame rate setting for the visualizer, pausing on battery saver, and nothing animates with the screen off or a game fullscreen.
 - **Progress bar:** its own background color, hide it when nothing plays, show it only on hover, or let it grow on hover.
-- **New looks:** a Glass background, album art that spins like a record, and a glow while playing. Glass blurs what's behind it, Mica uses your wallpaper, both with a Blur amount, and Acrylic has separate tint and strength settings.
+- **New looks:** a Glass background, album art that spins like a record, and a glow while playing. Acrylic and Glass blur what's behind the taskbar, Mica uses your wallpaper, and Acrylic has separate tint and strength settings.
 - **Mini player:** a compact layout, its own visualizer, a seek bar that can be a visualizer, and a bouncy opening.
 - **Visualizer:** a Song progress color mode that fills the bars as the song plays. The player itself can grow a little on hover, or show only its cover until you hover it.
 
@@ -1150,8 +1150,7 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       $name: Background opacity (0-100)
       $description: How see-through the Acrylic, Mica and Glass backgrounds are. Detached parts with their own background use it too.
     - materialBlur: 0
-      $name: Blur amount (0-100)
-      $description: Extra blur on top of Windows' own, for Mica and Glass. 0 is Windows' blur.
+      $name: Unused (left over from the 1.7.1 alpha)
     - playerGlow: false
       $name: Glow while playing
       $description: An outline in the album's color that softly breathes while music plays.
@@ -2837,7 +2836,6 @@ struct ModSettings {
     bool         albumArtDisc         = false;
     bool         playerGlow           = false;
     int          materialOpacity      = 100;
-    int          materialBlur         = 0;
     int          albumArtOpacity      = 100;
     int          albumArtLeftMargin   = 0;
     int          albumArtRightMargin  = 0;
@@ -3350,7 +3348,6 @@ static constexpr SettingSpec SETTINGS[] = {
     SInt(L"AppearanceSettings.BackgroundStyleSettings.blurRadius", 0, 50, &ModSettings::blurRadius),
     SBool(L"AppearanceSettings.BackgroundStyleSettings.playerGlow", &ModSettings::playerGlow),
     SInt(L"AppearanceSettings.BackgroundStyleSettings.materialOpacity", 0, 100, &ModSettings::materialOpacity),
-    SInt(L"AppearanceSettings.BackgroundStyleSettings.materialBlur", 0, 100, &ModSettings::materialBlur),
     SBool(L"AppearanceSettings.AlbumArtDisplaySettings.albumArtDisc", &ModSettings::albumArtDisc),
     SStr(L"AppearanceSettings.BackgroundStyleSettings.cornerRadius", L"4"),
     SStr(L"AppearanceSettings.BackgroundStyleSettings.enablePlayerHoverEffect", L"auto"),
@@ -5842,24 +5839,21 @@ static void OnSessionsChanged() {
     } else {
         Wh_Log(L"OnSessionsChanged: Skipping due to user switch - checking if current session still exists");
         try {
-            bool currentSessionExists = false;
-            GlobalSystemMediaTransportControlsSession currentSession{nullptr};
+            // By its app: Windows hands out new session objects whenever the
+            // list changes, so the one attached is never in it again.
+            GlobalSystemMediaTransportControlsSession kept{nullptr};
+            std::wstring currentApp;
             {
                 std::lock_guard<std::mutex> lk(g_sessionMtx);
-                currentSession = g_currentSession;
+                if (g_currentSession) currentApp = std::wstring(g_currentSession.SourceAppUserModelId());
             }
-
-            if (currentSession) {
-                auto sessions = g_sessionMgr.GetSessions();
-                for (auto const& s : sessions) {
-                    if (s == currentSession) {
-                        currentSessionExists = true;
-                        break;
-                    }
+            if (!currentApp.empty()) {
+                for (auto const& s : g_sessionMgr.GetSessions()) {
+                    if (std::wstring(s.SourceAppUserModelId()) == currentApp) { kept = s; break; }
                 }
             }
 
-            if (!currentSessionExists) {
+            if (!kept) {
                 Wh_Log(L"OnSessionsChanged: Current session no longer exists, resetting user switch flag and picking new session");
                 {
                     std::lock_guard<std::mutex> lk(g_sessionMtx);
@@ -5869,6 +5863,7 @@ static void OnSessionsChanged() {
                 AttachToSession(newSession);
             } else {
                 Wh_Log(L"OnSessionsChanged: Current session still exists, keeping it");
+                AttachToSession(kept);
             }
         } catch (...) {
             Wh_Log(L"OnSessionsChanged: Exception checking current session validity");
@@ -6331,8 +6326,8 @@ static Brush MakeElevationBorderBrush(HoverEffect mode) {
 // vanish on hover (a black hole on a dark taskbar). Null: not a solid color.
 static Brush MaterialBrushWithOverlay(Brush const& base, winrt::Windows::UI::Color overlay);
 
-// `base` with the hover/press shade over it. Acrylic, Mica and Glass get a copy
-// of their material with the shade in; any other non-solid background (a
+// `base` with the hover/press shade over it. Mica gets a copy of itself with the
+// shade in; any other non-solid background (a
 // gradient, Glass) stays as it is, and the hover outline shows the hover. They
 // used to be swapped for a flat hover color.
 static Brush TintOverSolid(Brush const& base, winrt::Windows::UI::Color tint) {
@@ -7084,15 +7079,11 @@ static bool XsTransparencyEnabled() {
     return true;
 }
 
-// ---- Mica and Glass ----
+// ---- Mica ----
 // The settings window's own effect graph (MakeXsMicaBrush) as a XAML brush, so
-// it goes wherever a background does, hover states included. Glass blurs
-// what's behind the window (a live wallpaper too); Mica uses Windows' own
-// blurred wallpaper.
+// it goes wherever a background does, hover states included.
 struct MaterialSpec {
     XsMicaRecipe recipe{};
-    bool behindWindow = true;   // Glass; Mica uses the wallpaper
-    float blur = 0.f;           // on top of Windows' own
     float alpha = 1.f;
     winrt::Windows::UI::Color overlay{0, 0, 0, 0};
 };
@@ -7107,7 +7098,7 @@ struct MaterialBrush : winrt::Windows::UI::Xaml::Media::XamlCompositionBrushBase
             // This thread's compositor, from any element on it.
             winrt::Windows::UI::Xaml::Controls::Border probe;
             auto compositor = winrt::Windows::UI::Xaml::Hosting::ElementCompositionPreview::GetElementVisual(probe).Compositor();
-            if (auto b = MakeXsMicaBrush(compositor, spec.recipe, spec.behindWindow, spec.blur, spec.alpha, spec.overlay))
+            if (auto b = MakeXsMicaBrush(compositor, spec.recipe, false, 0.f, spec.alpha, spec.overlay))
                 CompositionBrush(b);
         } catch (...) { LOG_IGNORED_EXCEPTION(); }
     }
@@ -7149,9 +7140,6 @@ static Brush MaterialBrushWithOverlay(Brush const& base, winrt::Windows::UI::Col
     spec.overlay = overlay;
     return MakeMaterialBrush(spec);
 }
-
-// "Blur amount": added to Windows' own blur (0 = just that).
-static float MaterialBlur() { return (float)std::clamp(g_settings.materialBlur, 0, 100); }
 
 static Brush MakeBackgroundBrushFromParams(const BackgroundStyleParams& p) {
     auto& t = p.type;
@@ -7199,7 +7187,7 @@ static Brush MakeBackgroundBrushFromParams(const BackgroundStyleParams& p) {
     // "Background opacity" fades Acrylic, Mica and Glass.
     const double materialAlpha = std::clamp(g_settings.materialOpacity, 0, 100) / 100.0;
     if (t == BackgroundType::Acrylic) {
-        // Windows' own Acrylic, over what's behind it inside the taskbar:
+        // Windows' own Acrylic, which blurs what's behind the taskbar:
         // "Acrylic tint opacity" is how much color, "Acrylic strength" how
         // frosted (its luminosity layer).
         try {
@@ -7222,14 +7210,27 @@ static Brush MakeBackgroundBrushFromParams(const BackgroundStyleParams& p) {
         const float k = std::clamp(p.micaOpacity, 0, 100) / 50.f;
         r.tintOpacity = std::min(1.f, r.tintOpacity * k + (k > 1.f ? k - 1.f : 0.f));
         r.luminosityOpacity = std::min(1.f, r.luminosityOpacity * std::min(1.f, k));
-        return MakeMaterialBrush({r, false, MaterialBlur(), (float)materialAlpha});
+        return MakeMaterialBrush({r, (float)materialAlpha});
     }
 
     // Glass: clear and lightly frosted, the edge drawn by a separate highlight
-    // (see BuildPlayerGrid).
+    // (see BuildPlayerGrid). Acrylic's brush: the compositor's host backdrop
+    // is black on the taskbar's window.
     if (t == BackgroundType::Glass) {
-        return MakeMaterialBrush({IsSystemLightTheme() ? XsMicaRecipe{0xFA, 0xFA, 0xFA, 0.10f, 0.30f} : XsMicaRecipe{0x18, 0x18, 0x18, 0.06f, 0.18f},
-                                  true, MaterialBlur(), (float)materialAlpha});
+        const bool light = IsSystemLightTheme();
+        const winrt::Windows::UI::Color tint = light ? winrt::Windows::UI::Color{0xFF, 0xFA, 0xFA, 0xFA}
+                                                     : winrt::Windows::UI::Color{0xFF, 0x18, 0x18, 0x18};
+        try {
+            winrt::Windows::UI::Xaml::Media::AcrylicBrush brush;
+            brush.BackgroundSource(winrt::Windows::UI::Xaml::Media::AcrylicBackgroundSource::Backdrop);
+            brush.TintColor(tint);
+            brush.TintOpacity(light ? 0.10 : 0.06);
+            brush.TintLuminosityOpacity(light ? 0.30 : 0.18);
+            brush.FallbackColor(winrt::Windows::UI::Color{0x55, tint.R, tint.G, tint.B});
+            brush.Opacity(materialAlpha);
+            return brush;
+        } catch (...) { LOG_IGNORED_EXCEPTION(); }
+        return MakeBrush({0x66, tint.R, tint.G, tint.B});
     }
 
     if (t == BackgroundType::Solid) {
@@ -21693,8 +21694,6 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
                      L"How frosted the Acrylic is. 0 lets the blur show through."),
             WithDesc(RowSlider(L"Background opacity", L"AppearanceSettings.BackgroundStyleSettings.materialOpacity", L"100", 0, 100),
                      L"How see-through Acrylic, Mica and Glass are."),
-            WithDesc(RowSlider(L"Blur amount", L"AppearanceSettings.BackgroundStyleSettings.materialBlur", L"0", 0, 100),
-                     L"Extra blur for Mica and Glass. 0 is Windows' own."),
             WithDesc(RowSlider(L"Mica strength", L"AppearanceSettings.BackgroundStyleSettings.micaOpacity", L"50", 0, 100),
                      L"How much of Mica's color covers the blur. 0 = just the blur."),
             RowSlider(L"Blur opacity", L"AppearanceSettings.BackgroundStyleSettings.blurOpacity", L"65", 0, 100),
@@ -23629,8 +23628,6 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"Seek bar as visualizer", L"Смуга перемотки як візуалізатор", L"Полоса перемотки как визуализатор", L"Suchleiste als Visualizer", L"सीक बार को विज़ुअलाइज़र बनाएँ", L"进度条显示为可视化", L"進度列顯示為視覺化", L"Barra de progreso como visualizador", L"Barre de lecture en visualiseur", L"Barra de progresso como visualizador", L"Barra di avanzamento come visualizzatore", L"Pasek przewijania jako wizualizer", L"Arama çubuğu görselleştirici olsun", L"シーク バーをビジュアライザーに", L"탐색 막대를 비주얼라이저로" },
     { L"Bars that move with the music. The played part is in full color; drag it to seek.", L"Смужки рухаються в такт музиці. Відтворена частина яскрава; тягніть, щоб перемотати.", L"Полоски двигаются под музыку. Проигранная часть яркая; тяните, чтобы перемотать.", L"Balken, die sich mit der Musik bewegen. Der gespielte Teil ist voll farbig; zum Spulen ziehen.", L"संगीत के साथ हिलते बार। चला हुआ हिस्सा पूरे रंग में; आगे-पीछे करने के लिए खींचें।", L"随音乐跳动的频谱条。已播放部分为全彩，拖动即可调整进度。", L"隨音樂跳動的頻譜條。已播放部分為全彩，拖曳即可調整進度。", L"Barras que se mueven con la música. Lo reproducido va a todo color; arrastra para avanzar.", L"Des barres qui bougent avec la musique. La partie jouée est en couleur ; glissez pour avancer.", L"Barras que se movem com a música. A parte tocada fica em cor plena; arraste para avançar.", L"Barre che si muovono con la musica. La parte riprodotta è a colori pieni; trascina per spostarti.", L"Słupki poruszające się z muzyką. Odtworzona część jest w pełnym kolorze; przeciągnij, by przewinąć.", L"Müzikle hareket eden çubuklar. Çalınan kısım tam renkli; ilerletmek için sürükleyin.", L"音楽に合わせて動くバー。再生済みの部分は濃く表示。ドラッグでシーク。", L"음악에 맞춰 움직이는 막대. 재생한 부분은 진한 색이며, 끌어서 이동합니다." },
     { L"In the text, as its own line", L"У тексті, окремим рядком", L"В тексте, отдельной строкой", L"Im Text, als eigene Zeile", L"टेक्स्ट में, अलग पंक्ति के रूप में", L"在文字中，作为单独一行", L"在文字中，作為單獨一行", L"En el texto, como su propia línea", L"Dans le texte, sur sa propre ligne", L"No texto, como linha própria", L"Nel testo, come riga a sé", L"W tekście, jako osobna linia", L"Metinde, ayrı bir satır olarak", L"テキスト内に独立した行として", L"텍스트 안에 별도 줄로" },
-    { L"Blur amount", L"Сила розмиття", L"Сила размытия", L"Unschärfestärke", L"धुंधलापन", L"模糊程度", L"模糊程度", L"Cantidad de desenfoque", L"Intensité du flou", L"Intensidade do desfoque", L"Intensità sfocatura", L"Siła rozmycia", L"Bulanıklık miktarı", L"ぼかしの強さ", L"흐림 정도" },
-    { L"Extra blur for Mica and Glass. 0 is Windows' own.", L"Додаткове розмиття для Mica і скла. 0 — як у Windows.", L"Дополнительное размытие для Mica и стекла. 0 — как в Windows.", L"Zusätzliche Unschärfe für Mica und Glas. 0 ist die von Windows.", L"Mica और ग्लास के लिए अतिरिक्त धुंधलापन। 0 = Windows जैसा।", L"Mica 和玻璃的额外模糊。0 为 Windows 自带。", L"Mica 和玻璃的額外模糊。0 為 Windows 內建。", L"Desenfoque extra para Mica y Cristal. 0 es el de Windows.", L"Flou en plus pour Mica et Verre. 0 = celui de Windows.", L"Desfoque extra para Mica e Vidro. 0 é o do Windows.", L"Sfocatura extra per Mica e Vetro. 0 è quella di Windows.", L"Dodatkowe rozmycie dla Mica i Szkła. 0 to rozmycie Windows.", L"Mica ve Cam için ek bulanıklık. 0, Windows'unkidir.", L"Mica とガラスの追加ぼかし。0 は Windows 標準。", L"Mica와 유리의 추가 흐림. 0은 Windows 기본값." },
     { L"Acrylic strength", L"Сила Acrylic", L"Сила Acrylic", L"Acrylic-Stärke", L"Acrylic की तीव्रता", L"Acrylic 强度", L"Acrylic 強度", L"Intensidad de Acrylic", L"Intensité d'Acrylic", L"Intensidade do Acrylic", L"Intensità Acrylic", L"Siła Acrylic", L"Acrylic gücü", L"Acrylic の強さ", L"Acrylic 강도" },
     { L"How frosted the Acrylic is. 0 lets the blur show through.", L"Наскільки матовий Acrylic. 0 пропускає розмиття.", L"Насколько матовый Acrylic. 0 пропускает размытие.", L"Wie milchig Acrylic ist. 0 lässt die Unschärfe durch.", L"Acrylic कितना धुंधला-सफ़ेद हो। 0 पर धुंधलापन दिखता है।", L"Acrylic 的磨砂程度。0 让模糊透出来。", L"Acrylic 的磨砂程度。0 讓模糊透出來。", L"Cuánto se escarcha el Acrylic. 0 deja ver el desenfoque.", L"L'aspect givré de l'Acrylic. 0 laisse voir le flou.", L"O quanto o Acrylic fica fosco. 0 deixa o desfoque aparecer.", L"Quanto è smerigliato l'Acrylic. 0 lascia vedere la sfocatura.", L"Jak matowy jest Acrylic. 0 przepuszcza rozmycie.", L"Acrylic'in ne kadar buzlu olduğu. 0 bulanıklığı gösterir.", L"Acrylic のすりガラス感。0 でぼかしが透けます。", L"Acrylic의 불투명한 정도. 0이면 흐림이 비쳐 보입니다." },
     { L"How much of the color covers the Acrylic.", L"Скільки кольору вкриває Acrylic.", L"Сколько цвета покрывает Acrylic.", L"Wie viel Farbe über dem Acrylic liegt.", L"Acrylic पर कितना रंग हो।", L"颜色覆盖 Acrylic 的程度。", L"顏色覆蓋 Acrylic 的程度。", L"Cuánto color cubre el Acrylic.", L"La part de couleur sur l'Acrylic.", L"Quanto da cor cobre o Acrylic.", L"Quanto colore copre l'Acrylic.", L"Ile koloru pokrywa Acrylic.", L"Rengin Acrylic'i ne kadar kapladığı.", L"Acrylic にかかる色の量。", L"Acrylic을 덮는 색의 양." },
@@ -24391,12 +24388,6 @@ static const RowRule ROW_RULES[] = {
     { L"AppearanceSettings.BackgroundStyleSettings.materialOpacity", 6501, true, L"MainSettings.MediaButtonsSettings.buttonsDetachedBackgroundType", L"inherit|none|solid|gradient|album_art_blur" },
     { L"AppearanceSettings.BackgroundStyleSettings.materialOpacity", 6501, true, L"MainSettings.VisualizerFunctionsSettings.vizDetachedBackgroundType", L"inherit|none|solid|gradient|album_art_blur" },
     { L"AppearanceSettings.BackgroundStyleSettings.materialOpacity", 6501, true, L"MainSettings.WeatherSetting.weatherBackgroundType", L"inherit|none|solid|gradient|album_art_blur" },
-    { L"AppearanceSettings.BackgroundStyleSettings.materialBlur", 6502, true, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"inherit|none|solid|gradient|acrylic|album_art_blur" },
-    { L"AppearanceSettings.BackgroundStyleSettings.materialBlur", 6502, true, L"MainSettings.AlbumArtSetting.albumArtDetachedBackgroundType", L"inherit|none|solid|gradient|acrylic|album_art_blur" },
-    { L"AppearanceSettings.BackgroundStyleSettings.materialBlur", 6502, true, L"MainSettings.TextAreaSetting.infoDetachedBackgroundType", L"inherit|none|solid|gradient|acrylic|album_art_blur" },
-    { L"AppearanceSettings.BackgroundStyleSettings.materialBlur", 6502, true, L"MainSettings.MediaButtonsSettings.buttonsDetachedBackgroundType", L"inherit|none|solid|gradient|acrylic|album_art_blur" },
-    { L"AppearanceSettings.BackgroundStyleSettings.materialBlur", 6502, true, L"MainSettings.VisualizerFunctionsSettings.vizDetachedBackgroundType", L"inherit|none|solid|gradient|acrylic|album_art_blur" },
-    { L"AppearanceSettings.BackgroundStyleSettings.materialBlur", 6502, true, L"MainSettings.WeatherSetting.weatherBackgroundType", L"inherit|none|solid|gradient|acrylic|album_art_blur" },
     { L"AppearanceSettings.BackgroundStyleSettings.blurOpacity", 119, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"album_art_blur" },
     { L"AppearanceSettings.BackgroundStyleSettings.blurRadius", 120, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"album_art_blur" },
     { L"AppearanceSettings.TitleTextStyleSettings.titleFontFamily", 121, false, L"AppearanceSettings.TitleTextStyleSettings.titleFont", L"custom" },
