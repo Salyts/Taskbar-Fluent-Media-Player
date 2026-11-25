@@ -77,6 +77,7 @@
 
 ### Fixes
 
+- An app picked by hand (the session list, or "Switch media app") stays picked until it has played and stopped, or closes. The player used to jump back when another app started.
 - With "Auto-switch to active media session" off, the player stays on its app when other media apps open or close. It used to lose it every time the list of apps changed.
 - Switching Windows between light and dark reaches the detached parts too, also with the main player off. A Mica part used to stay light under white text.
 - With the info and buttons moved out into parts of their own, the player is just as wide as the cover plus its usual padding. It used to keep the minimum width meant for its text, an empty stretch beside the cover.
