@@ -44,7 +44,7 @@ A full media player on your Windows 11 taskbar, styled to fit in with the rest o
 - **Smooth song changes:** the text fades in and the player glides to its new width.
 - **Lighter on power:** a frame rate setting for the visualizer, pausing on battery saver, and nothing animates with the screen off or a game fullscreen.
 - **Progress bar:** its own background color, hide it when nothing plays, show it only on hover, or let it grow on hover.
-- **New looks:** a Glass background, album art that spins like a record, and a glow while playing. Mica, Mica Alt and Glass blur what's really behind them now, with a Blur amount, and Acrylic has separate tint and strength settings.
+- **New looks:** a Glass background, album art that spins like a record, and a glow while playing. Glass blurs what's behind it, Mica uses your wallpaper, both with a Blur amount, and Acrylic has separate tint and strength settings.
 - **Mini player:** a compact layout, its own visualizer, a seek bar that can be a visualizer, and a bouncy opening.
 - **Visualizer:** a Song progress color mode that fills the bars as the song plays. The player itself can grow a little on hover, or show only its cover until you hover it.
 
@@ -1140,7 +1140,6 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       #! $showIf: {backgroundType: acrylic}
       $name: Acrylic tint opacity (0-100)
     - acrylicStrength: 40
-      #! $showIf: {backgroundType: acrylic}
       $name: Acrylic strength (0-100)
       $description: How frosted the Acrylic is. 0 lets the blur show through, 100 is fully frosted.
     - micaOpacity: 50
@@ -1148,11 +1147,9 @@ Made by [Salyts](https://github.com/Salyts) & [GR0UD](https://github.com/GR0UD).
       $name: Mica/Mica Alt strength (0-100)
       $description: How much of Mica's base color covers what's behind. 0 is just the blur.
     - materialOpacity: 100
-      #! $showIf: {backgroundType: [mica, mica_alt, glass]}
       $name: Background opacity (0-100)
-      $description: How see-through the Mica and Glass backgrounds are. Detached parts with their own background use it too.
+      $description: How see-through the Acrylic, Mica and Glass backgrounds are. Detached parts with their own background use it too.
     - materialBlur: 0
-      #! $showIf: {backgroundType: [mica, mica_alt, glass]}
       $name: Blur amount (0-100)
       $description: Extra blur on top of Windows' own, for Mica and Glass. 0 is Windows' blur.
     - playerGlow: false
@@ -2265,6 +2262,7 @@ namespace SettingsUI {
 namespace Runtime {
     static void RecoverMissingPlayer(HWND hWnd);
     static void KeepTrayPlacement(HWND hWnd);
+    static void RebuildPlayerOnThread();
     static void DispatchMediaUpdate();
     static void ExecuteMediaAction(const std::wstring& action, FrameworkElement const& sourceElement = nullptr);
     static void HookTaskbarViewIfWanted();
@@ -4240,11 +4238,11 @@ static bool WidgetsSwapActive() { return g_settings.hideNativeWidgetsButton && g
 // The player is hidden because nothing plays (not for fullscreen).
 static std::atomic<bool> g_playerIdleHidden{false};
 
-// With the main player off (monitor -1) the detached parts still need updates.
-static bool HasAnyPlayerUi() {
-    return g_playerGrid || g_detachedAlbumArt.grid || g_detachedInfo.grid || g_detachedButtons.grid || g_detachedViz.grid ||
-           g_detachedWeather.grid;
+static bool HasAnyDetachedPart() {
+    return g_detachedAlbumArt.grid || g_detachedInfo.grid || g_detachedButtons.grid || g_detachedViz.grid || g_detachedWeather.grid;
 }
+// With the main player off (monitor -1) the detached parts still need updates.
+static bool HasAnyPlayerUi() { return g_playerGrid || HasAnyDetachedPart(); }
 
 } // namespace Core
 
@@ -4497,7 +4495,8 @@ static void SetVizTargetApp(const std::wstring& appUserModelId) {
     g_vizTargetGen.fetch_add(1);
 }
 static std::mutex  g_sessionMtx;
-static bool g_userSwitchedSession = false;
+static bool g_userSwitchedSession = false;   // the app was picked by hand (RememberPickedApp)
+static bool g_attachedHasPlayed = false;     // the player's session has played since it was attached; both under g_sessionMtx
 static std::atomic<bool> g_forceSessionRefresh{false};
 static std::atomic<int> g_sessionCount{0};
 
@@ -4667,6 +4666,7 @@ static void FetchMediaPropertiesAsync();
 static void FetchPlaybackInfoAsync();
 static void OnSessionsChanged();
 static void AttachToSession(GlobalSystemMediaTransportControlsSession session);
+static void RememberPickedApp(const std::wstring& appId);
 static void SwitchMediaSession();
 
 static void SwitchMediaSession() {
@@ -4715,7 +4715,7 @@ static void SwitchMediaSession() {
     if (nextSession) {
         // Only an actual switch keeps the player on the app picked: with one app
         // it used to stop the player following the next app that started.
-        { std::lock_guard<std::mutex> lk(g_sessionMtx); g_userSwitchedSession = true; }
+        try { RememberPickedApp(std::wstring(nextSession.SourceAppUserModelId())); } catch (...) { LOG_IGNORED_EXCEPTION(); }
         AttachToSession(nextSession);
     }
 }
@@ -5359,19 +5359,12 @@ static void FetchMediaPropertiesAsync() {
 
                 std::vector<BYTE> appIconBytes;
                 std::wstring      appIconKey;
-                bool forceIconRefresh = false;
                 {
                     std::lock_guard<std::mutex> lk(g_mediaMtx);
                     appIconKey = g_media.appIconKey;
                     appIconBytes = g_media.appIconBytes;
                 }
-                {
-                    std::lock_guard<std::mutex> lk(g_sessionMtx);
-                    forceIconRefresh = g_userSwitchedSession;
-                }
-                bool iconTried = false;   // an app with no icon counts as done too
-                if (g_settings.showAppIcon && (aumid != appIconKey || appIconBytes.empty() || forceIconRefresh || g_cachedAppIconSize != g_settings.appIconSize)) {
-                    iconTried = true;
+                if (g_settings.showAppIcon && (aumid != appIconKey || appIconBytes.empty() || g_cachedAppIconSize != g_settings.appIconSize)) {
                     try {
                         appIconBytes = FetchAppIconBytes(aumid, g_settings.appIconSize);
                         appIconKey   = aumid;
@@ -5381,7 +5374,6 @@ static void FetchMediaPropertiesAsync() {
                     }
                 }
 
-                const bool iconDone = iconTried || !appIconBytes.empty() || !g_settings.showAppIcon;
                 const bool stillCurrent = StillCurrentSession(session);
                 {
                     std::lock_guard<std::mutex> lk(g_mediaMtx);
@@ -5409,11 +5401,6 @@ static void FetchMediaPropertiesAsync() {
                     }
                 }
 
-                if (forceIconRefresh && iconDone) {
-                    std::lock_guard<std::mutex> lk(g_sessionMtx);
-                    g_userSwitchedSession = false;
-                    Wh_Log(L"FetchMediaPropertiesAsync: Icon refreshed after session switch");
-                }
             } catch (...) {
 
             }
@@ -5491,6 +5478,14 @@ static void FetchPlaybackInfoAsync() {
                         Wh_Log(L"Playback state changed: %s -> %s",
                             wasPlaying ? L"Playing" : L"Not Playing",
                             playing ? L"Playing" : L"Not Playing");
+                    }
+
+                    {
+                        std::lock_guard<std::mutex> lk(g_sessionMtx);
+                        if (g_currentSession == session) {
+                            if (playing) g_attachedHasPlayed = true;
+                            else if (g_attachedHasPlayed) g_userSwitchedSession = false;
+                        }
                     }
 
                     // Playback stopped: re-pick the session, since Windows doesn't reliably fire
@@ -5591,6 +5586,14 @@ static void DetachCurrentSession() {
 // below would flash whatever paused session comes first (#34).
 static std::mutex   g_lastPlayingAumidMtx;
 static std::wstring g_lastPlayingAumid;
+
+// An app picked by hand stays until it has played and stopped, or closes. Then
+// the player follows whatever plays again, and stays on it if nothing does.
+static void RememberPickedApp(const std::wstring& appId) {
+    { std::lock_guard<std::mutex> lk(g_sessionMtx); g_userSwitchedSession = true; }
+    std::lock_guard<std::mutex> lk(g_lastPlayingAumidMtx);
+    g_lastPlayingAumid = appId;
+}
 
 static GlobalSystemMediaTransportControlsSession PickBestSession() {
     if (!g_sessionMgr) return nullptr;
@@ -5719,6 +5722,7 @@ static int AttachToSessionLocked(GlobalSystemMediaTransportControlsSession sessi
     {
         std::lock_guard<std::mutex> lk(g_sessionMtx);
         g_currentSession = session;
+        g_attachedHasPlayed = false;
         try {
             g_evMediaProps = g_currentSession.MediaPropertiesChanged([](auto const&, auto const&) {
                 CallbackScope inFlight;
@@ -5830,20 +5834,7 @@ static void OnSessionsChanged() {
             auto newSession = PickBestSession();
             if (!forceRefresh && DeferSessionSwitch(newSession)) return;
             ++g_sessionGraceGen;  // this event decided; drop any pending recheck
-            if (newSession) {
-                try {
-                    auto pb = newSession.GetPlaybackInfo();
-                    if (pb && pb.PlaybackStatus() == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing) {
-                        Wh_Log(L"OnSessionsChanged: Found actively playing session, resetting user switch flag");
-                        std::lock_guard<std::mutex> lk(g_sessionMtx);
-                        g_userSwitchedSession = false;
-                    }
-                } catch (...) { LOG_IGNORED_EXCEPTION(); }
-            } else {
-                Wh_Log(L"OnSessionsChanged: No session found, resetting user switch flag");
-                std::lock_guard<std::mutex> lk(g_sessionMtx);
-                g_userSwitchedSession = false;
-            }
+            { std::lock_guard<std::mutex> lk(g_sessionMtx); g_userSwitchedSession = false; }
             AttachToSession(newSession);
         } catch (...) {
             Wh_Log(L"OnSessionsChanged: Exception occurred");
@@ -7081,15 +7072,26 @@ struct BackgroundStyleParams {
     int micaOpacity;
 };
 
-// ---- Acrylic, Mica and Glass ----
+// Windows' "Transparency effects", and what turns them off (battery saver).
+static bool XsTransparencyEnabled() {
+    DWORD value = 1, size = sizeof(value);
+    if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+                     L"EnableTransparency", RRF_RT_REG_DWORD, nullptr, &value, &size) == ERROR_SUCCESS && value == 0)
+        return false;
+    try {
+        if (!winrt::Windows::UI::ViewManagement::UISettings().AdvancedEffectsEnabled()) return false;
+    } catch (...) { LOG_IGNORED_EXCEPTION(); }
+    return true;
+}
+
+// ---- Mica and Glass ----
 // The settings window's own effect graph (MakeXsMicaBrush) as a XAML brush, so
-// it goes wherever a background does, hover states included. Acrylic and
-// Glass blur what's really behind the taskbar (a live wallpaper too); Mica
-// uses Windows' own blurred wallpaper. A blur of "what's behind" inside the
-// taskbar (XAML's AcrylicBrush) only found the taskbar's own even color.
+// it goes wherever a background does, hover states included. Glass blurs
+// what's behind the window (a live wallpaper too); Mica uses Windows' own
+// blurred wallpaper.
 struct MaterialSpec {
     XsMicaRecipe recipe{};
-    bool behindWindow = true;   // Acrylic and Glass; Mica uses the wallpaper
+    bool behindWindow = true;   // Glass; Mica uses the wallpaper
     float blur = 0.f;           // on top of Windows' own
     float alpha = 1.f;
     winrt::Windows::UI::Color overlay{0, 0, 0, 0};
@@ -7099,7 +7101,8 @@ struct MaterialBrush : winrt::Windows::UI::Xaml::Media::XamlCompositionBrushBase
     MaterialSpec spec;
     explicit MaterialBrush(MaterialSpec const& s) : spec(s) {}
     void OnConnected() {
-        if (CompositionBrush()) return;
+        // Windows' "Transparency effects" off: the plain fallback color shows.
+        if (CompositionBrush() || !XsTransparencyEnabled()) return;
         try {
             // This thread's compositor, from any element on it.
             winrt::Windows::UI::Xaml::Controls::Border probe;
@@ -7120,16 +7123,16 @@ static std::mutex g_materialMtx;
 [[clang::no_destroy]] static std::vector<std::pair<winrt::weak_ref<Brush>, MaterialSpec>> g_materialBrushes;
 
 static Brush MakeMaterialBrush(MaterialSpec const& spec) {
+    const winrt::Windows::UI::Color fallback{(BYTE)std::lround(0xCC * spec.alpha), spec.recipe.tintR, spec.recipe.tintG, spec.recipe.tintB};
     try {
         Brush b = winrt::make<MaterialBrush>(spec);
-        b.as<winrt::Windows::UI::Xaml::Media::XamlCompositionBrushBase>().FallbackColor(
-            winrt::Windows::UI::Color{(BYTE)std::lround(0xCC * spec.alpha), spec.recipe.tintR, spec.recipe.tintG, spec.recipe.tintB});
+        b.as<winrt::Windows::UI::Xaml::Media::XamlCompositionBrushBase>().FallbackColor(fallback);
         std::lock_guard<std::mutex> lk(g_materialMtx);
         std::erase_if(g_materialBrushes, [](auto const& x) { return !x.first.get(); });
         g_materialBrushes.push_back({winrt::make_weak(b), spec});
         return b;
     } catch (...) { LOG_IGNORED_EXCEPTION(); }
-    return nullptr;
+    return MakeBrush(fallback);
 }
 
 // The same material with the hover/press shade over it; null for any other brush.
@@ -7193,14 +7196,12 @@ static Brush MakeBackgroundBrushFromParams(const BackgroundStyleParams& p) {
         } catch (...) { LOG_IGNORED_EXCEPTION(); }
     }
 
-    // Acrylic, Mica and Glass blur what's behind them inside the taskbar (its
-    // own background and the wallpaper colors it lets through). The window's
-    // backdrop (HostBackdrop) isn't available to the taskbar: with it they all
-    // fell back to a near-solid color. "Background opacity" fades the result.
+    // "Background opacity" fades Acrylic, Mica and Glass.
     const double materialAlpha = std::clamp(g_settings.materialOpacity, 0, 100) / 100.0;
     if (t == BackgroundType::Acrylic) {
-        // Windows' own Acrylic: "Acrylic tint opacity" is how much color,
-        // "Acrylic strength" how frosted (its luminosity layer).
+        // Windows' own Acrylic, over what's behind it inside the taskbar:
+        // "Acrylic tint opacity" is how much color, "Acrylic strength" how
+        // frosted (its luminosity layer).
         try {
             winrt::Windows::UI::Xaml::Media::AcrylicBrush brush;
             brush.BackgroundSource(winrt::Windows::UI::Xaml::Media::AcrylicBackgroundSource::Backdrop);
@@ -7208,61 +7209,27 @@ static Brush MakeBackgroundBrushFromParams(const BackgroundStyleParams& p) {
             brush.TintOpacity(std::clamp(p.acrylicTintOpacity, 0, 100) / 100.0);
             brush.TintLuminosityOpacity(std::clamp(g_settings.acrylicStrength, 0, 100) / 100.0);
             brush.FallbackColor(winrt::Windows::UI::Color{0x99, color1.R, color1.G, color1.B});
+            brush.Opacity(materialAlpha);
             return brush;
         } catch (...) { LOG_IGNORED_EXCEPTION(); }
     }
 
-    // Mica and Mica Alt: Windows' blurred wallpaper under its base colors
-    // (MakeMaterialBrush). The strength setting is how much of the base color
-    // covers it.
+    // Mica and Mica Alt: Windows' blurred wallpaper under its base colors.
+    // The strength setting is how much of the base color covers it: Windows'
+    // Mica at 50, the bare blurred wallpaper at 0, all base color at 100.
     if (t == BackgroundType::Mica || t == BackgroundType::MicaAlt) {
-        const bool light = IsSystemLightTheme();
-        const bool alt = t == BackgroundType::MicaAlt;
-        const winrt::Windows::UI::Color base = light
-            ? (alt ? winrt::Windows::UI::Color{0xFF, 0xDA, 0xDA, 0xDA} : winrt::Windows::UI::Color{0xFF, 0xF3, 0xF3, 0xF3})
-            : (alt ? winrt::Windows::UI::Color{0xFF, 0x0A, 0x0A, 0x0A} : winrt::Windows::UI::Color{0xFF, 0x20, 0x20, 0x20});
-        const double strength = std::clamp(p.micaOpacity, 0, 100) / 100.0;
-        {
-            // Windows' Mica at 50; 0 is the bare blurred wallpaper, 100 all base color.
-            XsMicaRecipe r = GetXsMaterialRecipe(alt ? XS_MATERIAL_MICA_ALT : XS_MATERIAL_MICA, light);
-            const float k = (float)strength * 2.f;
-            r.tintOpacity = std::min(1.f, r.tintOpacity * k + (k > 1.f ? k - 1.f : 0.f));
-            r.luminosityOpacity = std::min(1.f, r.luminosityOpacity * std::min(1.f, k));
-            if (auto b = MakeMaterialBrush({r, false, MaterialBlur(), (float)materialAlpha})) return b;
-        }
-        try {
-            winrt::Windows::UI::Xaml::Media::AcrylicBrush brush;
-            brush.BackgroundSource(winrt::Windows::UI::Xaml::Media::AcrylicBackgroundSource::Backdrop);
-            brush.TintColor(base);
-            brush.TintOpacity(strength * (alt ? 0.9 : 0.75));
-            brush.TintLuminosityOpacity(strength * (alt ? 0.95 : 0.8));
-            brush.FallbackColor(winrt::Windows::UI::Color{0x99, base.R, base.G, base.B});
-            brush.Opacity(materialAlpha);
-            return brush;
-        } catch (...) { LOG_IGNORED_EXCEPTION(); }
-        return MakeBrush({(BYTE)(0x99 * materialAlpha), base.R, base.G, base.B});
+        XsMicaRecipe r = GetXsMaterialRecipe(t == BackgroundType::MicaAlt ? XS_MATERIAL_MICA_ALT : XS_MATERIAL_MICA, IsSystemLightTheme());
+        const float k = std::clamp(p.micaOpacity, 0, 100) / 50.f;
+        r.tintOpacity = std::min(1.f, r.tintOpacity * k + (k > 1.f ? k - 1.f : 0.f));
+        r.luminosityOpacity = std::min(1.f, r.luminosityOpacity * std::min(1.f, k));
+        return MakeMaterialBrush({r, false, MaterialBlur(), (float)materialAlpha});
     }
 
     // Glass: clear and lightly frosted, the edge drawn by a separate highlight
     // (see BuildPlayerGrid).
     if (t == BackgroundType::Glass) {
-        const bool light = IsSystemLightTheme();
-        const winrt::Windows::UI::Color tint = light ? winrt::Windows::UI::Color{0xFF, 0xFA, 0xFA, 0xFA}
-                                                     : winrt::Windows::UI::Color{0xFF, 0x18, 0x18, 0x18};
-        if (auto b = MakeMaterialBrush({XsMicaRecipe{tint.R, tint.G, tint.B, light ? 0.10f : 0.06f, light ? 0.30f : 0.18f},
-                                        true, MaterialBlur(), (float)materialAlpha}))
-            return b;
-        try {
-            winrt::Windows::UI::Xaml::Media::AcrylicBrush brush;
-            brush.BackgroundSource(winrt::Windows::UI::Xaml::Media::AcrylicBackgroundSource::Backdrop);
-            brush.TintColor(tint);
-            brush.TintOpacity(light ? 0.10 : 0.06);
-            brush.TintLuminosityOpacity(light ? 0.30 : 0.18);
-            brush.FallbackColor(winrt::Windows::UI::Color{0x55, tint.R, tint.G, tint.B});
-            brush.Opacity(materialAlpha);
-            return brush;
-        } catch (...) { LOG_IGNORED_EXCEPTION(); }
-        return MakeBrush({0x66, tint.R, tint.G, tint.B});
+        return MakeMaterialBrush({IsSystemLightTheme() ? XsMicaRecipe{0xFA, 0xFA, 0xFA, 0.10f, 0.30f} : XsMicaRecipe{0x18, 0x18, 0x18, 0.06f, 0.18f},
+                                  true, MaterialBlur(), (float)materialAlpha});
     }
 
     if (t == BackgroundType::Solid) {
@@ -8314,10 +8281,10 @@ static void VizCaptureThreadProc(VizCaptureRun* run) {
             if (nowMs - lastHeard < 6000) s_repickEvery = 6000;
             if (nowMs - lastHeard >= 6000 && nowMs - s_lastRepick >= s_repickEvery) {
                 s_lastRepick = nowMs;
-                s_repickEvery = std::min<ULONGLONG>(s_repickEvery * 2, 60000);
                 bool playing = false;
                 { std::lock_guard<std::mutex> lk(g_mediaMtx); playing = g_media.isPlaying; }
                 if (playing) pendingReinit = true;   // music, but nothing heard: it's on another output
+                s_repickEvery = playing ? std::min<ULONGLONG>(s_repickEvery * 2, 60000) : 6000;
             }
         }
 
@@ -10660,6 +10627,8 @@ struct PlayerClicks {
 static bool g_playingAnimationsOn = false;
 static void KeepPlayingAnimation(Storyboard const& sb, FrameworkElement const& host) {
     g_playingAnimations.push_back(winrt::make_weak(sb));
+    // Nothing else keeps it alive until it's begun.
+    host.Resources().Insert(winrt::box_value(L"FluentMedia_Playing"), sb);
     // Begun once it's on screen (again after a rebuild moves it): begun before,
     // it could miss the pause or not turn at all.
     host.Loaded([weak = winrt::make_weak(sb)](winrt::Windows::Foundation::IInspectable const&, RoutedEventArgs const&) {
@@ -12772,8 +12741,7 @@ static Button BuildSessionRowButton(const MiniSessionInfo& info, bool isCurrent,
                             try {
                                 if (std::wstring(s.SourceAppUserModelId()) == capturedId) {
                                     targetSession = s;
-                                    std::lock_guard<std::mutex> lk(g_sessionMtx);
-                                    g_userSwitchedSession = true;
+                                    RememberPickedApp(capturedId);
                                     break;
                                 }
                             } catch (...) { LOG_IGNORED_EXCEPTION(); }
@@ -18977,13 +18945,14 @@ static void RemoveDetachedViz() {
 // ---- Weather: what Windows' Widgets button shows, read from it (nothing goes
 // online), as a part of its own. Read on the primary taskbar's thread, shown on
 // the weather part's; the two only share these strings.
-struct WeatherInfo { std::wstring temp, condition, icon; };
+struct WeatherInfo { std::wstring temp, condition, icon; int64_t readAt = 0; };   // readAt: Unix time
 static std::mutex g_weatherMtx;
 [[clang::no_destroy]] static WeatherInfo g_weather;
 
 static bool WeatherAvailable() {
+    static constexpr int64_t MAX_AGE_S = 6 * 3600;   // older than this isn't the weather any more
     std::lock_guard<std::mutex> lk(g_weatherMtx);
-    return !g_weather.temp.empty();
+    return !g_weather.temp.empty() && (int64_t)time(nullptr) - g_weather.readAt < MAX_AGE_S;
 }
 
 static void CollectWeatherTexts(DependencyObject const& n, std::vector<TextBlock>& out, int depth) {
@@ -19027,14 +18996,14 @@ static void LoadLastWeather() {
     std::wstring all = buf;
     std::vector<std::wstring> f;
     for (size_t at = 0;;) {
-        const size_t sep = all.find(L'\x1f', at);
+        const size_t sep = all.find(L'|', at);
         f.push_back(all.substr(at, sep == std::wstring::npos ? std::wstring::npos : sep - at));
         if (sep == std::wstring::npos) break;
         at = sep + 1;
     }
-    if (f.size() == 3 && !f[0].empty()) {
+    if (f.size() == 4 && !f[0].empty()) {
         std::lock_guard<std::mutex> lk(g_weatherMtx);
-        if (g_weather.temp.empty()) g_weather = WeatherInfo{ f[0], f[1], f[2] };
+        if (g_weather.temp.empty()) g_weather = WeatherInfo{ f[0], f[1], f[2], _wtoi64(f[3].c_str()) };
     }
 }
 
@@ -19075,13 +19044,17 @@ static void ReadWeatherOnThread(void*) {
         }
     } catch (...) { LOG_IGNORED_EXCEPTION(); }
     if (w.temp.empty()) return;   // showing something else right now: keep the last weather
-    bool changed = false;
+    w.readAt = (int64_t)time(nullptr);
+    static int64_t s_savedAt = 0;
+    bool save = w.readAt - s_savedAt >= 1800;   // so its age is right after a restart
     {
         std::lock_guard<std::mutex> lk(g_weatherMtx);
-        changed = w.temp != g_weather.temp || w.condition != g_weather.condition || w.icon != g_weather.icon;
-        if (changed) g_weather = w;
+        save = save || w.temp != g_weather.temp || w.condition != g_weather.condition || w.icon != g_weather.icon;
+        g_weather = w;
     }
-    if (changed) Wh_SetStringValue(LAST_WEATHER_KEY, (w.temp + L'\x1f' + w.condition + L'\x1f' + w.icon).c_str());
+    if (!save) return;
+    s_savedAt = w.readAt;
+    Wh_SetStringValue(LAST_WEATHER_KEY, (w.temp + L"|" + w.condition + L"|" + w.icon + L"|" + std::to_wstring(w.readAt)).c_str());
 }
 
 // Fills the weather part from g_weather; on the part's thread.
@@ -20322,9 +20295,10 @@ static DWORD WINAPI TimerThreadProc(void*) {
             Sleep(150);
             if (!g_unloading && !g_applyingSettings) {
                 RunFromWindowThread(hWnd, [](void*) {
-                    if (!g_unloading && !g_applyingSettings && g_playerGrid) {
-                        RefreshThemeColors();
-                    }
+                    if (g_unloading || g_applyingSettings) return;
+                    // Detached parts are built for the theme (background and text).
+                    if (HasAnyDetachedPart()) RebuildPlayerOnThread();
+                    else if (g_playerGrid) RefreshThemeColors();
                 }, nullptr);
             }
         }
@@ -20367,10 +20341,10 @@ static DWORD WINAPI TimerThreadProc(void*) {
             if (g_weatherReadSoon.exchange(false)) s_nextWeather = 0;
             if (nowMs >= s_nextWeather) {
                 s_nextWeather = nowMs + 30000;
-                const bool before = WeatherAvailable();
+                static bool s_available = false;
                 if (HWND primary = FindPrimaryTaskbarWnd()) RunFromWindowThread(primary, ReadWeatherOnThread, nullptr);
                 if (HWND w = g_detachedWeather.injectedOnWnd; w && IsWindow(w)) RunFromWindowThread(w, PaintWeatherOnThread, nullptr);
-                if (WeatherAvailable() != before) g_needsUiUpdate = true;   // shown or hidden now
+                if (const bool now = WeatherAvailable(); now != s_available) { s_available = now; g_needsUiUpdate = true; }   // shown or hidden now
             }
         }
 
@@ -20639,6 +20613,24 @@ static void RecoverMissingPlayer(HWND hWnd) {
     }, nullptr);
 }
 
+// The player and its parts, taken out and put in again with the same settings.
+// On the taskbar's thread.
+static void RebuildPlayerOnThread() {
+    g_applyingSettings = true;
+    g_vizCurrentlyVisible = false;
+    StopVizTimer();
+    StopVizCaptureThread();
+    try { ApplySettings(); } catch (...) { Wh_Log(L"RebuildPlayerOnThread: ApplySettings threw"); }
+    g_applyingSettings = false;
+    if (g_settings.enableTitleScrolling || g_settings.enableArtistScrolling) StartScrollTimer();
+    if (HasAnyPlayerUi()) {
+        RefreshPlayerContents();
+        UpdateVisibility();
+        g_needsUiUpdate = true;
+        if (g_timerUpdateEvent) SetEvent(g_timerUpdateEvent);
+    }
+}
+
 // A tray position sits next to a Windows button that can show up or move after
 // the player went in (the startup check only waits for the tray itself). The
 // player then stayed on the wrong side until something rebuilt it, so check
@@ -20686,19 +20678,7 @@ static void KeepTrayPlacement(HWND hWnd) {
         s_failedRepairs++;
 
         Wh_Log(L"KeepTrayPlacement: on the wrong side of its tray button, rebuilding (try %d)", s_failedRepairs);
-        g_applyingSettings = true;
-        g_vizCurrentlyVisible = false;
-        StopVizTimer();
-        StopVizCaptureThread();
-        try { ApplySettings(); } catch (...) { Wh_Log(L"KeepTrayPlacement: ApplySettings threw"); }
-        g_applyingSettings = false;
-        if (g_settings.enableTitleScrolling || g_settings.enableArtistScrolling) StartScrollTimer();
-        if (HasAnyPlayerUi()) {
-            RefreshPlayerContents();
-            UpdateVisibility();
-            g_needsUiUpdate = true;
-            if (g_timerUpdateEvent) SetEvent(g_timerUpdateEvent);
-        }
+        RebuildPlayerOnThread();
     }, nullptr);
 }
 
@@ -21712,9 +21692,9 @@ COLD_UNOPTIMIZED static std::vector<SettingCategory> CollectSettingsForDisplay()
             WithDesc(RowSlider(L"Acrylic strength", L"AppearanceSettings.BackgroundStyleSettings.acrylicStrength", L"40", 0, 100),
                      L"How frosted the Acrylic is. 0 lets the blur show through."),
             WithDesc(RowSlider(L"Background opacity", L"AppearanceSettings.BackgroundStyleSettings.materialOpacity", L"100", 0, 100),
-                     L"How see-through Mica and Glass are."),
+                     L"How see-through Acrylic, Mica and Glass are."),
             WithDesc(RowSlider(L"Blur amount", L"AppearanceSettings.BackgroundStyleSettings.materialBlur", L"0", 0, 100),
-                     L"How blurred the wallpaper behind Acrylic and Mica is."),
+                     L"Extra blur for Mica and Glass. 0 is Windows' own."),
             WithDesc(RowSlider(L"Mica strength", L"AppearanceSettings.BackgroundStyleSettings.micaOpacity", L"50", 0, 100),
                      L"How much of Mica's color covers the blur. 0 = just the blur."),
             RowSlider(L"Blur opacity", L"AppearanceSettings.BackgroundStyleSettings.blurOpacity", L"65", 0, 100),
@@ -23650,11 +23630,11 @@ static constexpr LocRow LOC_TABLE[] = {
     { L"Bars that move with the music. The played part is in full color; drag it to seek.", L"Смужки рухаються в такт музиці. Відтворена частина яскрава; тягніть, щоб перемотати.", L"Полоски двигаются под музыку. Проигранная часть яркая; тяните, чтобы перемотать.", L"Balken, die sich mit der Musik bewegen. Der gespielte Teil ist voll farbig; zum Spulen ziehen.", L"संगीत के साथ हिलते बार। चला हुआ हिस्सा पूरे रंग में; आगे-पीछे करने के लिए खींचें।", L"随音乐跳动的频谱条。已播放部分为全彩，拖动即可调整进度。", L"隨音樂跳動的頻譜條。已播放部分為全彩，拖曳即可調整進度。", L"Barras que se mueven con la música. Lo reproducido va a todo color; arrastra para avanzar.", L"Des barres qui bougent avec la musique. La partie jouée est en couleur ; glissez pour avancer.", L"Barras que se movem com a música. A parte tocada fica em cor plena; arraste para avançar.", L"Barre che si muovono con la musica. La parte riprodotta è a colori pieni; trascina per spostarti.", L"Słupki poruszające się z muzyką. Odtworzona część jest w pełnym kolorze; przeciągnij, by przewinąć.", L"Müzikle hareket eden çubuklar. Çalınan kısım tam renkli; ilerletmek için sürükleyin.", L"音楽に合わせて動くバー。再生済みの部分は濃く表示。ドラッグでシーク。", L"음악에 맞춰 움직이는 막대. 재생한 부분은 진한 색이며, 끌어서 이동합니다." },
     { L"In the text, as its own line", L"У тексті, окремим рядком", L"В тексте, отдельной строкой", L"Im Text, als eigene Zeile", L"टेक्स्ट में, अलग पंक्ति के रूप में", L"在文字中，作为单独一行", L"在文字中，作為單獨一行", L"En el texto, como su propia línea", L"Dans le texte, sur sa propre ligne", L"No texto, como linha própria", L"Nel testo, come riga a sé", L"W tekście, jako osobna linia", L"Metinde, ayrı bir satır olarak", L"テキスト内に独立した行として", L"텍스트 안에 별도 줄로" },
     { L"Blur amount", L"Сила розмиття", L"Сила размытия", L"Unschärfestärke", L"धुंधलापन", L"模糊程度", L"模糊程度", L"Cantidad de desenfoque", L"Intensité du flou", L"Intensidade do desfoque", L"Intensità sfocatura", L"Siła rozmycia", L"Bulanıklık miktarı", L"ぼかしの強さ", L"흐림 정도" },
-    { L"How blurred the wallpaper behind Acrylic and Mica is.", L"Наскільки розмиті шпалери за Acrylic і Mica.", L"Насколько размыты обои за Acrylic и Mica.", L"Wie stark das Hintergrundbild hinter Acrylic und Mica verschwimmt.", L"Acrylic और Mica के पीछे वॉलपेपर कितना धुंधला हो।", L"Acrylic 和 Mica 后面壁纸的模糊程度。", L"Acrylic 和 Mica 後面桌布的模糊程度。", L"Cuánto se desenfoca el fondo de pantalla tras Acrylic y Mica.", L"Le flou du fond d'écran derrière Acrylic et Mica.", L"O quanto o papel de parede atrás de Acrylic e Mica fica desfocado.", L"Quanto è sfocato lo sfondo dietro Acrylic e Mica.", L"Jak rozmyta jest tapeta za Acrylic i Mica.", L"Acrylic ve Mica arkasındaki duvar kâğıdının ne kadar bulanık olduğu.", L"Acrylic と Mica の背後の壁紙のぼかし具合。", L"Acrylic과 Mica 뒤 배경 화면의 흐림 정도." },
+    { L"Extra blur for Mica and Glass. 0 is Windows' own.", L"Додаткове розмиття для Mica і скла. 0 — як у Windows.", L"Дополнительное размытие для Mica и стекла. 0 — как в Windows.", L"Zusätzliche Unschärfe für Mica und Glas. 0 ist die von Windows.", L"Mica और ग्लास के लिए अतिरिक्त धुंधलापन। 0 = Windows जैसा।", L"Mica 和玻璃的额外模糊。0 为 Windows 自带。", L"Mica 和玻璃的額外模糊。0 為 Windows 內建。", L"Desenfoque extra para Mica y Cristal. 0 es el de Windows.", L"Flou en plus pour Mica et Verre. 0 = celui de Windows.", L"Desfoque extra para Mica e Vidro. 0 é o do Windows.", L"Sfocatura extra per Mica e Vetro. 0 è quella di Windows.", L"Dodatkowe rozmycie dla Mica i Szkła. 0 to rozmycie Windows.", L"Mica ve Cam için ek bulanıklık. 0, Windows'unkidir.", L"Mica とガラスの追加ぼかし。0 は Windows 標準。", L"Mica와 유리의 추가 흐림. 0은 Windows 기본값." },
     { L"Acrylic strength", L"Сила Acrylic", L"Сила Acrylic", L"Acrylic-Stärke", L"Acrylic की तीव्रता", L"Acrylic 强度", L"Acrylic 強度", L"Intensidad de Acrylic", L"Intensité d'Acrylic", L"Intensidade do Acrylic", L"Intensità Acrylic", L"Siła Acrylic", L"Acrylic gücü", L"Acrylic の強さ", L"Acrylic 강도" },
     { L"How frosted the Acrylic is. 0 lets the blur show through.", L"Наскільки матовий Acrylic. 0 пропускає розмиття.", L"Насколько матовый Acrylic. 0 пропускает размытие.", L"Wie milchig Acrylic ist. 0 lässt die Unschärfe durch.", L"Acrylic कितना धुंधला-सफ़ेद हो। 0 पर धुंधलापन दिखता है।", L"Acrylic 的磨砂程度。0 让模糊透出来。", L"Acrylic 的磨砂程度。0 讓模糊透出來。", L"Cuánto se escarcha el Acrylic. 0 deja ver el desenfoque.", L"L'aspect givré de l'Acrylic. 0 laisse voir le flou.", L"O quanto o Acrylic fica fosco. 0 deixa o desfoque aparecer.", L"Quanto è smerigliato l'Acrylic. 0 lascia vedere la sfocatura.", L"Jak matowy jest Acrylic. 0 przepuszcza rozmycie.", L"Acrylic'in ne kadar buzlu olduğu. 0 bulanıklığı gösterir.", L"Acrylic のすりガラス感。0 でぼかしが透けます。", L"Acrylic의 불투명한 정도. 0이면 흐림이 비쳐 보입니다." },
     { L"How much of the color covers the Acrylic.", L"Скільки кольору вкриває Acrylic.", L"Сколько цвета покрывает Acrylic.", L"Wie viel Farbe über dem Acrylic liegt.", L"Acrylic पर कितना रंग हो।", L"颜色覆盖 Acrylic 的程度。", L"顏色覆蓋 Acrylic 的程度。", L"Cuánto color cubre el Acrylic.", L"La part de couleur sur l'Acrylic.", L"Quanto da cor cobre o Acrylic.", L"Quanto colore copre l'Acrylic.", L"Ile koloru pokrywa Acrylic.", L"Rengin Acrylic'i ne kadar kapladığı.", L"Acrylic にかかる色の量。", L"Acrylic을 덮는 색의 양." },
-    { L"How see-through Mica and Glass are.", L"Наскільки прозорі Mica і скло.", L"Насколько прозрачны Mica и стекло.", L"Wie durchsichtig Mica und Glas sind.", L"Mica और ग्लास कितने पारदर्शी हों।", L"Mica 和玻璃的透明程度。", L"Mica 和玻璃的透明程度。", L"Cuánto se transparentan Mica y Cristal.", L"La transparence de Mica et Verre.", L"O quanto Mica e Vidro são transparentes.", L"Quanto sono trasparenti Mica e Vetro.", L"Jak przezroczyste są Mica i Szkło.", L"Mica ve Cam'ın ne kadar saydam olduğu.", L"Mica とガラスの透け具合。", L"Mica와 유리의 투명도." },
+    { L"How see-through Acrylic, Mica and Glass are.", L"Наскільки прозорі Acrylic, Mica і скло.", L"Насколько прозрачны Acrylic, Mica и стекло.", L"Wie durchsichtig Acrylic, Mica und Glas sind.", L"Acrylic, Mica और ग्लास कितने पारदर्शी हों।", L"Acrylic、Mica 和玻璃的透明程度。", L"Acrylic、Mica 和玻璃的透明程度。", L"Cuánto se transparentan Acrylic, Mica y Cristal.", L"La transparence d'Acrylic, Mica et Verre.", L"O quanto Acrylic, Mica e Vidro são transparentes.", L"Quanto sono trasparenti Acrylic, Mica e Vetro.", L"Jak przezroczyste są Acrylic, Mica i Szkło.", L"Acrylic, Mica ve Cam'ın ne kadar saydam olduğu.", L"Acrylic、Mica、ガラスの透け具合。", L"Acrylic, Mica, 유리의 투명도." },
     { L"Window color", L"Колір вікна", L"Цвет окна", L"Fensterfarbe", L"विंडो का रंग", L"窗口颜色", L"視窗色彩", L"Color de la ventana", L"Couleur de la fenêtre", L"Cor da janela", L"Colore della finestra", L"Kolor okna", L"Pencere rengi", L"ウィンドウの色", L"창 색상" },
     { L"Custom color", L"Власний колір", L"Свой цвет", L"Eigene Farbe", L"कस्टम रंग", L"自定义颜色", L"自訂色彩", L"Color personalizado", L"Couleur personnalisée", L"Cor personalizada", L"Colore personalizzato", L"Własny kolor", L"Özel renk", L"カスタム色", L"사용자 지정 색" },
     { L"Title bar color", L"Колір рядка заголовка", L"Цвет строки заголовка", L"Farbe der Titelleiste", L"शीर्षक पट्टी का रंग", L"标题栏颜色", L"標題列色彩", L"Color de la barra de título", L"Couleur de la barre de titre", L"Cor da barra de título", L"Colore della barra del titolo", L"Kolor paska tytułu", L"Başlık çubuğu rengi", L"タイトル バーの色", L"제목 표시줄 색" },
@@ -24398,10 +24378,25 @@ static const RowRule ROW_RULES[] = {
     { L"AppearanceSettings.BackgroundStyleSettings.gradientAngle", 115, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"gradient" },
     { L"AppearanceSettings.BackgroundStyleSettings.gradientBalance", 116, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"gradient" },
     { L"AppearanceSettings.BackgroundStyleSettings.acrylicTintOpacity", 117, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"acrylic" },
-    { L"AppearanceSettings.BackgroundStyleSettings.acrylicStrength", 6503, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"acrylic" },
+    { L"AppearanceSettings.BackgroundStyleSettings.acrylicStrength", 6503, true, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"inherit|none|solid|gradient|mica|mica_alt|album_art_blur|glass" },
+    { L"AppearanceSettings.BackgroundStyleSettings.acrylicStrength", 6503, true, L"MainSettings.AlbumArtSetting.albumArtDetachedBackgroundType", L"inherit|none|solid|gradient|mica|mica_alt|album_art_blur|glass" },
+    { L"AppearanceSettings.BackgroundStyleSettings.acrylicStrength", 6503, true, L"MainSettings.TextAreaSetting.infoDetachedBackgroundType", L"inherit|none|solid|gradient|mica|mica_alt|album_art_blur|glass" },
+    { L"AppearanceSettings.BackgroundStyleSettings.acrylicStrength", 6503, true, L"MainSettings.MediaButtonsSettings.buttonsDetachedBackgroundType", L"inherit|none|solid|gradient|mica|mica_alt|album_art_blur|glass" },
+    { L"AppearanceSettings.BackgroundStyleSettings.acrylicStrength", 6503, true, L"MainSettings.VisualizerFunctionsSettings.vizDetachedBackgroundType", L"inherit|none|solid|gradient|mica|mica_alt|album_art_blur|glass" },
+    { L"AppearanceSettings.BackgroundStyleSettings.acrylicStrength", 6503, true, L"MainSettings.WeatherSetting.weatherBackgroundType", L"inherit|none|solid|gradient|mica|mica_alt|album_art_blur|glass" },
     { L"AppearanceSettings.BackgroundStyleSettings.micaOpacity", 118, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"mica|mica_alt" },
-    { L"AppearanceSettings.BackgroundStyleSettings.materialOpacity", 6501, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"mica|mica_alt|glass" },
-    { L"AppearanceSettings.BackgroundStyleSettings.materialBlur", 6502, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"mica|mica_alt|glass" },
+    { L"AppearanceSettings.BackgroundStyleSettings.materialOpacity", 6501, true, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"inherit|none|solid|gradient|album_art_blur" },
+    { L"AppearanceSettings.BackgroundStyleSettings.materialOpacity", 6501, true, L"MainSettings.AlbumArtSetting.albumArtDetachedBackgroundType", L"inherit|none|solid|gradient|album_art_blur" },
+    { L"AppearanceSettings.BackgroundStyleSettings.materialOpacity", 6501, true, L"MainSettings.TextAreaSetting.infoDetachedBackgroundType", L"inherit|none|solid|gradient|album_art_blur" },
+    { L"AppearanceSettings.BackgroundStyleSettings.materialOpacity", 6501, true, L"MainSettings.MediaButtonsSettings.buttonsDetachedBackgroundType", L"inherit|none|solid|gradient|album_art_blur" },
+    { L"AppearanceSettings.BackgroundStyleSettings.materialOpacity", 6501, true, L"MainSettings.VisualizerFunctionsSettings.vizDetachedBackgroundType", L"inherit|none|solid|gradient|album_art_blur" },
+    { L"AppearanceSettings.BackgroundStyleSettings.materialOpacity", 6501, true, L"MainSettings.WeatherSetting.weatherBackgroundType", L"inherit|none|solid|gradient|album_art_blur" },
+    { L"AppearanceSettings.BackgroundStyleSettings.materialBlur", 6502, true, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"inherit|none|solid|gradient|acrylic|album_art_blur" },
+    { L"AppearanceSettings.BackgroundStyleSettings.materialBlur", 6502, true, L"MainSettings.AlbumArtSetting.albumArtDetachedBackgroundType", L"inherit|none|solid|gradient|acrylic|album_art_blur" },
+    { L"AppearanceSettings.BackgroundStyleSettings.materialBlur", 6502, true, L"MainSettings.TextAreaSetting.infoDetachedBackgroundType", L"inherit|none|solid|gradient|acrylic|album_art_blur" },
+    { L"AppearanceSettings.BackgroundStyleSettings.materialBlur", 6502, true, L"MainSettings.MediaButtonsSettings.buttonsDetachedBackgroundType", L"inherit|none|solid|gradient|acrylic|album_art_blur" },
+    { L"AppearanceSettings.BackgroundStyleSettings.materialBlur", 6502, true, L"MainSettings.VisualizerFunctionsSettings.vizDetachedBackgroundType", L"inherit|none|solid|gradient|acrylic|album_art_blur" },
+    { L"AppearanceSettings.BackgroundStyleSettings.materialBlur", 6502, true, L"MainSettings.WeatherSetting.weatherBackgroundType", L"inherit|none|solid|gradient|acrylic|album_art_blur" },
     { L"AppearanceSettings.BackgroundStyleSettings.blurOpacity", 119, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"album_art_blur" },
     { L"AppearanceSettings.BackgroundStyleSettings.blurRadius", 120, false, L"AppearanceSettings.BackgroundStyleSettings.backgroundType", L"album_art_blur" },
     { L"AppearanceSettings.TitleTextStyleSettings.titleFontFamily", 121, false, L"AppearanceSettings.TitleTextStyleSettings.titleFont", L"custom" },
@@ -28945,17 +28940,6 @@ static bool WantedLightTheme() {
         return PrefersDarkText(XsWindowColor());
     }
     return IsSystemLightTheme();
-}
-
-static bool XsTransparencyEnabled() {
-    DWORD value = 1, size = sizeof(value);
-    if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
-                     L"EnableTransparency", RRF_RT_REG_DWORD, nullptr, &value, &size) == ERROR_SUCCESS && value == 0)
-        return false;
-    try {
-        if (!winrt::Windows::UI::ViewManagement::UISettings().AdvancedEffectsEnabled()) return false;
-    } catch (...) { LOG_IGNORED_EXCEPTION(); }
-    return true;
 }
 
 static uint64_t s_albumBgHash = 0;   // the cover the window's background was made from

@@ -12,7 +12,7 @@ Windhawk only accepts an update from the account in the mod's `@github`, so this
 ```
 Taskbar Fluent Media Player v1.7.1
 
-Weather part, hiding Windows' own taskbar buttons, smooth song changes, real Mica/Acrylic/Glass backgrounds and lighter on power.
+Weather part, hiding Windows' own taskbar buttons, smooth song changes, Mica and Glass backgrounds and lighter on power.
 ```
 
 ## Pull request text
@@ -25,7 +25,7 @@ Weather part, hiding Windows' own taskbar buttons, smooth song changes, real Mic
 * Weather: the weather from Windows' Widgets button as a part of its own, anywhere on the taskbar. It can show only when nothing plays, or take the player's place.
 * Hide Windows' own buttons: Start, Search, Task View, Widgets and tray items, and the year on the clock. The Layout page shows them and lets you place parts around them.
 * Smooth song changes: the text fades and the player glides to its new width instead of jumping.
-* Backgrounds: Mica, Mica Alt and Glass blur what's behind them, with a blur amount; Acrylic has separate tint and strength. Hover keeps the material.
+* Backgrounds: Glass blurs what's behind it, Mica shows the blurred wallpaper, both with a blur amount; Acrylic has separate tint and strength. Hover keeps the material.
 * New looks: album art that spins like a record, a glow while playing, morphing album art, a compact mini player with its own visualizer, a seek bar that can be a visualizer.
 * Progress bar: its own background color, hide when idle, show or grow on hover, or sit in the text as its own line.
 * Lighter on power: visualizer frame rate, pause on battery saver, nothing animates with the screen off.

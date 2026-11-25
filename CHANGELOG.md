@@ -8,7 +8,7 @@
 - **Weather only when nothing plays.** The weather part hides while music plays and comes back when it stops.
 - **Weather takes the player's place.** While nothing plays (for 2.5 seconds, so a skip doesn't count), the player hides and the weather shows in its spot; music brings the player back. It uses the player's position and monitor.
 - **Widgets when nothing plays.** "Show Widgets when nothing plays" (Windows Buttons page) does the same with Windows' own Widgets button: the player hides when nothing is playing and Widgets comes back in its place. Detached parts stay where they are.
-- The weather part keeps the last temperature while Windows' button shows news or a forecast teaser instead, and remembers it across restarts.
+- The weather part keeps the last temperature while Windows' button shows news or a forecast teaser instead, and remembers it across restarts. One older than 6 hours isn't shown.
 
 ### Windows buttons
 
@@ -77,12 +77,14 @@
 
 ### Fixes
 
+- An app picked by hand (the session list, or "Switch media app") stays picked until it has played and stopped, or closes. It used to be forgotten about a second later, so the player could jump back.
+- Switching Windows between light and dark reaches the detached parts too, also with the main player off. A Mica part used to stay light under white text.
 - With the info and buttons moved out into parts of their own, the player is just as wide as the cover plus its usual padding. It used to keep the minimum width meant for its text, an empty stretch beside the cover.
 - Layout page: the player and its parts in the taskbar copy are drawn at a set size worked out from what they hold (the same as their tiles in the boxes below), placed where they really sit, and moved apart instead of overlapping. They used to be stretched or squeezed by the taskbar's own scale.
-- Hovering a part with an Acrylic, Mica, gradient or Glass background no longer swaps it for a flat hover color: the materials get a lighter or darker shade of themselves, the others keep their look and show the hover outline.
+- Hovering a part with a Mica, Glass, Acrylic or gradient background no longer swaps it for a flat hover color: Mica and Glass get a lighter or darker shade of themselves, Acrylic and gradients keep their look and show the hover outline.
 - New "Blur amount" (Appearance, Background) for Mica and Glass: extra blur on top of Windows' own (0 = just that).
-- Mica, Mica Alt and Glass on the player and the detached parts use the same effect as the settings window's background: Glass blurs what's really behind the taskbar, Mica uses Windows' own blurred wallpaper. Inside the taskbar the old blur only found the taskbar's own even color, so they looked flat.
-- Acrylic has two settings that don't touch each other: "Acrylic tint opacity" (how much color) and the new "Acrylic strength" (how frosted; 0 lets the blur show through). "Background opacity" is for Mica and Glass now; on Acrylic, Windows ignores it.
+- Mica, Mica Alt and Glass on the player and the detached parts use the settings window's own effect: Glass blurs what's behind the taskbar, Mica shows Windows' blurred wallpaper (so it's plain on a black one). With Windows' "Transparency effects" off they're a plain color.
+- Acrylic has two settings that don't touch each other: "Acrylic tint opacity" (how much color) and the new "Acrylic strength" (how frosted). "Background opacity" fades Acrylic, Mica and Glass, and these sliders show whenever the player or a detached part uses them.
 - A detached part with a blurred-cover background no longer shows the blur taller than its frame.
 - A fully round album cover (or the spinning record) has no outline, and the gray stand-in behind the cover no longer peeks out around its edge.
 - Settings window: text on the accent color (Save, a colored title bar's buttons) picks black or white by real contrast; light accents like green used to get white text that was hard to read. An expanding card's rows line their controls up under its switch, and page and section names are in sentence case like Windows' Settings.
@@ -95,7 +97,6 @@
 - With "Spin like a record" and "Show only the cover until hovered" both on, the player could open empty or stay open after the pointer left, and the record could stop turning after changing a setting.
 - A progress bar set to "Below info text" is as long as the info area and lined up under it, instead of spanning the wider column the info sits in.
 - The visualizer works with audio routers like Elgato Wave Link and Voicemeeter, which give each app its own output: it looks at every output device, and "Everything on the PC" listens to the one the music is actually on (the player's app's, or the loudest), looking again if it goes quiet while music plays. Before, it only listened to Windows' default output.
-- Acrylic, Mica, Mica Alt and Glass on the player work: they blur what's behind them on the taskbar with a light tint. They used to fall back to a near-solid color, because the taskbar can't blur what's behind its window. New "Background opacity" slider for all of them, and "Mica strength" sets how much of Mica's color covers the blur.
 - The blurred album cover background is a smooth wash instead of a grainy blur of the cover, with a light or dark tint so text on it stays readable.
 - The progress bar is easier to grab: the area you can click or drag is 22 px tall (more with "Height on hover"), and at the player's edge it reaches inward instead of off the taskbar.
 - The player no longer shoots out and back when the song changes: apps that clear the title for a moment between songs (Spotify) keep the last song's text through the gap, the smooth position animation pauses for the change, and the width glide lands exactly on the new width.
