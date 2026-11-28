@@ -12,6 +12,7 @@ New since 2026-11-11 (fixed or added on the `1.7.1` branch; replies in `issue-re
 - [x] Single click runs together with the double click (#115) — Behaviour: "A double-click doesn't run the single click too"; a left double-click no longer runs the single click twice
 - [x] "Open media app" does nothing with the app in the tray (#114) — starts the app's exe again, which brings up Spotify, AIMP and other one-instance apps
 - [ ] Player won't move left (#111) — no details; likely the left-align report from Discord, waiting on logs
+- [x] Player stuck at the right of the tray with any taskbar position (#124) — on 26H2 (26300) the taskbar frame is the XAML root itself, so RootGrid was never found and every taskbar position fell back to the tray
 - [ ] Smart App Control blocks the 1.7.0 DLL (#119) — Windhawk/Windows signing, not something the mod can change
 - [ ] Riff app not recognized (#100) — needs a check that Riff shows in Windows' own media controls (Win + A)
 
