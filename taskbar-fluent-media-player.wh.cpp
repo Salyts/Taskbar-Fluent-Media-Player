@@ -17377,16 +17377,26 @@ static const wchar_t* const START_BUTTON_NAMES[] = {
 };
 
 static Grid FindTaskbarRootGrid(FrameworkElement const& root) {
-    FrameworkElement taskbarFrame = nullptr;
-    int count = VisualTreeHelper::GetChildrenCount(root);
+    if (!root) return nullptr;
 
-    for (int i = 0; i < count; i++) {
-        auto c = VisualTreeHelper::GetChild(root, i).try_as<FrameworkElement>();
-        if (c) {
-            auto className = winrt::get_class_name(c);
-            if (className == L"Taskbar.TaskbarFrame") {
-                taskbarFrame = c;
-                break;
+    // The frame is a child of the XAML root content on older builds. On 26H2
+    // (26300) the content itself is the TaskbarFrame, and looking only one
+    // level down found nothing there: every taskbar position then fell back to
+    // the tray, at its far right (GitHub #124).
+    FrameworkElement taskbarFrame = nullptr;
+    if (winrt::get_class_name(root) == L"Taskbar.TaskbarFrame") {
+        taskbarFrame = root;
+    } else {
+        int count = VisualTreeHelper::GetChildrenCount(root);
+
+        for (int i = 0; i < count; i++) {
+            auto c = VisualTreeHelper::GetChild(root, i).try_as<FrameworkElement>();
+            if (c) {
+                auto className = winrt::get_class_name(c);
+                if (className == L"Taskbar.TaskbarFrame") {
+                    taskbarFrame = c;
+                    break;
+                }
             }
         }
     }
@@ -18113,6 +18123,8 @@ static InjectionTarget ResolveInjectionTarget(
     {
         auto rootGrid = FindTaskbarRootGrid(root);
         if (!rootGrid) {
+            Wh_Log(L"ResolveInjectionTarget: no taskbar RootGrid, '%s' falls back to the tray",
+                   PositionKey(position));
             auto tf2 = FindChildByName(root, L"SystemTrayFrameGrid");
             if (auto tg2 = tf2 ? tf2.try_as<Grid>() : nullptr)
                 return {tg2, (int)tg2.ColumnDefinitions().Size()};
